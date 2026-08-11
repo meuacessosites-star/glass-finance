@@ -452,7 +452,7 @@ export default function Landing() {
       </header>
 
       {/* Hero */}
-      <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-10 pt-10 sm:gap-10 sm:pb-12 sm:pt-12 md:pb-20 lg:flex-row lg:gap-6 lg:pt-14">
+      <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-12 pt-10 sm:gap-10 sm:pb-16 sm:pt-12 md:pb-24 lg:flex-row lg:gap-6 lg:pt-14">
         <div className="max-w-xl text-left sm:text-center lg:text-left">
           <span className="hero-enter hero-enter-1 glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-semibold text-slate-900 sm:px-3.5 sm:text-[12.5px]">
             <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
@@ -502,7 +502,7 @@ export default function Landing() {
       </section>
 
       {/* Recursos */}
-      <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16 md:py-20">
+      <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 sm:py-20 md:py-24">
         <div className="reveal mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">Recursos</p>
           <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
@@ -514,7 +514,7 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="mt-10 grid gap-4 sm:mt-12 sm:gap-5 md:grid-cols-3">
+        <div className="mt-12 grid gap-4 sm:mt-16 sm:gap-5 md:grid-cols-3">
           {[
             {
               icon: ScanLine,
@@ -572,7 +572,7 @@ export default function Landing() {
       </section>
 
       {/* Telas (interactive showcase) */}
-      <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16 md:py-20">
+      <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 sm:py-20 md:py-24">
         <div className="reveal mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
           <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
@@ -584,7 +584,7 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="reveal mx-auto mt-10 max-w-3xl sm:mt-12">
+        <div className="reveal mx-auto mt-12 max-w-3xl sm:mt-16">
           <div className="glass glass-strong overflow-hidden rounded-[2.4rem] p-2 sm:p-2.5">
             {/* tab pills */}
             <div className="glass glass-soft flex gap-1.5 rounded-full p-1.5">
@@ -619,7 +619,7 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16 md:py-20">
+      <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 sm:py-20 md:py-24">
         <div className="reveal glass glass-strong relative overflow-hidden rounded-[2.6rem] px-5 py-12 text-center sm:px-16 sm:py-16">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#5b9dff]/30 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
