@@ -1,24 +1,35 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Check,
   ChevronRight,
   CreditCard,
+  LockKeyhole,
   LogOut,
   Menu,
+  Settings,
   Tags,
   Users,
   X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
-import { useAppStore } from "@/lib/app-store";
+import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { ProfilePinGate } from "./ProfilePinGate";
 import { SquircleIcon } from "./ThemeToggle";
 
 // ---------------------------------------------------------------------------
-// Slide-in sidebar (iOS settings style) with the personalization areas:
-// Categorias, Cartões, Perfis and PIN — plus the active profile header and
-// sign out. Rendered inside the phone screen by the Dashboard shell.
+// Slide-in sidebar (iOS settings style): navigation, an inline profile
+// switcher (PIN-gated when the target profile is protected) and sign out.
+// Full profile/PIN configuration lives on the Perfis screen.
 // ---------------------------------------------------------------------------
 
 const SidebarContext = createContext<{
@@ -100,12 +111,31 @@ export function Sidebar() {
   const { isOpen, close } = useSidebar();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { activeProfile, profiles } = useAppStore();
+  const { activeProfile, profiles, activeProfileId, setActiveProfile } =
+    useAppStore();
   const { signOut } = useAuth();
+
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [gateProfile, setGateProfile] = useState<AppProfile | null>(null);
+
+  // Collapse the profile list whenever the sidebar closes.
+  useEffect(() => {
+    if (!isOpen) setShowProfiles(false);
+  }, [isOpen]);
 
   const go = (to: string) => {
     close();
     navigate(to);
+  };
+
+  const handleSwitch = (profile: AppProfile) => {
+    if (profile.id === activeProfileId) return;
+    if (profile.data.pin) {
+      setGateProfile(profile);
+      return;
+    }
+    setActiveProfile(profile.id);
+    toast(`Agora usando "${profile.name}"`);
   };
 
   const handleSignOut = async () => {
@@ -115,117 +145,207 @@ export function Sidebar() {
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            key="sidebar-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={close}
-            className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
-          />
-          <motion.aside
-            key="sidebar-panel"
-            initial={{ x: "-105%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "-105%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 330 }}
-            className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-hidden rounded-[1.9rem] p-4"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <p className="text-[15px] font-bold tracking-tight text-glass-ink">
-                Menu
-              </p>
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <motion.div
+              key="sidebar-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={close}
+              className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+            />
+            <motion.aside
+              key="sidebar-panel"
+              initial={{ x: "-105%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-105%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 330 }}
+              className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] p-4"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <p className="text-[15px] font-bold tracking-tight text-glass-ink">
+                  Menu
+                </p>
+                <button
+                  type="button"
+                  aria-label="Fechar menu"
+                  onClick={close}
+                  className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Active profile — expands into the profile switcher */}
               <button
                 type="button"
-                aria-label="Fechar menu"
-                onClick={close}
-                className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                onClick={() => setShowProfiles((v) => !v)}
+                className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/50 p-3 text-left transition-colors hover:bg-white/70"
               >
-                <X className="size-4" />
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-lg shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]">
+                  {activeProfile?.emoji ?? "👤"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-bold text-glass-ink">
+                    {activeProfile?.name ?? "Meu perfil"}
+                  </p>
+                  <p className="text-[12px] text-glass-sub">
+                    {profiles.length}{" "}
+                    {profiles.length === 1 ? "perfil" : "perfis"} na conta
+                  </p>
+                </div>
+                <ChevronRight
+                  className={cn(
+                    "size-4 shrink-0 text-glass-faint transition-transform duration-200",
+                    showProfiles && "rotate-90",
+                  )}
+                />
               </button>
-            </div>
 
-            {/* Active profile */}
-            <button
-              type="button"
-              onClick={() => go("/dashboard/perfis")}
-              className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/50 p-3 text-left transition-colors hover:bg-white/70"
-            >
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-lg shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]">
-                {activeProfile?.emoji ?? "👤"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-bold text-glass-ink">
-                  {activeProfile?.name ?? "Meu perfil"}
-                </p>
-                <p className="text-[12px] text-glass-sub">
-                  {profiles.length}{" "}
-                  {profiles.length === 1 ? "perfil" : "perfis"} na conta
-                </p>
-              </div>
-              <ChevronRight className="size-4 shrink-0 text-glass-faint" />
-            </button>
-
-            {/* Nav */}
-            <nav className="mt-4 flex-1 space-y-1 overflow-y-auto no-scrollbar">
-              {items.map((item) => {
-                const active = pathname.startsWith(item.to);
-                return (
-                  <button
-                    key={item.to}
-                    type="button"
-                    onClick={() => go(item.to)}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
-                      active ? "bg-primary/10" : "hover:bg-white/50",
-                    )}
-                  >
-                    <SquircleIcon
-                      icon={item.icon}
-                      color={item.color}
-                      size="size-10"
-                      iconSize="size-[18px]"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p
+              {/* Inline profile switcher */}
+              {showProfiles && (
+                <div className="mt-2 space-y-0.5 rounded-2xl bg-white/30 p-1.5">
+                  <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-glass-faint">
+                    Trocar de perfil
+                  </p>
+                  {profiles.map((profile) => {
+                    const active = profile.id === activeProfileId;
+                    return (
+                      <button
+                        key={profile.id}
+                        type="button"
+                        onClick={() => handleSwitch(profile)}
                         className={cn(
-                          "text-[14.5px] font-semibold",
-                          active ? "text-primary" : "text-glass-ink",
+                          "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors",
+                          active ? "bg-primary/10" : "hover:bg-white/50",
                         )}
                       >
-                        {item.label}
-                      </p>
-                      <p className="truncate text-[12px] text-glass-sub">
-                        {item.desc}
-                      </p>
+                        <div
+                          className={cn(
+                            "flex size-9 shrink-0 items-center justify-center rounded-full text-base",
+                            active
+                              ? "bg-gradient-to-br from-[#5b9dff] to-[#5856d6]"
+                              : "bg-white/70",
+                          )}
+                        >
+                          {profile.emoji}
+                        </div>
+                        <p
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-[14px] font-semibold",
+                            active ? "text-primary" : "text-glass-ink",
+                          )}
+                        >
+                          {profile.name}
+                        </p>
+                        {profile.data.pin && (
+                          <LockKeyhole
+                            className="size-3.5 shrink-0 text-glass-faint"
+                            strokeWidth={2.4}
+                          />
+                        )}
+                        {active && (
+                          <Check
+                            className="size-4 shrink-0 text-primary"
+                            strokeWidth={3}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => go("/dashboard/perfis")}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/50"
+                  >
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/10">
+                      <Settings className="size-4 text-glass-ink" />
                     </div>
-                    <ChevronRight className="size-4 shrink-0 text-glass-faint" />
+                    <p className="text-[13.5px] font-semibold text-glass-ink">
+                      Configurar perfis e PIN
+                    </p>
                   </button>
-                );
-              })}
-            </nav>
+                </div>
+              )}
 
-            {/* Sign out */}
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="mt-3 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors hover:bg-[#FF3B30]/10"
-            >
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#FF3B30]/15">
-                <LogOut className="size-[18px] text-[#FF3B30]" strokeWidth={2.2} />
-              </div>
-              <p className="text-[14.5px] font-semibold text-[#FF3B30]">
-                Sair da conta
-              </p>
-            </button>
-          </motion.aside>
-        </>
+              {/* Nav */}
+              <nav className="mt-4 flex-1 space-y-1 overflow-y-auto no-scrollbar">
+                {items.map((item) => {
+                  const active = pathname.startsWith(item.to);
+                  return (
+                    <button
+                      key={item.to}
+                      type="button"
+                      onClick={() => go(item.to)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
+                        active ? "bg-primary/10" : "hover:bg-white/50",
+                      )}
+                    >
+                      <SquircleIcon
+                        icon={item.icon}
+                        color={item.color}
+                        size="size-10"
+                        iconSize="size-[18px]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            "text-[14.5px] font-semibold",
+                            active ? "text-primary" : "text-glass-ink",
+                          )}
+                        >
+                          {item.label}
+                        </p>
+                        <p className="truncate text-[12px] text-glass-sub">
+                          {item.desc}
+                        </p>
+                      </div>
+                      <ChevronRight className="size-4 shrink-0 text-glass-faint" />
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Sign out */}
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="mt-3 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors hover:bg-[#FF3B30]/10"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#FF3B30]/15">
+                  <LogOut
+                    className="size-[18px] text-[#FF3B30]"
+                    strokeWidth={2.2}
+                  />
+                </div>
+                <p className="text-[14.5px] font-semibold text-[#FF3B30]">
+                  Sair da conta
+                </p>
+              </button>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* PIN gate for protected profiles (covers the open sidebar) */}
+      {gateProfile && (
+        <ProfilePinGate
+          profile={gateProfile}
+          onVerified={() => {
+            const target = gateProfile;
+            setGateProfile(null);
+            setActiveProfile(target.id);
+            toast(`Agora usando "${target.name}"`);
+          }}
+          onCancel={() => setGateProfile(null)}
+        />
       )}
-    </AnimatePresence>
+    </>
   );
 }
