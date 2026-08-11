@@ -370,30 +370,44 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
 export default function Landing() {
   const [tab, setTab] = useState<ShowcaseTab>("inicio");
 
-  // Safe scroll-reveal: content is fully visible by default; the observer only
-  // adds .is-visible to trigger a CSS entrance when it scrolls into view. If
-  // JS, the observer, or the CSS animation is unavailable, content stays
-  // visible — the worst case is "no animation", never hidden text.
+  // Safe scroll-reveal: content is fully visible by default; JS only adds
+  // .is-visible (which triggers a CSS entrance that ends at opacity 1) when an
+  // element scrolls into view. Uses direct position checks on scroll/resize —
+  // no IntersectionObserver dependency, so it works even where the observer or
+  // prefers-reduced-motion would normally block it. If JS never runs, content
+  // stays visible: the worst case is "no animation", never hidden text.
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
     if (elements.length === 0) return;
-    if (typeof IntersectionObserver === "undefined") {
-      elements.forEach((el) => el.classList.add("is-visible"));
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            observer.unobserve(entry.target);
-          }
+
+    const isInViewport = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect();
+      return rect.top < window.innerHeight * 0.92 && rect.bottom > 0;
+    };
+
+    const check = () => {
+      for (const el of elements) {
+        if (!el.classList.contains("is-visible") && isInViewport(el)) {
+          el.classList.add("is-visible");
         }
-      },
-      { threshold: 0.12 },
-    );
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+      }
+    };
+
+    // Reveal anything already on screen (covers the initial load too).
+    check();
+
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check, { passive: true });
+
+    // Safety net: if no scroll/resize events fire in this environment, still
+    // reveal whatever is on screen shortly after mount.
+    const timer = window.setTimeout(check, 1200);
+
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      window.clearTimeout(timer);
+    };
   }, []);
 
   return (
