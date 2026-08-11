@@ -418,12 +418,12 @@ export default function Landing() {
             <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
-          <h1 className="mt-3 text-[32px] font-bold leading-[1.08] tracking-tight text-slate-900 sm:mt-5 sm:text-[54px] sm:leading-[1.05]">
+          <h1 className="mt-4 text-4xl font-bold leading-tight tracking-tight text-slate-900 md:mt-6 md:text-6xl">
             Seu dinheiro,
             <br />
             lindo de ver.
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-slate-700 sm:mt-5 sm:text-[16px] lg:mx-0">
+          <p className="mx-auto mt-3 max-w-md text-base leading-relaxed text-slate-700 md:mt-4 md:max-w-2xl md:text-lg lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão
             <span className="hidden sm:inline"> — tudo em um app leve, claro e elegante, feito para o seu celular.</span>
