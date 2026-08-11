@@ -413,9 +413,9 @@ export default function Landing() {
 
       {/* Hero */}
       <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-10 pt-10 sm:gap-10 sm:pb-12 sm:pt-12 lg:flex-row lg:gap-6 lg:pt-14">
-        <div className="max-w-xl text-center lg:text-left">
+        <div className="max-w-xl text-left sm:text-center lg:text-left">
           <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-semibold text-slate-900 sm:px-3.5 sm:text-[12.5px]">
-            <Sparkles className="size-3.5 text-[#2F6BFF]" />
+            <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
           <h1 className="mt-4 text-[36px] font-bold leading-[1.05] tracking-tight text-slate-900 sm:mt-5 sm:text-[54px]">
@@ -423,7 +423,7 @@ export default function Landing() {
             <br />
             lindo de ver.
           </h1>
-          <p className="mx-auto mt-4 max-w-md text-[16px] leading-relaxed text-slate-600 sm:mt-5 lg:mx-0">
+          <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-slate-600 sm:mt-5 sm:text-[16px] lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão — tudo em um
             app leve, claro e elegante, feito para o seu celular.
@@ -443,7 +443,7 @@ export default function Landing() {
               Ver as telas
             </a>
           </div>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:mt-7 lg:justify-start">
+          <div className="mt-6 flex flex-wrap items-center justify-start gap-2 sm:mt-7 sm:justify-center lg:justify-start">
             <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
@@ -458,12 +458,12 @@ export default function Landing() {
 
       {/* Recursos */}
       <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
-        <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">Recursos</p>
-          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
+          <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Tudo que sua vida financeira precisa
           </h2>
-          <p className="mt-4 text-[15.5px] leading-relaxed text-slate-600">
+          <p className="mt-4 text-[14.5px] leading-relaxed text-slate-600 sm:text-[15.5px]">
             Da nota fiscal escaneada ao resumo do mês: uma experiência
             construída para o celular, com a elegância dos apps nativos.
           </p>
@@ -527,12 +527,12 @@ export default function Landing() {
 
       {/* Telas (interactive showcase) */}
       <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
-        <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
-          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
+          <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Navegue pelos menus
           </h2>
-          <p className="mt-4 text-[15.5px] leading-relaxed text-slate-600">
+          <p className="mt-4 text-[14.5px] leading-relaxed text-slate-600 sm:text-[15.5px]">
             A barra inferior leva você a todas as áreas do app. Experimente as
             abas abaixo.
           </p>
@@ -579,7 +579,7 @@ export default function Landing() {
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
           <div className="relative">
             <LogoMark size="size-14" />
-            <h2 className="mx-auto mt-6 max-w-xl text-[30px] font-bold leading-tight tracking-tight text-slate-900 sm:text-[40px]">
+            <h2 className="mx-auto mt-6 max-w-xl text-[26px] font-bold leading-tight tracking-tight text-slate-900 sm:text-[40px]">
               Pronto para colocar suas finanças no controle?
             </h2>
             <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-slate-600">
@@ -607,7 +607,7 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="px-5 pb-10 pt-4">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 border-t border-white/40 pt-6 sm:flex-row">
+        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 border-t border-white/40 pt-6 sm:flex-row sm:items-center">
           <div className="flex items-center gap-2.5">
             <LogoMark size="size-7" />
             <span className="text-[14px] font-bold text-slate-900">GranaScan</span>
