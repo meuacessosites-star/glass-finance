@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { PinDots, PinKeypad } from "@/components/app/PinPad";
+import { PinUsageSelector } from "@/components/app/PinUsageSelector";
 import { ProfilePinGate } from "@/components/app/ProfilePinGate";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ export default function ProfilesPage() {
     profiles,
     activeProfileId,
     activeProfile,
+    pinUsage,
     addProfile,
     deleteProfile,
     setActiveProfile,
@@ -319,7 +321,9 @@ export default function ProfilesPage() {
             </p>
             <p className="text-[12.5px] text-glass-sub">
               {activePin
-                ? `"${activeProfile?.name}" pede PIN ao abrir e ao trocar de perfil`
+                ? pinUsage === "open"
+                  ? `"${activeProfile?.name}" pede PIN ao abrir e ao trocar de perfil`
+                  : `"${activeProfile?.name}" pede PIN só ao trocar de perfil`
                 : `Sem PIN em "${activeProfile?.name}"`}
             </p>
           </div>
@@ -356,7 +360,10 @@ export default function ProfilesPage() {
                 </button>
               )}
             </div>
-            <p className="mt-3 px-1 text-[12px] leading-relaxed text-glass-faint">
+            <div className="mt-4 border-t border-black/5 pt-4">
+              <PinUsageSelector />
+            </div>
+            <p className="mt-4 px-1 text-[12px] leading-relaxed text-glass-faint">
               Se esquecer o PIN, use “Esqueci o PIN” na tela de bloqueio — ele é
               removido para você criar um novo.
             </p>

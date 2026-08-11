@@ -14,12 +14,14 @@ import { AppStoreProvider, useAppStore } from "@/lib/app-store";
  */
 function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
-  const { activeProfile } = useAppStore();
+  const { activeProfile, pinUsage } = useAppStore();
 
-  // Lock on app open only: if the restored active profile has a PIN, ask for it
-  // once per session. Switching profiles has its own per-profile PIN gate on
-  // the Perfis screen, so it must NOT re-trigger this lock.
-  const [appUnlocked, setAppUnlocked] = useState(() => !activeProfile?.data.pin);
+  // Lock on app open only when the active profile has a PIN AND the "Uso do
+  // PIN" setting asks for it on entry ("open"). Switching profiles has its own
+  // PIN gate (in the menu and on the Perfis screen), so it must NOT re-trigger
+  // this lock.
+  const appLock = Boolean(activeProfile?.data.pin) && pinUsage === "open";
+  const [appUnlocked, setAppUnlocked] = useState(() => !appLock);
 
   return (
     <div className="min-h-[100dvh] bg-[#e8eefb] dark:bg-[#0a1122] md:flex md:min-h-screen md:items-center md:justify-center md:py-10">
@@ -46,7 +48,7 @@ function DashboardShell() {
 
           {/* Sidebar + PIN lock (on top of everything) */}
           <Sidebar />
-          {activeProfile?.data.pin && !appUnlocked && (
+          {appLock && !appUnlocked && (
             <PinLock onUnlocked={() => setAppUnlocked(true)} />
           )}
         </div>

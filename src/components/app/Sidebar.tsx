@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { PinUsageSelector } from "./PinUsageSelector";
 import { ProfilePinGate } from "./ProfilePinGate";
 import { SquircleIcon } from "./ThemeToggle";
 
@@ -258,6 +259,9 @@ export function Sidebar() {
                       </button>
                     );
                   })}
+                  <div className="mt-1.5 border-t border-black/5 pt-2">
+                    <PinUsageSelector compact />
+                  </div>
                   <button
                     type="button"
                     onClick={() => go("/dashboard/perfis")}

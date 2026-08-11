@@ -46,9 +46,13 @@ export type AppProfile = {
   data: ProfileData;
 };
 
+/** When the PIN should be asked: only on profile switch, or also on app open. */
+export type PinUsage = "switch" | "open";
+
 type AppStoreState = {
   profiles: AppProfile[];
   activeProfileId: string;
+  pinUsage: PinUsage;
 };
 
 const STORAGE_KEY = "granascan.app.v1";
@@ -178,13 +182,21 @@ function loadState(): AppStoreState {
       profiles.some((p) => p.id === (parsed as Record<string, unknown>).activeProfileId)
         ? ((parsed as Record<string, unknown>).activeProfileId as string)
         : profiles[0].id;
-    return { profiles, activeProfileId };
+    return {
+      profiles,
+      activeProfileId,
+      pinUsage:
+        (parsed as Record<string, unknown> | null)?.pinUsage === "switch"
+          ? "switch"
+          : "open",
+    };
   } catch {
     return {
       profiles: [
         { id: "profile-1", name: "Marina", emoji: "🌿", data: defaultData() },
       ],
       activeProfileId: "profile-1",
+      pinUsage: "open",
     };
   }
 }
@@ -192,6 +204,7 @@ function loadState(): AppStoreState {
 type AppStoreValue = {
   profiles: AppProfile[];
   activeProfileId: string;
+  pinUsage: PinUsage;
   activeProfile: AppProfile | undefined;
   // Active profile's isolated data (convenience getters):
   categories: AppCategory[];
@@ -207,6 +220,7 @@ type AppStoreValue = {
   /** Returns false when the profile could not be deleted (it was the last one). */
   deleteProfile: (id: string) => boolean;
   setActiveProfile: (id: string) => void;
+  setPinUsage: (usage: PinUsage) => void;
   setPin: (pin: string) => void;
   removePin: () => void;
   verifyPin: (pin: string) => boolean;
@@ -251,6 +265,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return {
       profiles: state.profiles,
       activeProfileId: state.activeProfileId,
+      pinUsage: state.pinUsage,
       activeProfile: active,
       categories: activeData.categories,
       cards: activeData.cards,
@@ -317,6 +332,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             ? { ...s, activeProfileId: id }
             : s,
         ),
+      setPinUsage: (usage) => setState((s) => ({ ...s, pinUsage: usage })),
       setPin: (pin) => patchActiveData((d) => ({ ...d, pin })),
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
