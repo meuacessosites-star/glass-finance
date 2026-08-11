@@ -205,7 +205,7 @@ const showcaseRows = [
 
 function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
   return (
-    <div className="no-scrollbar h-[420px] overflow-hidden overflow-y-auto px-5 py-6 sm:h-[440px]">
+    <div className="no-scrollbar h-[390px] overflow-hidden overflow-y-auto px-5 py-6 sm:h-[440px]">
       {tab === "inicio" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -376,7 +376,7 @@ export default function Landing() {
 
       <div className="relative z-10">
       {/* Nav */}
-      <header className="sticky top-0 z-40 px-4 pt-4">
+      <header className="sticky top-0 z-40 px-3 pt-3 sm:px-4 sm:pt-4">
         <div className="glass glass-strong mx-auto flex max-w-5xl items-center justify-between rounded-full py-2 pl-3 pr-2">
           <div className="flex items-center gap-2.5">
             <LogoMark />
@@ -402,7 +402,7 @@ export default function Landing() {
             </Link>
             <Link
               to="/auth"
-              className="flex items-center gap-1.5 rounded-full bg-[#2F6BFF] px-4 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)] transition-colors hover:brightness-105"
+              className="flex items-center gap-1.5 rounded-full bg-[#2F6BFF] px-3.5 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)] transition-colors hover:brightness-105 sm:px-4"
             >
               Começar grátis
               <ArrowRight className="size-4" />
@@ -412,23 +412,23 @@ export default function Landing() {
       </header>
 
       {/* Hero */}
-      <section className="mx-auto flex max-w-5xl flex-col items-center gap-10 px-5 pb-12 pt-12 lg:flex-row lg:gap-6 lg:pt-14">
+      <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-10 pt-10 sm:gap-10 sm:pb-12 sm:pt-12 lg:flex-row lg:gap-6 lg:pt-14">
         <div className="max-w-xl text-center lg:text-left">
-          <span className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-slate-900">
+          <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-semibold text-slate-900 sm:px-3.5 sm:text-[12.5px]">
             <Sparkles className="size-3.5 text-[#2F6BFF]" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
-          <h1 className="mt-5 text-[40px] font-bold leading-[1.05] tracking-tight text-slate-900 sm:text-[54px]">
+          <h1 className="mt-4 text-[36px] font-bold leading-[1.05] tracking-tight text-slate-900 sm:mt-5 sm:text-[54px]">
             Seu dinheiro,
             <br />
             lindo de ver.
           </h1>
-          <p className="mx-auto mt-5 max-w-md text-[16px] leading-relaxed text-slate-600 lg:mx-0">
+          <p className="mx-auto mt-4 max-w-md text-[16px] leading-relaxed text-slate-600 sm:mt-5 lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão — tudo em um
             app leve, claro e elegante, feito para o seu celular.
           </p>
-          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
+          <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
             <Link
               to="/auth"
               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto"
@@ -443,7 +443,7 @@ export default function Landing() {
               Ver as telas
             </a>
           </div>
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:mt-7 lg:justify-start">
             <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
@@ -457,7 +457,7 @@ export default function Landing() {
       </section>
 
       {/* Recursos */}
-      <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
+      <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">Recursos</p>
           <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
@@ -469,7 +469,7 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:mt-12 sm:gap-5 md:grid-cols-3">
           {[
             {
               icon: ScanLine,
@@ -510,7 +510,7 @@ export default function Landing() {
           ].map((feature) => (
             <div
               key={feature.title}
-              className="glass glass-strong rounded-[2rem] p-6"
+              className="glass glass-strong rounded-[2rem] p-5 sm:p-6"
             >
               <div
                 className="flex size-12 items-center justify-center rounded-2xl"
@@ -526,7 +526,7 @@ export default function Landing() {
       </section>
 
       {/* Telas (interactive showcase) */}
-      <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
+      <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
           <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
@@ -538,8 +538,8 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="mx-auto mt-12 max-w-3xl">
-          <div className="glass glass-strong overflow-hidden rounded-[2.4rem] p-2.5">
+        <div className="mx-auto mt-10 max-w-3xl sm:mt-12">
+          <div className="glass glass-strong overflow-hidden rounded-[2.4rem] p-2 sm:p-2.5">
             {/* tab pills */}
             <div className="glass glass-soft flex gap-1.5 rounded-full p-1.5">
               {showcaseTabs.map((item) => (
@@ -548,7 +548,7 @@ export default function Landing() {
                   type="button"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    "relative flex flex-1 flex-col items-center gap-1 rounded-full py-2.5 text-[12.5px] font-semibold transition-colors sm:flex-row sm:justify-center sm:gap-2",
+                    "relative flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 text-[10.5px] font-semibold transition-colors sm:flex-row sm:justify-center sm:gap-2 sm:py-2.5 sm:text-[12.5px]",
                     tab === item.id ? "text-white" : "text-slate-600",
                   )}
                 >
@@ -562,7 +562,7 @@ export default function Landing() {
             </div>
 
             {/* screen preview */}
-            <div className="relative mt-2.5 h-[430px] overflow-hidden rounded-[1.8rem] bg-[#eef1fe] sm:h-[450px]">
+            <div className="relative mt-2.5 h-[400px] overflow-hidden rounded-[1.8rem] bg-[#eef1fe] sm:h-[450px]">
               <AppBackground />
               <div className="relative z-10">
                 <ShowcaseScreen tab={tab} />
@@ -573,8 +573,8 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
-        <div className="glass glass-strong relative overflow-hidden rounded-[2.6rem] px-6 py-16 text-center sm:px-16">
+      <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
+        <div className="glass glass-strong relative overflow-hidden rounded-[2.6rem] px-5 py-12 text-center sm:px-16 sm:py-16">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#5b9dff]/30 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
           <div className="relative">
