@@ -374,6 +374,7 @@ export default function Landing() {
     <div className="relative min-h-screen overflow-hidden">
       <AppBackground />
 
+      <div className="relative z-10">
       {/* Nav */}
       <header className="sticky top-0 z-40 px-4 pt-4">
         <div className="glass glass-strong mx-auto flex max-w-5xl items-center justify-between rounded-full py-2 pl-3 pr-2">
@@ -622,6 +623,7 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
