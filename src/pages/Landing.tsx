@@ -458,6 +458,7 @@ export default function Landing() {
             <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
+          {/* build stamp — module touch to force fresh serve of this bundle */}
           <h1 className="hero-enter hero-enter-2 mt-4 text-4xl font-bold leading-tight tracking-tight text-slate-900 md:mt-6 md:text-6xl">
             Seu dinheiro,
             <br />
