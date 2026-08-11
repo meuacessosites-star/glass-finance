@@ -1,0 +1,17 @@
+{
+  "name": "GranaScan — Finanças pessoais",
+  "short_name": "GranaScan",
+  "description": "Gestão financeira pessoal com leitor de notas fiscais, comando de voz e controle de empréstimos de cartão.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef1fe",
+  "theme_color": "#eef1fe",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
