@@ -530,7 +530,7 @@ export default function Landing() {
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
           <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
-            Navegue como em um app nativo
+            Navegue pelos menus
           </h2>
           <p className="mt-4 text-[15.5px] leading-relaxed text-slate-600">
             A barra inferior leva você a todas as áreas do app. Experimente as
