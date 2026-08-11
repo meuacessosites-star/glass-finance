@@ -52,7 +52,7 @@ export default function TransactionsPage() {
           <h1 className="text-[24px] font-bold tracking-tight text-foreground">
             Transações
           </h1>
-          <p className="text-[13px] text-muted-foreground">Histórico de gastos e ganhos</p>
+          <p className="text-[13px] text-muted-foreground">Histórico completo de gastos e ganhos</p>
         </div>
         <ThemeToggle />
       </header>

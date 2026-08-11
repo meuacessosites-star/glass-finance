@@ -121,7 +121,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <Wallet className="size-7" strokeWidth={2.2} />
               </button>
               <h1 className="mt-4 text-[22px] font-bold tracking-tight text-glass-ink">
-                {step === "signIn" ? "Entrar no Grana" : "Verifique seu email"}
+                {step === "signIn" ? "Entrar no GranaScan" : "Verifique seu email"}
               </h1>
               <p className="mt-1.5 text-[13.5px] text-glass-sub">
                 {step === "signIn"

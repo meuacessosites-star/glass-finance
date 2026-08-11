@@ -29,14 +29,14 @@ const options: {
   {
     id: "scan",
     label: "Escanear Nota",
-    desc: "Leia cupons fiscais com a câmera",
+    desc: "Fotografe o cupom e registre na hora",
     icon: Camera,
     color: "#1FBF4F",
   },
   {
     id: "voice",
     label: "Comando de Voz",
-    desc: "Dite o gasto com sua voz",
+    desc: "Dite o gasto e pronto",
     icon: Mic,
     color: "#AF52DE",
   },

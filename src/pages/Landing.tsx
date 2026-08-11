@@ -5,6 +5,9 @@ import {
   ChartPie,
   Handshake,
   LayoutDashboard,
+  Lock,
+  Mic,
+  ScanLine,
   Wallet,
   Sparkles,
   TrendingUp,
@@ -389,7 +392,7 @@ export default function Landing() {
         <div className="glass glass-strong mx-auto flex max-w-5xl items-center justify-between rounded-full py-2 pl-3 pr-2">
           <div className="flex items-center gap-2.5">
             <LogoMark />
-            <span className="text-[17px] font-bold tracking-tight text-glass-ink">Grana</span>
+            <span className="text-[17px] font-bold tracking-tight text-glass-ink">GranaScan</span>
           </div>
           <nav className="hidden items-center gap-1 text-[13.5px] font-medium text-glass-sub md:flex">
             <a href="#recursos" className="rounded-full px-3.5 py-2 transition-colors hover:text-glass-ink">
@@ -430,7 +433,7 @@ export default function Landing() {
         >
           <span className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-glass-ink">
             <Sparkles className="size-3.5 text-[#2F6BFF]" />
-            Finanças pessoais com cara de app nativo
+            Leitor de notas · Comando de voz · Empréstimos
           </span>
           <h1 className="mt-5 text-[40px] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[54px]">
             Seu dinheiro,
@@ -440,9 +443,9 @@ export default function Landing() {
             </span>
           </h1>
           <p className="mx-auto mt-5 max-w-md text-[16px] leading-relaxed text-muted-foreground lg:mx-0">
-            Controle saldo, receitas e despesas do mês, registre empréstimos e
-            compras no cartão de terceiros, e acompanhe metas por categoria —
-            tudo em uma interface clara, leve e elegante.
+            Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
+            acompanhe empréstimos e compras feitas no seu cartão — tudo em um
+            app leve, claro e elegante, feito para o seu celular.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Link
@@ -460,8 +463,8 @@ export default function Landing() {
             </a>
           </div>
           <div className="mt-7 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
-            <GlassPillButton>Sem cartão de crédito</GlassPillButton>
-            <GlassPillButton>Dados de demonstração</GlassPillButton>
+            <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
+            <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
           </div>
         </motion.div>
@@ -493,30 +496,48 @@ export default function Landing() {
             Tudo que sua vida financeira precisa
           </h2>
           <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
-            Uma experiência construída para o celular, com a elegância dos apps
-            nativos — do resumo do mês às metas por categoria.
+            Da nota fiscal escaneada ao resumo do mês: uma experiência
+            construída para o celular, com a elegância dos apps nativos.
           </p>
         </motion.div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-3">
           {[
             {
-              icon: LayoutDashboard,
-              color: "#2F6BFF",
-              title: "Dashboard elegante",
-              desc: "Saldo atual, receitas e despesas do mês em um resumo claro. Transações recentes sempre à mão, com filtros por mês e categoria.",
+              icon: ScanLine,
+              color: "#1FBF4F",
+              title: "Leitor de notas fiscais",
+              desc: "Fotografe o cupom e deixe que o GranaScan leia o valor e a data. Chega de digitar gasto por gasto.",
+            },
+            {
+              icon: Mic,
+              color: "#AF52DE",
+              title: "Comando de voz",
+              desc: "Dite o gasto do jeito que você fala — “almoço, quarenta e cinco reais” — e ele vira uma transação na hora.",
             },
             {
               icon: Handshake,
-              color: "#1FBF4F",
+              color: "#FF9500",
               title: "Empréstimos & cartões",
-              desc: "Controle quem te deve e para quem você deve, além de compras parceladas no seu cartão por terceiros — com status Pago ou Pendente.",
+              desc: "Controle quem te deve, para quem você deve e as compras parceladas que terceiros fizeram no seu cartão — com status Pago ou Pendente.",
+            },
+            {
+              icon: LayoutDashboard,
+              color: "#2F6BFF",
+              title: "Dashboard elegante",
+              desc: "Saldo atual, receitas e despesas do mês em um resumo claro, com transações recentes sempre à mão e filtros por mês e categoria.",
             },
             {
               icon: ChartPie,
-              color: "#AF52DE",
+              color: "#5856D6",
               title: "Relatórios e metas",
-              desc: "Gráficos simples de despesas e limites por categoria para entender para onde seu dinheiro vai — e gastar com consciência.",
+              desc: "Gráficos simples de despesas e limites por categoria para entender para onde o dinheiro vai — e gastar com consciência.",
+            },
+            {
+              icon: Lock,
+              color: "#00C7BE",
+              title: "Privado, só para você",
+              desc: "Um app feito para uso pessoal: seu dinheiro, suas contas e nenhuma complicação de time ou workspace.",
             },
           ].map((feature) => (
             <motion.div
@@ -629,8 +650,8 @@ export default function Landing() {
               Pronto para colocar suas finanças no controle?
             </h2>
             <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-glass-sub">
-              Crie sua conta grátis e explore o Grana com dados de demonstração
-              em segundos.
+              Crie sua conta grátis e explore o GranaScan com dados de
+              demonstração em segundos.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
@@ -656,7 +677,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 border-t border-white/40 pt-6 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <LogoMark size="size-7" />
-            <span className="text-[14px] font-bold text-foreground">Grana</span>
+            <span className="text-[14px] font-bold text-foreground">GranaScan</span>
             <span className="text-[12.5px] text-muted-foreground/70">· Finanças pessoais</span>
           </div>
           <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">

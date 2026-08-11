@@ -6,7 +6,7 @@ import { AddMenu } from "@/components/app/AddMenu";
 import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
 
 /**
- * The Grana app shell: an iPhone-style frame that hosts the four tabs.
+ * The GranaScan app shell: an iPhone-style frame that hosts the four tabs.
  * On mobile it is edge-to-edge; on desktop it renders as a device bezel.
  */
 export default function Dashboard() {

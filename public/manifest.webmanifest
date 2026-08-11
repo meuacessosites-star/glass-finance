@@ -1,11 +1,11 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "GranaScan — Finanças pessoais",
+  "short_name": "GranaScan",
+  "description": "Gestão financeira pessoal com leitor de notas fiscais, comando de voz e controle de empréstimos de cartão.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#eef1fe",
+  "theme_color": "#eef1fe",
   "icons": [
     {
       "src": "/logo.png",
