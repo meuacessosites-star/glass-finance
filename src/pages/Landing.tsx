@@ -43,7 +43,7 @@ function GlassPillButton({
   return (
     <span
       className={cn(
-        "glass inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold text-slate-900",
+        "glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold text-slate-900 sm:px-4 sm:py-2 sm:text-[13px]",
         className,
       )}
     >
@@ -418,32 +418,32 @@ export default function Landing() {
             <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
-          <h1 className="mt-4 text-[36px] font-bold leading-[1.05] tracking-tight text-slate-900 sm:mt-5 sm:text-[54px]">
+          <h1 className="mt-3 text-[32px] font-bold leading-[1.08] tracking-tight text-slate-900 sm:mt-5 sm:text-[54px] sm:leading-[1.05]">
             Seu dinheiro,
             <br />
             lindo de ver.
           </h1>
-          <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-slate-600 sm:mt-5 sm:text-[16px] lg:mx-0">
+          <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-slate-600 sm:mt-5 sm:text-[16px] lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
-            acompanhe empréstimos e compras feitas no seu cartão — tudo em um
-            app leve, claro e elegante, feito para o seu celular.
+            acompanhe empréstimos e compras feitas no seu cartão
+            <span className="hidden sm:inline"> — tudo em um app leve, claro e elegante, feito para o seu celular.</span>
           </p>
-          <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
+          <div className="mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
             <Link
               to="/auth"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto sm:px-7 sm:py-3.5 sm:text-[15px]"
             >
               Começar agora
               <ArrowRight className="size-4" />
             </Link>
             <a
               href="#telas"
-              className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[15px] font-semibold text-slate-900 transition-colors hover:brightness-105 sm:w-auto"
+              className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 text-[14px] font-semibold text-slate-900 transition-colors hover:brightness-105 sm:w-auto sm:px-7 sm:py-3.5 sm:text-[15px]"
             >
               Ver as telas
             </a>
           </div>
-          <div className="mt-6 flex flex-wrap items-center justify-start gap-2 sm:mt-7 sm:justify-center lg:justify-start">
+          <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-7 sm:justify-center lg:justify-start">
             <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
