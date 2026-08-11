@@ -21,7 +21,6 @@ const ReportsPage = lazy(() => import("./pages/app/ReportsPage.tsx"));
 const CategoriesPage = lazy(() => import("./pages/app/CategoriesPage.tsx"));
 const CardsPage = lazy(() => import("./pages/app/CardsPage.tsx"));
 const ProfilesPage = lazy(() => import("./pages/app/ProfilesPage.tsx"));
-const PinPage = lazy(() => import("./pages/app/PinPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -149,7 +148,6 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="categorias" element={<CategoriesPage />} />
                   <Route path="cartoes" element={<CardsPage />} />
                   <Route path="perfis" element={<ProfilesPage />} />
-                  <Route path="pin" element={<PinPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>

@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronRight,
   CreditCard,
-  LockKeyhole,
   LogOut,
   Menu,
   Tags,
@@ -91,16 +90,9 @@ const items: {
   {
     to: "/dashboard/perfis",
     label: "Perfis",
-    desc: "Mais de um perfil na conta",
+    desc: "Perfis e PIN de segurança",
     icon: Users,
     color: "#00C7BE",
-  },
-  {
-    to: "/dashboard/pin",
-    label: "PIN",
-    desc: "Proteja o app com senha",
-    icon: LockKeyhole,
-    color: "#FF9500",
   },
 ];
 

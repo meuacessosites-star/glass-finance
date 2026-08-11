@@ -10,8 +10,12 @@ import { categories as seedCategories } from "./mock-data";
 
 // ---------------------------------------------------------------------------
 // GranaScan client store — personalization data (categories, cards, profiles,
-// PIN) persisted to localStorage. The app still uses mock data for the finance
-// numbers themselves; this store only powers the sidebar management screens.
+// PIN) persisted to localStorage. The finance numbers themselves remain mock
+// data; this store powers the sidebar management screens.
+//
+// Isolation: every profile owns its own `data` (categories, cards and PIN).
+// Switching profiles swaps the active data — nothing saved in one profile is
+// ever shared with another.
 // ---------------------------------------------------------------------------
 
 export type AppCategory = {
@@ -28,18 +32,23 @@ export type AppCard = {
   color: string;
 };
 
+/** Data that belongs to a single profile — never shared between profiles. */
+export type ProfileData = {
+  categories: AppCategory[];
+  cards: AppCard[];
+  pin: string | null; // 4-digit PIN, null = disabled
+};
+
 export type AppProfile = {
   id: string;
   name: string;
   emoji: string;
+  data: ProfileData;
 };
 
 type AppStoreState = {
-  categories: AppCategory[];
-  cards: AppCard[];
   profiles: AppProfile[];
   activeProfileId: string;
-  pin: string | null; // 4-digit PIN, null = disabled
 };
 
 const STORAGE_KEY = "granascan.app.v1";
@@ -49,49 +58,20 @@ const DEFAULT_CARDS: AppCard[] = [
   { id: "card-2", name: "Inter", last4: "9173", color: "#2F6BFF" },
 ];
 
-const DEFAULT_PROFILES: AppProfile[] = [
-  { id: "profile-1", name: "Marina", emoji: "🌿" },
-];
-
-function fallbackState(): AppStoreState {
+function defaultData(): ProfileData {
   return {
     categories: seedCategories.map((c) => ({ ...c })),
     cards: DEFAULT_CARDS.map((c) => ({ ...c })),
-    profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
-    activeProfileId: "profile-1",
     pin: null,
   };
 }
 
-function loadState(): AppStoreState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallbackState();
-    const parsed = JSON.parse(raw) as Partial<AppStoreState>;
-    const base = fallbackState();
-    return {
-      categories:
-        Array.isArray(parsed.categories) && parsed.categories.length > 0
-          ? parsed.categories
-          : base.categories,
-      cards: Array.isArray(parsed.cards) ? parsed.cards : base.cards,
-      profiles:
-        Array.isArray(parsed.profiles) && parsed.profiles.length > 0
-          ? parsed.profiles
-          : base.profiles,
-      activeProfileId:
-        typeof parsed.activeProfileId === "string" &&
-        parsed.profiles?.some((p) => p.id === parsed.activeProfileId)
-          ? parsed.activeProfileId
-          : base.activeProfileId,
-      pin:
-        typeof parsed.pin === "string" && /^\d{4}$/.test(parsed.pin)
-          ? parsed.pin
-          : null,
-    };
-  } catch {
-    return fallbackState();
-  }
+function cloneData(data: ProfileData): ProfileData {
+  return {
+    categories: data.categories.map((c) => ({ ...c })),
+    cards: data.cards.map((c) => ({ ...c })),
+    pin: data.pin,
+  };
 }
 
 function uid(prefix: string): string {
@@ -100,8 +80,123 @@ function uid(prefix: string): string {
     .slice(2, 8)}`;
 }
 
-type AppStoreValue = AppStoreState & {
+const str = (v: unknown, fallback: string) =>
+  typeof v === "string" && v.trim() ? v : fallback;
+
+const pin4 = (v: unknown): string | null =>
+  typeof v === "string" && /^\d{4}$/.test(v) ? v : null;
+
+function sanitizeCategories(v: unknown): AppCategory[] {
+  if (!Array.isArray(v)) return defaultData().categories;
+  const list = v
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({
+      id: str(c.id, uid("cat")),
+      label: str(c.label, "Categoria"),
+      color: str(c.color, "#8E8E93"),
+      icon: str(c.icon, "outros"),
+    }));
+  return list.length > 0 ? list : defaultData().categories;
+}
+
+function sanitizeCards(v: unknown): AppCard[] {
+  if (!Array.isArray(v)) return defaultData().cards;
+  const list = v
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({
+      id: str(c.id, uid("card")),
+      name: str(c.name, "Cartão"),
+      last4: /^\d{4}$/.test(String(c.last4 ?? "")) ? String(c.last4) : "0000",
+      color: str(c.color, "#2F6BFF"),
+    }));
+  return list;
+}
+
+/**
+ * Builds the profile list from persisted data, migrating the legacy flat shape
+ * (top-level categories/cards/pin shared by all profiles) into per-profile
+ * `data`. Fresh installs get the default Marina profile with clean defaults.
+ */
+function buildProfiles(raw: unknown): AppProfile[] {
+  const parsed = (raw ?? {}) as Record<string, unknown>;
+  const rawProfiles: unknown[] = Array.isArray(parsed.profiles)
+    ? parsed.profiles
+    : [];
+
+  if (rawProfiles.length === 0) {
+    return [{ id: "profile-1", name: "Marina", emoji: "🌿", data: defaultData() }];
+  }
+
+  const legacy = Array.isArray(parsed.categories); // old flat format
+  const sharedCategories = sanitizeCategories(legacy ? parsed.categories : undefined);
+  const sharedCards = sanitizeCards(legacy ? parsed.cards : undefined);
+
+  return rawProfiles.map((rawProfile) => {
+    const p = (rawProfile ?? {}) as Record<string, unknown>;
+    const base = {
+      id: str(p.id, uid("profile")),
+      name: str(p.name, "Perfil"),
+      emoji: str(p.emoji, "👤"),
+    };
+    const nested =
+      p.data && typeof p.data === "object"
+        ? (p.data as Record<string, unknown>)
+        : null;
+
+    if (nested) {
+      return {
+        ...base,
+        data: {
+          categories: sanitizeCategories(nested.categories),
+          cards: sanitizeCards(nested.cards),
+          pin: pin4(nested.pin),
+        },
+      };
+    }
+
+    return {
+      ...base,
+      data: {
+        categories: sharedCategories.map((c) => ({ ...c })),
+        cards: sharedCards.map((c) => ({ ...c })),
+        pin:
+          legacy && base.id === parsed.activeProfileId
+            ? pin4(parsed.pin)
+            : null,
+      },
+    };
+  });
+}
+
+function loadState(): AppStoreState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    const profiles = buildProfiles(parsed);
+    const activeProfileId =
+      typeof (parsed as Record<string, unknown>)?.activeProfileId === "string" &&
+      profiles.some((p) => p.id === (parsed as Record<string, unknown>).activeProfileId)
+        ? ((parsed as Record<string, unknown>).activeProfileId as string)
+        : profiles[0].id;
+    return { profiles, activeProfileId };
+  } catch {
+    return {
+      profiles: [
+        { id: "profile-1", name: "Marina", emoji: "🌿", data: defaultData() },
+      ],
+      activeProfileId: "profile-1",
+    };
+  }
+}
+
+type AppStoreValue = {
+  profiles: AppProfile[];
+  activeProfileId: string;
   activeProfile: AppProfile | undefined;
+  // Active profile's isolated data (convenience getters):
+  categories: AppCategory[];
+  cards: AppCard[];
+  pin: string | null;
   categoryById: Record<string, AppCategory>;
   addCategory: (data: { label: string; color: string; icon: string }) => void;
   updateCategory: (id: string, patch: Partial<AppCategory>) => void;
@@ -122,7 +217,7 @@ const AppStoreContext = createContext<AppStoreValue | null>(null);
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppStoreState>(loadState);
 
-  // Persist on every change (try/catch so a blocked localStorage never crashes).
+  // Persist on every change (try/catch so blocked localStorage never crashes).
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -132,42 +227,69 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const value = useMemo<AppStoreValue>(() => {
+    const active =
+      state.profiles.find((p) => p.id === state.activeProfileId) ??
+      state.profiles[0];
+    const activeData = active?.data ?? {
+      categories: [] as AppCategory[],
+      cards: [] as AppCard[],
+      pin: null,
+    };
+
     const categoryById: Record<string, AppCategory> = {};
-    for (const c of state.categories) categoryById[c.id] = c;
+    for (const c of activeData.categories) categoryById[c.id] = c;
+
+    // Mutations only ever touch the ACTIVE profile's data.
+    const patchActiveData = (fn: (d: ProfileData) => ProfileData) =>
+      setState((s) => ({
+        ...s,
+        profiles: s.profiles.map((p) =>
+          p.id === s.activeProfileId ? { ...p, data: fn(p.data) } : p,
+        ),
+      }));
 
     return {
-      ...state,
+      profiles: state.profiles,
+      activeProfileId: state.activeProfileId,
+      activeProfile: active,
+      categories: activeData.categories,
+      cards: activeData.cards,
+      pin: activeData.pin,
       categoryById,
-      activeProfile:
-        state.profiles.find((p) => p.id === state.activeProfileId) ??
-        state.profiles[0],
       addCategory: (data) =>
-        setState((s) => ({
-          ...s,
-          categories: [...s.categories, { id: uid("cat"), ...data }],
+        patchActiveData((d) => ({
+          ...d,
+          categories: [...d.categories, { id: uid("cat"), ...data }],
         })),
       updateCategory: (id, patch) =>
-        setState((s) => ({
-          ...s,
-          categories: s.categories.map((c) =>
+        patchActiveData((d) => ({
+          ...d,
+          categories: d.categories.map((c) =>
             c.id === id ? { ...c, ...patch } : c,
           ),
         })),
       deleteCategory: (id) =>
-        setState((s) => ({
-          ...s,
-          categories: s.categories.filter((c) => c.id !== id),
+        patchActiveData((d) => ({
+          ...d,
+          categories: d.categories.filter((c) => c.id !== id),
         })),
       addCard: (data) =>
-        setState((s) => ({
-          ...s,
-          cards: [...s.cards, { id: uid("card"), ...data }],
+        patchActiveData((d) => ({
+          ...d,
+          cards: [...d.cards, { id: uid("card"), ...data }],
         })),
       deleteCard: (id) =>
-        setState((s) => ({ ...s, cards: s.cards.filter((c) => c.id !== id) })),
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.filter((c) => c.id !== id),
+        })),
       addProfile: (data) =>
         setState((s) => {
-          const profile = { id: uid("profile"), ...data };
+          const profile: AppProfile = {
+            id: uid("profile"),
+            ...data,
+            data: defaultData(),
+          };
           return {
             ...s,
             profiles: [...s.profiles, profile],
@@ -195,9 +317,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             ? { ...s, activeProfileId: id }
             : s,
         ),
-      setPin: (pin) => setState((s) => ({ ...s, pin })),
-      removePin: () => setState((s) => ({ ...s, pin: null })),
-      verifyPin: (pin) => state.pin !== null && state.pin === pin,
+      setPin: (pin) => patchActiveData((d) => ({ ...d, pin })),
+      removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
+      verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
   }, [state]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Outlet } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
@@ -14,20 +14,19 @@ import { AppStoreProvider, useAppStore } from "@/lib/app-store";
  */
 function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
-  const { pin } = useAppStore();
+  const { activeProfile } = useAppStore();
 
-  // Locked whenever a PIN is set and this session has not unlocked yet.
-  const [unlocked, setUnlocked] = useState(!pin);
-  useEffect(() => {
-    if (pin) setUnlocked(false);
-  }, [pin]);
+  // Lock on app open only: if the restored active profile has a PIN, ask for it
+  // once per session. Switching profiles has its own per-profile PIN gate on
+  // the Perfis screen, so it must NOT re-trigger this lock.
+  const [appUnlocked, setAppUnlocked] = useState(() => !activeProfile?.data.pin);
 
   return (
     <div className="min-h-[100dvh] bg-[#e8eefb] dark:bg-[#0a1122] md:flex md:min-h-screen md:items-center md:justify-center md:py-10">
       {/* Device bezel (desktop only) */}
       <div className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col md:h-[840px] md:max-h-[92vh] md:rounded-[3.2rem] md:bg-[#0b1220] md:p-[11px] md:shadow-[0_60px_140px_-40px_rgba(15,40,90,0.55)]">
         {/* Screen */}
-        <div className="relative flex-1 overflow-hidden md:rounded-[2.55rem]">
+        <div id="app-screen" className="relative flex-1 overflow-hidden md:rounded-[2.55rem]">
           <AppBackground />
 
           {/* Scrollable content */}
@@ -47,8 +46,8 @@ function DashboardShell() {
 
           {/* Sidebar + PIN lock (on top of everything) */}
           <Sidebar />
-          {pin && !unlocked && (
-            <PinLock onUnlocked={() => setUnlocked(true)} />
+          {activeProfile?.data.pin && !appUnlocked && (
+            <PinLock onUnlocked={() => setAppUnlocked(true)} />
           )}
         </div>
       </div>

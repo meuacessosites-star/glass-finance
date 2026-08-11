@@ -10,7 +10,7 @@ import { PinDots, PinKeypad } from "./PinPad";
  * (demo recovery — there is no real account recovery in a mock-data app).
  */
 export function PinLock({ onUnlocked }: { onUnlocked: () => void }) {
-  const { verifyPin, removePin } = useAppStore();
+  const { verifyPin, removePin, activeProfile } = useAppStore();
   const [digits, setDigits] = useState("");
   const [error, setError] = useState(false);
 
@@ -50,7 +50,9 @@ export function PinLock({ onUnlocked }: { onUnlocked: () => void }) {
         GranaScan
       </h2>
       <p className="mt-1 text-[13.5px] text-glass-sub">
-        Digite seu PIN para continuar
+        {activeProfile?.name
+          ? `Perfil “${activeProfile.name}” · digite o PIN`
+          : "Digite seu PIN para continuar"}
       </p>
 
       <div className="mt-9">

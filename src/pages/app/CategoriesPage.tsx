@@ -25,7 +25,7 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
 export default function CategoriesPage() {
-  const { categories, addCategory, updateCategory, deleteCategory } =
+  const { categories, activeProfile, addCategory, updateCategory, deleteCategory } =
     useAppStore();
   const [label, setLabel] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
@@ -75,6 +75,11 @@ export default function CategoriesPage() {
   return (
     <div className="space-y-4">
       <BackHeader title="Categorias" />
+      <p className="px-1 text-[12px] font-medium text-glass-faint">
+        Categorias de{" "}
+        <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
+        cada perfil tem as suas.
+      </p>
 
       {/* List */}
       <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">

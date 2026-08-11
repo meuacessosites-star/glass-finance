@@ -20,7 +20,7 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
 export default function CardsPage() {
-  const { cards, addCard, deleteCard } = useAppStore();
+  const { cards, activeProfile, addCard, deleteCard } = useAppStore();
   const [name, setName] = useState("");
   const [last4, setLast4] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
@@ -46,6 +46,11 @@ export default function CardsPage() {
   return (
     <div className="space-y-4">
       <BackHeader title="Cartões" />
+      <p className="px-1 text-[12px] font-medium text-glass-faint">
+        Cartões de{" "}
+        <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
+        cada perfil tem os seus.
+      </p>
 
       {/* Cards */}
       <div className="space-y-4">
