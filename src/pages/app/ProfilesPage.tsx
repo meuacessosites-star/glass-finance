@@ -9,7 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { BackHeader } from "@/components/app/BackHeader";
+import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { PinDots, PinKeypad } from "@/components/app/PinPad";
 import { ProfilePinGate } from "@/components/app/ProfilePinGate";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
@@ -186,7 +186,7 @@ export default function ProfilesPage() {
 
   return (
     <div className="space-y-4">
-      <BackHeader title="Perfis" />
+      <SettingsHeader title="Perfis" />
 
       <div className="glass flex items-center gap-3 rounded-2xl px-4 py-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10">

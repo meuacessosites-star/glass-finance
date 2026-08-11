@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { BackHeader } from "@/components/app/BackHeader";
+import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { CategoryIcon, categoryIconOptions } from "@/components/app/CategoryIcon";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
@@ -74,7 +74,7 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-4">
-      <BackHeader title="Categorias" />
+      <SettingsHeader title="Categorias" />
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Categorias de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —

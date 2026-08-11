@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CreditCard, Plus, Trash2, Wifi } from "lucide-react";
 import { toast } from "sonner";
-import { BackHeader } from "@/components/app/BackHeader";
+import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ export default function CardsPage() {
 
   return (
     <div className="space-y-4">
-      <BackHeader title="Cartões" />
+      <SettingsHeader title="Cartões" />
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Cartões de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
