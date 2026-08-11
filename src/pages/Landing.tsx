@@ -15,7 +15,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { Link } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppBackground } from "@/components/app/AppBackground";
 import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -370,6 +370,32 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
 export default function Landing() {
   const [tab, setTab] = useState<ShowcaseTab>("inicio");
 
+  // Safe scroll-reveal: content is fully visible by default; the observer only
+  // adds .is-visible to trigger a CSS entrance when it scrolls into view. If
+  // JS, the observer, or the CSS animation is unavailable, content stays
+  // visible — the worst case is "no animation", never hidden text.
+  useEffect(() => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
+    if (elements.length === 0) return;
+    if (typeof IntersectionObserver === "undefined") {
+      elements.forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.12 },
+    );
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       <AppBackground />
@@ -452,15 +478,17 @@ export default function Landing() {
           </div>
         </div>
 
-        <div className="relative -mt-5 shrink-0 sm:mt-0">
+        <div className="hero-enter-phone relative -mt-5 shrink-0 sm:mt-0">
           <div className="absolute -inset-10 -z-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
-          <MiniPhone />
+          <div className="relative animate-[float_7s_ease-in-out_infinite]">
+            <MiniPhone />
+          </div>
         </div>
       </section>
 
       {/* Recursos */}
       <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
-        <div className="mx-auto max-w-2xl text-left sm:text-center">
+        <div className="reveal mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">Recursos</p>
           <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Tudo que sua vida financeira precisa
@@ -509,10 +537,11 @@ export default function Landing() {
               title: "Privado, só para você",
               desc: "Um app feito para uso pessoal: seu dinheiro, suas contas e nenhuma complicação de time ou workspace.",
             },
-          ].map((feature) => (
+          ].map((feature, index) => (
             <div
               key={feature.title}
-              className="glass glass-strong rounded-[2rem] p-5 sm:p-6"
+              className="reveal glass glass-strong rounded-[2rem] p-5 sm:p-6"
+              style={{ animationDelay: `${Math.min(index, 5) * 0.06}s` }}
             >
               <div
                 className="flex size-12 items-center justify-center rounded-2xl"
@@ -529,7 +558,7 @@ export default function Landing() {
 
       {/* Telas (interactive showcase) */}
       <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
-        <div className="mx-auto max-w-2xl text-left sm:text-center">
+        <div className="reveal mx-auto max-w-2xl text-left sm:text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
           <h2 className="mt-3 text-[28px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Navegue pelos menus
@@ -540,7 +569,7 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="mx-auto mt-10 max-w-3xl sm:mt-12">
+        <div className="reveal mx-auto mt-10 max-w-3xl sm:mt-12">
           <div className="glass glass-strong overflow-hidden rounded-[2.4rem] p-2 sm:p-2.5">
             {/* tab pills */}
             <div className="glass glass-soft flex gap-1.5 rounded-full p-1.5">
@@ -576,7 +605,7 @@ export default function Landing() {
 
       {/* CTA */}
       <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-12 sm:py-16">
-        <div className="glass glass-strong relative overflow-hidden rounded-[2.6rem] px-5 py-12 text-center sm:px-16 sm:py-16">
+        <div className="reveal glass glass-strong relative overflow-hidden rounded-[2.6rem] px-5 py-12 text-center sm:px-16 sm:py-16">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#5b9dff]/30 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
           <div className="relative">
