@@ -57,7 +57,7 @@ function GlassPillButton({
 /* ------------------------------------------------------------------ */
 function MiniPhone() {
   return (
-    <div className="relative h-[560px] w-[268px] overflow-hidden rounded-[2.9rem] border-[7px] border-[#0b1220] bg-[#eef1fe] shadow-[0_50px_100px_-30px_rgba(20,50,110,0.55)]">
+    <div className="relative h-[500px] w-[240px] overflow-hidden rounded-[2.9rem] border-[7px] border-[#0b1220] bg-[#eef1fe] shadow-[0_50px_100px_-30px_rgba(20,50,110,0.55)] sm:h-[560px] sm:w-[268px]">
       <AppBackground />
       {/* status bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-7 pt-3.5">
