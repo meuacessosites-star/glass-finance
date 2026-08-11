@@ -414,21 +414,23 @@ export default function Landing() {
       {/* Hero */}
       <section className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-10 pt-10 sm:gap-10 sm:pb-12 sm:pt-12 lg:flex-row lg:gap-6 lg:pt-14">
         <div className="max-w-xl text-left sm:text-center lg:text-left">
-          <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-semibold text-slate-900 sm:px-3.5 sm:text-[12.5px]">
+          <span className="hero-enter hero-enter-1 glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-semibold text-slate-900 sm:px-3.5 sm:text-[12.5px]">
             <Sparkles className="hidden size-3.5 text-[#2F6BFF] sm:block" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
-          <h1 className="mt-4 text-4xl font-bold leading-tight tracking-tight text-slate-900 md:mt-6 md:text-6xl">
+          <h1 className="hero-enter hero-enter-2 mt-4 text-4xl font-bold leading-tight tracking-tight text-slate-900 md:mt-6 md:text-6xl">
             Seu dinheiro,
             <br />
-            lindo de ver.
+            <span className="gradient-text bg-gradient-to-r from-[#2F6BFF] via-[#5856d6] to-[#AF52DE] bg-clip-text text-transparent">
+              lindo de ver.
+            </span>
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-base leading-relaxed text-slate-700 md:mt-4 md:max-w-2xl md:text-lg lg:mx-0">
+          <p className="hero-enter hero-enter-3 mx-auto mt-3 max-w-md text-base leading-relaxed text-slate-700 md:mt-4 md:max-w-2xl md:text-lg lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão
             <span className="hidden sm:inline"> — tudo em um app leve, claro e elegante, feito para o seu celular.</span>
           </p>
-          <div className="mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
+          <div className="hero-enter hero-enter-4 mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
             <Link
               to="/auth"
               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto sm:px-7 sm:py-3.5 sm:text-[15px]"
@@ -443,7 +445,7 @@ export default function Landing() {
               Ver as telas
             </a>
           </div>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5 sm:mt-7 lg:justify-start">
+          <div className="hero-enter hero-enter-5 mt-5 flex flex-wrap items-center justify-center gap-2.5 sm:mt-7 lg:justify-start">
             <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
