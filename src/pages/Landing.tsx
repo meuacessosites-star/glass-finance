@@ -425,12 +425,7 @@ export default function Landing() {
 
       {/* Hero */}
       <section className="mx-auto flex max-w-5xl flex-col items-center gap-10 px-5 pb-12 pt-12 lg:flex-row lg:gap-6 lg:pt-14">
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.21, 0.65, 0.36, 1] }}
-          className="max-w-xl text-center lg:text-left"
-        >
+        <div className="max-w-xl text-center lg:text-left">
           <span className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-glass-ink">
             <Sparkles className="size-3.5 text-[#2F6BFF]" />
             Leitor de notas · Comando de voz · Empréstimos
@@ -467,7 +462,7 @@ export default function Landing() {
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
           </div>
-        </motion.div>
+        </div>
 
         <motion.div
           initial={{ opacity: 0, y: 40, rotate: 2 }}
