@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { useAppStore } from "@/lib/app-store";
 import {
   budgets,
-  categories,
-  categoryById,
   currentMonthKey,
   formatCurrency,
   monthShortLabel,
@@ -31,6 +31,7 @@ function GlassTooltip({ active, payload, label }: any) {
 }
 
 export default function ReportsPage() {
+  const { categoryById } = useAppStore();
   const month = currentMonthKey;
   const { list } = monthTotals(transactions, month);
   const monthName = monthShortLabel(month);
@@ -75,11 +76,14 @@ export default function ReportsPage() {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-foreground">
-            Relatórios
-          </h1>
-          <p className="text-[13px] text-muted-foreground">Gráficos e limites de {monthName}</p>
+        <div className="flex items-center gap-3">
+          <SidebarTrigger />
+          <div>
+            <h1 className="text-[24px] font-bold tracking-tight text-foreground">
+              Relatórios
+            </h1>
+            <p className="text-[13px] text-muted-foreground">Gráficos e limites de {monthName}</p>
+          </div>
         </div>
         <ThemeToggle />
       </header>

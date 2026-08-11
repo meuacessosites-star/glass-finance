@@ -1,6 +1,9 @@
-import { categoryById, formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
+import { formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
+import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
+
+const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 
 export function TransactionRow({
   transaction,
@@ -9,8 +12,9 @@ export function TransactionRow({
   transaction: Transaction;
   showDate?: boolean;
 }) {
+  const { categoryById } = useAppStore();
   const isIncome = transaction.amount > 0;
-  const category = categoryById[transaction.categoryId] ?? categoryById.outros;
+  const category = categoryById[transaction.categoryId] ?? fallback;
 
   return (
     <div className="flex items-center gap-3.5 py-3">

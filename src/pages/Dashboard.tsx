@@ -1,16 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
+import { PinLock } from "@/components/app/PinLock";
+import { Sidebar, SidebarProvider } from "@/components/app/Sidebar";
 import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
+import { AppStoreProvider, useAppStore } from "@/lib/app-store";
 
 /**
  * The GranaScan app shell: an iPhone-style frame that hosts the four tabs.
  * On mobile it is edge-to-edge; on desktop it renders as a device bezel.
  */
-export default function Dashboard() {
+function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
+  const { pin } = useAppStore();
+
+  // Locked whenever a PIN is set and this session has not unlocked yet.
+  const [unlocked, setUnlocked] = useState(!pin);
+  useEffect(() => {
+    if (pin) setUnlocked(false);
+  }, [pin]);
 
   return (
     <div className="min-h-[100dvh] bg-[#e8eefb] dark:bg-[#0a1122] md:flex md:min-h-screen md:items-center md:justify-center md:py-10">
@@ -34,8 +44,24 @@ export default function Dashboard() {
           />
           <HomeIndicator />
           <AddMenu open={addOpen} onClose={() => setAddOpen(false)} />
+
+          {/* Sidebar + PIN lock (on top of everything) */}
+          <Sidebar />
+          {pin && !unlocked && (
+            <PinLock onUnlocked={() => setUnlocked(true)} />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <AppStoreProvider>
+      <SidebarProvider>
+        <DashboardShell />
+      </SidebarProvider>
+    </AppStoreProvider>
   );
 }

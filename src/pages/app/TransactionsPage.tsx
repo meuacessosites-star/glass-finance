@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ReceiptText } from "lucide-react";
+import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { useAppStore } from "@/lib/app-store";
 import {
-  categories,
   dayLabel,
   formatCurrency,
   monthKey,
@@ -18,6 +19,7 @@ const allMonths = [...new Set(transactions.map((t) => monthKey(t.date)))].sort(
 );
 
 export default function TransactionsPage() {
+  const { categories } = useAppStore();
   const [month, setMonth] = useState<string>(allMonths[0]);
   const [category, setCategory] = useState<string>("todas");
 
@@ -48,11 +50,14 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-foreground">
-            Transações
-          </h1>
-          <p className="text-[13px] text-muted-foreground">Histórico completo de gastos e ganhos</p>
+        <div className="flex items-center gap-3">
+          <SidebarTrigger />
+          <div>
+            <h1 className="text-[24px] font-bold tracking-tight text-foreground">
+              Transações
+            </h1>
+            <p className="text-[13px] text-muted-foreground">Histórico completo de gastos e ganhos</p>
+          </div>
         </div>
         <ThemeToggle />
       </header>

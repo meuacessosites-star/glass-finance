@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Banknote, CreditCard } from "lucide-react";
+import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import {
   cardLoans,
@@ -164,13 +165,16 @@ export default function LoansPage() {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-foreground">
-            Empréstimos
-          </h1>
-          <p className="text-[13px] text-muted-foreground">
-            Dinheiro e cartões de terceiros
-          </p>
+        <div className="flex items-center gap-3">
+          <SidebarTrigger />
+          <div>
+            <h1 className="text-[24px] font-bold tracking-tight text-foreground">
+              Empréstimos
+            </h1>
+            <p className="text-[13px] text-muted-foreground">
+              Dinheiro e cartões de terceiros
+            </p>
+          </div>
         </div>
         <ThemeToggle />
       </header>

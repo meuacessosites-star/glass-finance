@@ -1,9 +1,11 @@
 import { motion } from "framer-motion";
-import { ArrowUpRight, LogOut, TrendingDown, TrendingUp } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
+import { Link } from "react-router";
+import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppStore } from "@/lib/app-store";
 import {
   currentMonthKey,
   formatCurrency,
@@ -16,21 +18,19 @@ import {
 } from "@/lib/mock-data";
 
 export default function HomePage() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { activeProfile } = useAppStore();
 
   const { income, expense } = monthTotals(transactions, currentMonthKey);
   const balance = openingBalance + income - expense;
   const recent = [...transactions]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
-  const name = user?.name?.trim().split(" ")[0] || "Marina";
+  const name =
+    activeProfile?.name?.trim().split(" ")[0] ||
+    user?.name?.trim().split(" ")[0] ||
+    "Marina";
   const savingsPct = 12;
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
-  };
 
   return (
     <div className="space-y-5">
@@ -40,8 +40,9 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3"
       >
+        <SidebarTrigger />
         <div className="flex size-11 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-sm font-bold text-white shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]">
-          {initials(user?.name || "Marina Costa")}
+          {initials(activeProfile?.name || user?.name || "Marina Costa")}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] text-muted-foreground">Bem-vinda de volta</p>
@@ -50,14 +51,6 @@ export default function HomePage() {
           </p>
         </div>
         <ThemeToggle />
-        <button
-          type="button"
-          aria-label="Sair"
-          onClick={handleSignOut}
-          className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
-        >
-          <LogOut className="size-[17px]" />
-        </button>
       </motion.header>
 
       {/* Balance hero */}
