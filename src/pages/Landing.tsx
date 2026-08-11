@@ -14,7 +14,6 @@ import {
   Home,
   ArrowLeftRight,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { Link } from "react-router";
 import { useState } from "react";
 import { AppBackground } from "@/components/app/AppBackground";
@@ -44,7 +43,7 @@ function GlassPillButton({
   return (
     <span
       className={cn(
-        "glass inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold text-glass-ink",
+        "glass inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold text-slate-900",
         className,
       )}
     >
@@ -62,7 +61,7 @@ function MiniPhone() {
       <AppBackground />
       {/* status bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-7 pt-3.5">
-        <div className="flex items-center justify-between text-[11px] font-semibold text-glass-ink">
+        <div className="flex items-center justify-between text-[11px] font-semibold text-slate-900">
           <span>9:41</span>
           <div className="h-5 w-20 rounded-full bg-black" />
           <span className="flex items-center gap-1">
@@ -76,8 +75,8 @@ function MiniPhone() {
         {/* greeting */}
         <div className="mt-2 flex items-center justify-between">
           <div>
-            <p className="text-[9px] text-muted-foreground">Bem-vinda de volta</p>
-            <p className="text-[13px] font-bold text-foreground">Olá, Marina 👋</p>
+            <p className="text-[9px] text-slate-600">Bem-vinda de volta</p>
+            <p className="text-[13px] font-bold text-slate-900">Olá, Marina 👋</p>
           </div>
           <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-[10px] font-bold text-white">
             MC
@@ -87,8 +86,8 @@ function MiniPhone() {
         {/* balance card */}
         <div className="glass glass-strong relative mt-3 overflow-hidden rounded-[1.6rem] p-4">
           <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#5b9dff]/25 blur-2xl" />
-          <p className="text-[10px] font-medium text-glass-sub">Saldo atual</p>
-          <p className="amount-tabular mt-1 text-[26px] font-bold text-glass-ink">
+          <p className="text-[10px] font-medium text-slate-600">Saldo atual</p>
+          <p className="amount-tabular mt-1 text-[26px] font-bold text-slate-900">
             {formatCurrency(13120.35)}
           </p>
           <div className="mt-3 flex gap-5 border-t border-white/40 pt-2.5">
@@ -102,7 +101,7 @@ function MiniPhone() {
         </div>
 
         {/* transactions */}
-        <p className="mb-1 mt-4 text-[11px] font-bold text-foreground">Transações recentes</p>
+        <p className="mb-1 mt-4 text-[11px] font-bold text-slate-900">Transações recentes</p>
         <div className="glass divide-y divide-black/5 rounded-[1.4rem] px-3 py-1">
           {[
             { t: "iFood · Burguer", c: "#FF9F0A", v: "−R$ 67,80", g: false },
@@ -116,8 +115,8 @@ function MiniPhone() {
               >
                 <span className="size-3 rounded-full" style={{ backgroundColor: row.c }} />
               </div>
-              <p className="flex-1 truncate text-[11px] font-semibold text-glass-ink">{row.t}</p>
-              <p className={cn("amount-tabular text-[11px] font-bold", row.g ? "text-[#1FBF4F]" : "text-glass-ink")}>
+              <p className="flex-1 truncate text-[11px] font-semibold text-slate-900">{row.t}</p>
+              <p className={cn("amount-tabular text-[11px] font-bold", row.g ? "text-[#1FBF4F]" : "text-slate-900")}>
                 {row.v}
               </p>
             </div>
@@ -133,19 +132,19 @@ function MiniPhone() {
             <span className="text-[7px] font-bold text-[#2F6BFF]">Início</span>
           </span>
           <span className="flex flex-col items-center gap-0.5 opacity-60">
-            <ArrowLeftRight className="size-4 text-glass-faint" />
-            <span className="text-[7px] font-bold text-glass-faint">Transações</span>
+            <ArrowLeftRight className="size-4 text-slate-500" />
+            <span className="text-[7px] font-bold text-slate-500">Transações</span>
           </span>
           <span className="flex size-9 -translate-y-3 items-center justify-center rounded-full bg-gradient-to-b from-[#5b9dff] to-[#2f6bff] text-white shadow-lg ring-4 ring-white/80">
             <span className="text-lg leading-none">+</span>
           </span>
           <span className="flex flex-col items-center gap-0.5 opacity-60">
-            <Handshake className="size-4 text-glass-faint" />
-            <span className="text-[7px] font-bold text-glass-faint">Empréstimos</span>
+            <Handshake className="size-4 text-slate-500" />
+            <span className="text-[7px] font-bold text-slate-500">Empréstimos</span>
           </span>
           <span className="flex flex-col items-center gap-0.5 opacity-60">
-            <ChartPie className="size-4 text-glass-faint" />
-            <span className="text-[7px] font-bold text-glass-faint">Relatórios</span>
+            <ChartPie className="size-4 text-slate-500" />
+            <span className="text-[7px] font-bold text-slate-500">Relatórios</span>
           </span>
         </div>
       </div>
@@ -187,10 +186,10 @@ function ShowcaseRow({
         <span className="size-3.5 rounded-full" style={{ backgroundColor: color }} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold text-glass-ink">{title}</p>
-        <p className="text-[10.5px] text-glass-sub">{detail}</p>
+        <p className="truncate text-[13px] font-semibold text-slate-900">{title}</p>
+        <p className="text-[10.5px] text-slate-600">{detail}</p>
       </div>
-      <p className={cn("amount-tabular text-[13px] font-bold", gain ? "text-[#1FBF4F]" : "text-glass-ink")}>
+      <p className={cn("amount-tabular text-[13px] font-bold", gain ? "text-[#1FBF4F]" : "text-slate-900")}>
         {value}
       </p>
     </div>
@@ -211,8 +210,8 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-muted-foreground">Bem-vinda de volta</p>
-              <p className="text-[16px] font-bold text-foreground">Olá, Marina 👋</p>
+              <p className="text-[10px] text-slate-600">Bem-vinda de volta</p>
+              <p className="text-[16px] font-bold text-slate-900">Olá, Marina 👋</p>
             </div>
             <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-[11px] font-bold text-white">
               MC
@@ -220,8 +219,8 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
           </div>
           <div className="glass glass-strong relative overflow-hidden rounded-[1.8rem] p-4">
             <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#5b9dff]/25 blur-2xl" />
-            <p className="text-[10px] font-medium text-glass-sub">Saldo atual</p>
-            <p className="amount-tabular mt-1 text-[30px] font-bold text-glass-ink">
+            <p className="text-[10px] font-medium text-slate-600">Saldo atual</p>
+            <p className="amount-tabular mt-1 text-[30px] font-bold text-slate-900">
               {formatCurrency(13120.35)}
             </p>
             <div className="mt-3 flex gap-5 border-t border-white/40 pt-2.5">
@@ -243,10 +242,10 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
 
       {tab === "transacoes" && (
         <div className="space-y-3">
-          <p className="text-[17px] font-bold text-foreground">Transações</p>
+          <p className="text-[17px] font-bold text-slate-900">Transações</p>
           <div className="flex gap-2">
             <span className="rounded-full bg-[#2F6BFF] px-3.5 py-1.5 text-[11px] font-bold text-white">Agosto</span>
-            <span className="glass rounded-full px-3.5 py-1.5 text-[11px] font-semibold text-glass-sub">Julho</span>
+            <span className="glass rounded-full px-3.5 py-1.5 text-[11px] font-semibold text-slate-600">Julho</span>
           </div>
           <div className="glass divide-y divide-black/5 rounded-[1.6rem] px-4 py-1">
             {showcaseRows.map((row) => (
@@ -258,20 +257,20 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
 
       {tab === "emprestimos" && (
         <div className="space-y-3">
-          <p className="text-[17px] font-bold text-foreground">Empréstimos</p>
+          <p className="text-[17px] font-bold text-slate-900">Empréstimos</p>
           <div className="glass glass-strong grid grid-cols-2 gap-3 rounded-[1.8rem] p-4">
             <div>
-              <p className="text-[10px] font-medium text-glass-sub">A receber</p>
+              <p className="text-[10px] font-medium text-slate-600">A receber</p>
               <p className="amount-tabular mt-0.5 text-[18px] font-bold text-[#1FBF4F]">R$ 150,00</p>
             </div>
             <div>
-              <p className="text-[10px] font-medium text-glass-sub">A pagar</p>
+              <p className="text-[10px] font-medium text-slate-600">A pagar</p>
               <p className="amount-tabular mt-0.5 text-[18px] font-bold text-[#FF3B30]">R$ 220,00</p>
             </div>
           </div>
           <div className="glass grid grid-cols-2 gap-1 rounded-full p-1">
             <span className="rounded-full bg-[#2F6BFF] py-2 text-center text-[12px] font-bold text-white">Dinheiro</span>
-            <span className="rounded-full py-2 text-center text-[12px] font-semibold text-glass-sub">Cartão</span>
+            <span className="rounded-full py-2 text-center text-[12px] font-semibold text-slate-600">Cartão</span>
           </div>
           <div className="glass divide-y divide-black/5 rounded-[1.6rem] px-4 py-1">
             {[
@@ -287,11 +286,11 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
                   {row.n.split(" ").map((p) => p[0]).join("")}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-glass-ink">{row.n}</p>
-                  <p className="text-[10.5px] text-glass-sub">12/07/2026</p>
+                  <p className="truncate text-[13px] font-semibold text-slate-900">{row.n}</p>
+                  <p className="text-[10.5px] text-slate-600">12/07/2026</p>
                 </div>
                 <div className="text-right">
-                  <p className="amount-tabular text-[13px] font-bold text-glass-ink">{row.v}</p>
+                  <p className="amount-tabular text-[13px] font-bold text-slate-900">{row.v}</p>
                   <span
                     className={cn(
                       "mt-1 inline-block rounded-full px-2 py-0.5 text-[9.5px] font-bold",
@@ -309,9 +308,9 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
 
       {tab === "relatorios" && (
         <div className="space-y-3">
-          <p className="text-[17px] font-bold text-foreground">Relatórios</p>
+          <p className="text-[17px] font-bold text-slate-900">Relatórios</p>
           <div className="glass rounded-[1.8rem] p-4">
-            <p className="text-[12px] font-bold text-glass-ink">Despesas por categoria</p>
+            <p className="text-[12px] font-bold text-slate-900">Despesas por categoria</p>
             <div className="mt-2 flex items-center gap-5">
               <div
                 className="size-28 shrink-0 rounded-full"
@@ -326,16 +325,16 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
                   ["Moradia", "28%", "#5856D6"],
                   ["Compras", "14%", "#FF6482"],
                 ].map(([label, pct, color]) => (
-                  <p key={label} className="flex items-center gap-2 font-medium text-glass-sub">
+                  <p key={label} className="flex items-center gap-2 font-medium text-slate-600">
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    {label} <span className="font-bold text-glass-ink">{pct}</span>
+                    {label} <span className="font-bold text-slate-900">{pct}</span>
                   </p>
                 ))}
               </div>
             </div>
           </div>
           <div className="glass rounded-[1.6rem] p-4">
-            <p className="mb-3 text-[12px] font-bold text-glass-ink">Limites por categoria</p>
+            <p className="mb-3 text-[12px] font-bold text-slate-900">Limites por categoria</p>
             <div className="space-y-3">
               {(
                 [
@@ -346,8 +345,8 @@ function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
               ).map(([label, pct, color, value]) => (
                 <div key={label}>
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-glass-ink">{label}</span>
-                    <span className="amount-tabular text-glass-sub">{value}</span>
+                    <span className="font-semibold text-slate-900">{label}</span>
+                    <span className="amount-tabular text-slate-600">{value}</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/10">
                     <div
@@ -380,29 +379,29 @@ export default function Landing() {
         <div className="glass glass-strong mx-auto flex max-w-5xl items-center justify-between rounded-full py-2 pl-3 pr-2">
           <div className="flex items-center gap-2.5">
             <LogoMark />
-            <span className="text-[17px] font-bold tracking-tight text-glass-ink">GranaScan</span>
+            <span className="text-[17px] font-bold tracking-tight text-slate-900">GranaScan</span>
           </div>
-          <nav className="hidden items-center gap-1 text-[13.5px] font-medium text-glass-sub md:flex">
-            <a href="#recursos" className="rounded-full px-3.5 py-2 transition-colors hover:text-glass-ink">
+          <nav className="hidden items-center gap-1 text-[13.5px] font-medium text-slate-600 md:flex">
+            <a href="#recursos" className="rounded-full px-3.5 py-2 transition-colors hover:text-slate-900">
               Recursos
             </a>
-            <a href="#telas" className="rounded-full px-3.5 py-2 transition-colors hover:text-glass-ink">
+            <a href="#telas" className="rounded-full px-3.5 py-2 transition-colors hover:text-slate-900">
               Telas
             </a>
-            <a href="#comecar" className="rounded-full px-3.5 py-2 transition-colors hover:text-glass-ink">
+            <a href="#comecar" className="rounded-full px-3.5 py-2 transition-colors hover:text-slate-900">
               Começar
             </a>
           </nav>
           <div className="flex items-center gap-2">
             <Link
               to="/auth"
-              className="hidden rounded-full px-4 py-2 text-[13.5px] font-semibold text-glass-sub transition-colors hover:text-glass-ink sm:block"
+              className="hidden rounded-full px-4 py-2 text-[13.5px] font-semibold text-slate-600 transition-colors hover:text-slate-900 sm:block"
             >
               Entrar
             </Link>
             <Link
               to="/auth"
-              className="flex items-center gap-1.5 rounded-full bg-[#2F6BFF] px-4 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)] transition-transform hover:brightness-105 active:scale-95"
+              className="flex items-center gap-1.5 rounded-full bg-[#2F6BFF] px-4 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)] transition-colors hover:brightness-105"
             >
               Começar grátis
               <ArrowRight className="size-4" />
@@ -414,18 +413,16 @@ export default function Landing() {
       {/* Hero */}
       <section className="mx-auto flex max-w-5xl flex-col items-center gap-10 px-5 pb-12 pt-12 lg:flex-row lg:gap-6 lg:pt-14">
         <div className="max-w-xl text-center lg:text-left">
-          <span className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-glass-ink">
+          <span className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-slate-900">
             <Sparkles className="size-3.5 text-[#2F6BFF]" />
             Leitor de notas · Comando de voz · Empréstimos
           </span>
-          <h1 className="mt-5 text-[40px] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[54px]">
+          <h1 className="mt-5 text-[40px] font-bold leading-[1.05] tracking-tight text-slate-900 sm:text-[54px]">
             Seu dinheiro,
             <br />
-            <span className="bg-gradient-to-r from-[#2F6BFF] via-[#5856d6] to-[#AF52DE] bg-clip-text text-transparent">
-              lindo de ver.
-            </span>
+            lindo de ver.
           </h1>
-          <p className="mx-auto mt-5 max-w-md text-[16px] leading-relaxed text-muted-foreground lg:mx-0">
+          <p className="mx-auto mt-5 max-w-md text-[16px] leading-relaxed text-slate-600 lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão — tudo em um
             app leve, claro e elegante, feito para o seu celular.
@@ -433,14 +430,14 @@ export default function Landing() {
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Link
               to="/auth"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-transform hover:brightness-105 active:scale-95 sm:w-auto"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto"
             >
               Começar agora
               <ArrowRight className="size-4" />
             </Link>
             <a
               href="#telas"
-              className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[15px] font-semibold text-glass-ink transition-transform active:scale-95 sm:w-auto"
+              className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[15px] font-semibold text-slate-900 transition-colors hover:brightness-105 sm:w-auto"
             >
               Ver as telas
             </a>
@@ -454,20 +451,18 @@ export default function Landing() {
 
         <div className="relative shrink-0">
           <div className="absolute -inset-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
-          <div className="relative animate-[float_7s_ease-in-out_infinite]">
-            <MiniPhone />
-          </div>
+          <MiniPhone />
         </div>
       </section>
 
       {/* Recursos */}
       <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-[#2F6BFF]">Recursos</p>
-          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-foreground sm:text-[40px]">
+          <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">Recursos</p>
+          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Tudo que sua vida financeira precisa
           </h2>
-          <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
+          <p className="mt-4 text-[15.5px] leading-relaxed text-slate-600">
             Da nota fiscal escaneada ao resumo do mês: uma experiência
             construída para o celular, com a elegância dos apps nativos.
           </p>
@@ -514,7 +509,7 @@ export default function Landing() {
           ].map((feature) => (
             <div
               key={feature.title}
-              className="glass glass-strong rounded-[2rem] p-6 transition-transform duration-300 hover:-translate-y-1"
+              className="glass glass-strong rounded-[2rem] p-6"
             >
               <div
                 className="flex size-12 items-center justify-center rounded-2xl"
@@ -522,8 +517,8 @@ export default function Landing() {
               >
                 <feature.icon className="size-6" style={{ color: feature.color }} strokeWidth={2.2} />
               </div>
-              <h3 className="mt-5 text-[19px] font-bold tracking-tight text-glass-ink">{feature.title}</h3>
-              <p className="mt-2.5 text-[14px] leading-relaxed text-glass-sub">{feature.desc}</p>
+              <h3 className="mt-5 text-[19px] font-bold tracking-tight text-slate-900">{feature.title}</h3>
+              <p className="mt-2.5 text-[14px] leading-relaxed text-slate-600">{feature.desc}</p>
             </div>
           ))}
         </div>
@@ -532,11 +527,11 @@ export default function Landing() {
       {/* Telas (interactive showcase) */}
       <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-[#2F6BFF]">As telas</p>
-          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-foreground sm:text-[40px]">
+          <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-slate-900">As telas</p>
+          <h2 className="mt-3 text-[32px] font-bold tracking-tight text-slate-900 sm:text-[40px]">
             Navegue como no iPhone
           </h2>
-          <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
+          <p className="mt-4 text-[15.5px] leading-relaxed text-slate-600">
             A barra inferior leva você a todas as áreas do app. Experimente as
             abas abaixo.
           </p>
@@ -553,15 +548,11 @@ export default function Landing() {
                   onClick={() => setTab(item.id)}
                   className={cn(
                     "relative flex flex-1 flex-col items-center gap-1 rounded-full py-2.5 text-[12.5px] font-semibold transition-colors sm:flex-row sm:justify-center sm:gap-2",
-                    tab === item.id ? "text-white" : "text-glass-sub",
+                    tab === item.id ? "text-white" : "text-slate-600",
                   )}
                 >
                   {tab === item.id && (
-                    <motion.span
-                      layoutId="showcase-pill"
-                      className="absolute inset-0 rounded-full bg-[#2F6BFF] shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)]"
-                      transition={{ type: "spring", damping: 30, stiffness: 400 }}
-                    />
+                    <span className="absolute inset-0 rounded-full bg-[#2F6BFF] shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)]" />
                   )}
                   <item.icon className="relative z-10 size-4" />
                   <span className="relative z-10">{item.label}</span>
@@ -587,24 +578,24 @@ export default function Landing() {
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
           <div className="relative">
             <LogoMark size="size-14" />
-            <h2 className="mx-auto mt-6 max-w-xl text-[30px] font-bold leading-tight tracking-tight text-glass-ink sm:text-[40px]">
+            <h2 className="mx-auto mt-6 max-w-xl text-[30px] font-bold leading-tight tracking-tight text-slate-900 sm:text-[40px]">
               Pronto para colocar suas finanças no controle?
             </h2>
-            <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-glass-sub">
+            <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-slate-600">
               Crie sua conta grátis e explore o GranaScan com dados de
               demonstração em segundos.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
                 to="/auth"
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-8 py-4 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-transform hover:brightness-105 active:scale-95 sm:w-auto"
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-8 py-4 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto"
               >
                 Começar grátis
                 <ArrowRight className="size-4" />
               </Link>
               <Link
                 to="/auth"
-                className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 text-[15px] font-semibold text-glass-ink transition-transform active:scale-95 sm:w-auto"
+                className="glass glass-strong flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 text-[15px] font-semibold text-slate-900 transition-colors hover:brightness-105 sm:w-auto"
               >
                 Entrar na minha conta
               </Link>
@@ -618,16 +609,16 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 border-t border-white/40 pt-6 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <LogoMark size="size-7" />
-            <span className="text-[14px] font-bold text-foreground">GranaScan</span>
-            <span className="text-[12.5px] text-muted-foreground/70">· Finanças pessoais</span>
+            <span className="text-[14px] font-bold text-slate-900">GranaScan</span>
+            <span className="text-[12.5px] text-slate-500">· Finanças pessoais</span>
           </div>
-          <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-[12.5px] text-slate-600">
             Feito com <span className="text-[#FF3B30]">♥</span> · Interface de demonstração com dados fictícios
           </p>
-          <div className="flex items-center gap-4 text-[12.5px] font-medium text-muted-foreground">
-            <a href="#recursos" className="hover:text-foreground">Recursos</a>
-            <a href="#telas" className="hover:text-foreground">Telas</a>
-            <Link to="/auth" className="hover:text-foreground">Entrar</Link>
+          <div className="flex items-center gap-4 text-[12.5px] font-medium text-slate-600">
+            <a href="#recursos" className="transition-colors hover:text-slate-900">Recursos</a>
+            <a href="#telas" className="transition-colors hover:text-slate-900">Telas</a>
+            <Link to="/auth" className="transition-colors hover:text-slate-900">Entrar</Link>
           </div>
         </div>
       </footer>
