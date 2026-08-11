@@ -502,7 +502,7 @@ export default function Landing() {
           </div>
         </div>
 
-        <div className="hero-enter-phone relative -mt-5 shrink-0 sm:mt-0">
+        <div className="hero-enter-phone relative shrink-0">
           <div className="absolute -inset-10 -z-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
           <div className="relative animate-[float_7s_ease-in-out_infinite]">
             <MiniPhone />
