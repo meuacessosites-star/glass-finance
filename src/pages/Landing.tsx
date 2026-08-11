@@ -372,10 +372,12 @@ export default function Landing() {
 
   // Safe scroll-reveal: content is fully visible by default; JS only adds
   // .is-visible (which triggers a CSS entrance that ends at opacity 1) when an
-  // element scrolls into view. Uses direct position checks on scroll/resize —
-  // no IntersectionObserver dependency, so it works even where the observer or
-  // prefers-reduced-motion would normally block it. If JS never runs, content
-  // stays visible: the worst case is "no animation", never hidden text.
+  // element scrolls into view. The trigger is environment-proof: a
+  // capture-phase listener on document catches scrolls from ANY scrollable
+  // element (scroll doesn't bubble, so window listeners miss nested containers
+  // used by embeds/iframes), plus resize, an initial check and a self-stopping
+  // poll as safety nets. No IntersectionObserver dependency. If JS never runs,
+  // content stays visible: the worst case is "no animation", never hidden text.
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
     if (elements.length === 0) return;
@@ -391,22 +393,29 @@ export default function Landing() {
           el.classList.add("is-visible");
         }
       }
+      // True once every element has been revealed (lets the poll stop).
+      return elements.every((el) => el.classList.contains("is-visible"));
     };
 
     // Reveal anything already on screen (covers the initial load too).
     check();
 
-    window.addEventListener("scroll", check, { passive: true });
+    document.addEventListener("scroll", check, { capture: true, passive: true });
     window.addEventListener("resize", check, { passive: true });
 
-    // Safety net: if no scroll/resize events fire in this environment, still
-    // reveal whatever is on screen shortly after mount.
+    // Safety nets: an early one-shot check plus a light poll that stops once
+    // everything is revealed — for environments that emit no scroll/resize
+    // events at all.
     const timer = window.setTimeout(check, 1200);
+    const interval = window.setInterval(() => {
+      if (check()) window.clearInterval(interval);
+    }, 250);
 
     return () => {
-      window.removeEventListener("scroll", check);
+      document.removeEventListener("scroll", check, true);
       window.removeEventListener("resize", check);
       window.clearTimeout(timer);
+      window.clearInterval(interval);
     };
   }, []);
 
