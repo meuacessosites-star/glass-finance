@@ -1,5 +1,4 @@
 import type { LucideIcon } from "lucide-react";
-import type { Variants } from "framer-motion";
 import {
   ArrowRight,
   ChartPie,
@@ -15,23 +14,12 @@ import {
   Home,
   ArrowLeftRight,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Link } from "react-router";
 import { useState } from "react";
 import { AppBackground } from "@/components/app/AppBackground";
 import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-
-const reveal: Variants = {
-  initial: { opacity: 0, y: 24 },
-  whileInView: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: [0.21, 0.65, 0.36, 1] },
-  },
-};
-
-const viewport = { once: true, margin: "-80px" } as const;
 
 function LogoMark({ size = "size-9" }: { size?: string }) {
   return (
@@ -464,28 +452,17 @@ export default function Landing() {
           </div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 40, rotate: 2 }}
-          animate={{ opacity: 1, y: 0, rotate: 2 }}
-          transition={{ duration: 0.9, delay: 0.15, ease: [0.21, 0.65, 0.36, 1] }}
-          className="relative shrink-0"
-        >
+        <div className="relative shrink-0">
           <div className="absolute -inset-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
           <div className="relative animate-[float_7s_ease-in-out_infinite]">
             <MiniPhone />
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* Recursos */}
       <section id="recursos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
-        <motion.div
-          variants={reveal}
-          initial="initial"
-          whileInView="whileInView"
-          viewport={viewport}
-          className="mx-auto max-w-2xl text-center"
-        >
+        <div className="mx-auto max-w-2xl text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-[#2F6BFF]">Recursos</p>
           <h2 className="mt-3 text-[32px] font-bold tracking-tight text-foreground sm:text-[40px]">
             Tudo que sua vida financeira precisa
@@ -494,7 +471,7 @@ export default function Landing() {
             Da nota fiscal escaneada ao resumo do mês: uma experiência
             construída para o celular, com a elegância dos apps nativos.
           </p>
-        </motion.div>
+        </div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-3">
           {[
@@ -535,12 +512,8 @@ export default function Landing() {
               desc: "Um app feito para uso pessoal: seu dinheiro, suas contas e nenhuma complicação de time ou workspace.",
             },
           ].map((feature) => (
-            <motion.div
+            <div
               key={feature.title}
-              variants={reveal}
-              initial="initial"
-              whileInView="whileInView"
-              viewport={viewport}
               className="glass glass-strong rounded-[2rem] p-6 transition-transform duration-300 hover:-translate-y-1"
             >
               <div
@@ -551,20 +524,14 @@ export default function Landing() {
               </div>
               <h3 className="mt-5 text-[19px] font-bold tracking-tight text-glass-ink">{feature.title}</h3>
               <p className="mt-2.5 text-[14px] leading-relaxed text-glass-sub">{feature.desc}</p>
-            </motion.div>
+            </div>
           ))}
         </div>
       </section>
 
       {/* Telas (interactive showcase) */}
       <section id="telas" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
-        <motion.div
-          variants={reveal}
-          initial="initial"
-          whileInView="whileInView"
-          viewport={viewport}
-          className="mx-auto max-w-2xl text-center"
-        >
+        <div className="mx-auto max-w-2xl text-center">
           <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-[#2F6BFF]">As telas</p>
           <h2 className="mt-3 text-[32px] font-bold tracking-tight text-foreground sm:text-[40px]">
             Navegue como no iPhone
@@ -573,15 +540,9 @@ export default function Landing() {
             A barra inferior leva você a todas as áreas do app. Experimente as
             abas abaixo.
           </p>
-        </motion.div>
+        </div>
 
-        <motion.div
-          variants={reveal}
-          initial="initial"
-          whileInView="whileInView"
-          viewport={viewport}
-          className="mx-auto mt-12 max-w-3xl"
-        >
+        <div className="mx-auto mt-12 max-w-3xl">
           <div className="glass glass-strong overflow-hidden rounded-[2.4rem] p-2.5">
             {/* tab pills */}
             <div className="glass glass-soft flex gap-1.5 rounded-full p-1.5">
@@ -611,32 +572,17 @@ export default function Landing() {
             {/* screen preview */}
             <div className="relative mt-2.5 h-[430px] overflow-hidden rounded-[1.8rem] bg-[#eef1fe] sm:h-[450px]">
               <AppBackground />
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={tab}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.28, ease: [0.21, 0.65, 0.36, 1] }}
-                  className="relative z-10"
-                >
-                  <ShowcaseScreen tab={tab} />
-                </motion.div>
-              </AnimatePresence>
+              <div className="relative z-10">
+                <ShowcaseScreen tab={tab} />
+              </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* CTA */}
       <section id="comecar" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16">
-        <motion.div
-          variants={reveal}
-          initial="initial"
-          whileInView="whileInView"
-          viewport={viewport}
-          className="glass glass-strong relative overflow-hidden rounded-[2.6rem] px-6 py-16 text-center sm:px-16"
-        >
+        <div className="glass glass-strong relative overflow-hidden rounded-[2.6rem] px-6 py-16 text-center sm:px-16">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[#5b9dff]/30 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[#AF52DE]/25 blur-3xl" />
           <div className="relative">
@@ -664,7 +610,7 @@ export default function Landing() {
               </Link>
             </div>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* Footer */}
