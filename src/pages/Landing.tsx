@@ -613,8 +613,8 @@ export default function Landing() {
             <span className="text-[14px] font-bold text-slate-900">GranaScan</span>
             <span className="text-[12.5px] text-slate-500">· Finanças pessoais</span>
           </div>
-          <p className="flex items-center gap-1.5 text-[12.5px] text-slate-600">
-            Feito com <span className="text-[#FF3B30]">♥</span> · Interface de demonstração com dados fictícios
+          <p className="text-[12.5px] text-slate-600">
+            Feito com <span className="text-[#FF3B30]">♥</span> · Interface de demonstração
           </p>
           <div className="flex items-center gap-4 text-[12.5px] font-medium text-slate-600">
             <a href="#recursos" className="transition-colors hover:text-slate-900">Recursos</a>
