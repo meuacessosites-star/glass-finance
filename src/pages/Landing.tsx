@@ -423,7 +423,7 @@ export default function Landing() {
             <br />
             lindo de ver.
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-slate-600 sm:mt-5 sm:text-[16px] lg:mx-0">
+          <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-slate-700 sm:mt-5 sm:text-[16px] lg:mx-0">
             Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
             acompanhe empréstimos e compras feitas no seu cartão
             <span className="hidden sm:inline"> — tudo em um app leve, claro e elegante, feito para o seu celular.</span>
@@ -443,15 +443,15 @@ export default function Landing() {
               Ver as telas
             </a>
           </div>
-          <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-7 sm:justify-center lg:justify-start">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5 sm:mt-7 lg:justify-start">
             <GlassPillButton>Leitor de notas fiscais</GlassPillButton>
             <GlassPillButton>Comando de voz</GlassPillButton>
             <GlassPillButton>Modo claro e escuro</GlassPillButton>
           </div>
         </div>
 
-        <div className="relative shrink-0">
-          <div className="absolute -inset-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
+        <div className="relative -mt-5 shrink-0 sm:mt-0">
+          <div className="absolute -inset-10 -z-10 rounded-full bg-gradient-to-br from-[#5b9dff]/40 to-[#AF52DE]/30 blur-3xl" />
           <MiniPhone />
         </div>
       </section>
