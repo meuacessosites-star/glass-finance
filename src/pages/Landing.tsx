@@ -466,9 +466,9 @@ export default function Landing() {
             </span>
           </h1>
           <p className="hero-enter hero-enter-3 mx-auto mt-3 max-w-md text-base leading-relaxed text-slate-700 md:mt-4 md:max-w-2xl md:text-lg lg:mx-0">
-            Deixe a câmera ler suas notas fiscais, dite os gastos com a voz e
-            acompanhe empréstimos e compras feitas no seu cartão
-            <span className="hidden sm:inline"> — tudo em um app leve, claro e elegante, feito para o seu celular.</span>
+            Acompanhar o seu dinheiro nunca foi tão fácil. Envie imagens, use a
+            câmera ou comandos de voz e deixe o GranaScan organizar suas
+            despesas e empréstimos de cartões por você.
           </p>
           <div className="hero-enter hero-enter-4 mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
             <Link
