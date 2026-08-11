@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Check,
   LockKeyhole,
+  Pencil,
   Plus,
   ShieldCheck,
   ShieldOff,
@@ -13,13 +14,14 @@ import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { PinDots, PinKeypad } from "@/components/app/PinPad";
 import { PinUsageSelector } from "@/components/app/PinUsageSelector";
 import { ProfilePinGate } from "@/components/app/ProfilePinGate";
-import { useAppStore, type AppProfile } from "@/lib/app-store";
+import { ProfileAvatar } from "@/components/app/ProfileAvatar";
+import { AvatarEditor } from "@/components/app/AvatarEditor";
+import {
+  useAppStore,
+  type AppProfile,
+  type ProfileAvatar as ProfileAvatarType,
+} from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-
-const EMOJIS = ["🌿", "🐱", "⚡", "🌙", "🌵", "🎧", "📸", "🎮", "🍕", "🚀"];
-
-const inputClass =
-  "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
 type PinMode = "menu" | "create" | "change" | "remove";
 type PinStep = "current" | "first" | "confirm";
@@ -39,6 +41,11 @@ const stepLabel: Record<PinMode, Record<PinStep, string>> = {
   remove: { current: "Digite seu PIN para remover", first: "", confirm: "" },
 };
 
+type EditorState =
+  | { mode: "create" }
+  | { mode: "edit"; profile: AppProfile }
+  | null;
+
 export default function ProfilesPage() {
   const {
     profiles,
@@ -46,6 +53,7 @@ export default function ProfilesPage() {
     activeProfile,
     pinUsage,
     addProfile,
+    updateProfile,
     deleteProfile,
     setActiveProfile,
     setPin,
@@ -53,9 +61,8 @@ export default function ProfilesPage() {
     verifyPin,
   } = useAppStore();
 
-  // New profile form
-  const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState(EMOJIS[0]);
+  // Avatar/name editor (create or edit)
+  const [editor, setEditor] = useState<EditorState>(null);
 
   // Switch gate (target profile's PIN)
   const [gateProfile, setGateProfile] = useState<AppProfile | null>(null);
@@ -87,18 +94,20 @@ export default function ProfilesPage() {
     toast(`Agora usando "${profile.name}"`);
   };
 
-  const handleAddProfile = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast("Dê um nome ao perfil");
-      return;
+  const handleEditorSave = (data: {
+    name: string;
+    avatar: ProfileAvatarType;
+  }) => {
+    if (editor?.mode === "edit") {
+      updateProfile(editor.profile.id, data);
+      toast("Perfil atualizado", { description: "Nome e avatar salvos." });
+    } else {
+      addProfile(data);
+      toast("Perfil criado e ativado", {
+        description: "O novo perfil começa com categorias e cartões padrão.",
+      });
     }
-    addProfile({ name: trimmed, emoji });
-    setName("");
-    setEmoji(EMOJIS[0]);
-    toast("Perfil criado e ativado", {
-      description: "O novo perfil começa com categorias e cartões padrão.",
-    });
+    setEditor(null);
   };
 
   const handleDeleteProfile = (id: string, profileName: string) => {
@@ -195,8 +204,8 @@ export default function ProfilesPage() {
           <Users className="size-5 text-primary" />
         </div>
         <p className="text-[12.5px] leading-relaxed text-glass-sub">
-          Cada perfil tem categorias, cartões e PIN próprios. Perfis protegidos
-          por PIN pedem a senha na hora de trocar.
+          Cada perfil tem categorias, cartões e PIN próprios. Toque no lápis
+          para editar nome e avatar (emoji ou foto).
         </p>
       </div>
 
@@ -206,7 +215,7 @@ export default function ProfilesPage() {
           const active = profile.id === activeProfileId;
           const protectedProfile = !!profile.data.pin;
           return (
-            <div key={profile.id} className="flex items-center gap-2 py-3">
+            <div key={profile.id} className="flex items-center gap-1.5 py-3">
               <button
                 type="button"
                 onClick={() => selectProfile(profile)}
@@ -215,15 +224,16 @@ export default function ProfilesPage() {
                   !active && "hover:bg-white/50",
                 )}
               >
-                <div
-                  className={cn(
-                    "relative flex size-11 shrink-0 items-center justify-center rounded-full text-lg shadow-[0_6px_16px_-4px_rgba(47,107,255,0.45)]",
-                    active
-                      ? "bg-gradient-to-br from-[#5b9dff] to-[#5856d6]"
-                      : "bg-white/70",
-                  )}
-                >
-                  {profile.emoji}
+                <div className="relative shrink-0">
+                  <ProfileAvatar
+                    profile={profile}
+                    className={cn(
+                      "size-11 shadow-[0_6px_16px_-4px_rgba(47,107,255,0.45)]",
+                      active &&
+                        "ring-2 ring-primary ring-offset-2 ring-offset-white/60",
+                    )}
+                    emojiClassName="text-lg"
+                  />
                   {protectedProfile && (
                     <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#2F6BFF] shadow">
                       <LockKeyhole className="size-2.5 text-white" strokeWidth={3} />
@@ -250,6 +260,14 @@ export default function ProfilesPage() {
               )}
               <button
                 type="button"
+                aria-label={`Editar ${profile.name}`}
+                onClick={() => setEditor({ mode: "edit", profile })}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-primary/10 hover:text-primary active:scale-90"
+              >
+                <Pencil className="size-4" />
+              </button>
+              <button
+                type="button"
                 aria-label={`Excluir ${profile.name}`}
                 onClick={() => handleDeleteProfile(profile.id, profile.name)}
                 className="flex size-8 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
@@ -261,44 +279,15 @@ export default function ProfilesPage() {
         })}
       </div>
 
-      {/* New profile form */}
-      <div className="glass rounded-3xl p-4">
-        <p className="text-[15px] font-bold text-glass-ink">Novo perfil</p>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome (ex.: Família, Trabalho…)"
-          maxLength={24}
-          className={cn(inputClass, "mt-3")}
-        />
-        <p className="mt-4 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-          Avatar
-        </p>
-        <div className="mt-2 grid grid-cols-5 gap-2">
-          {EMOJIS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              aria-label={`Avatar ${e}`}
-              onClick={() => setEmoji(e)}
-              className={cn(
-                "flex aspect-square items-center justify-center rounded-2xl text-xl transition-all",
-                emoji === e ? "bg-primary/15 ring-2 ring-primary" : "glass glass-soft",
-              )}
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={handleAddProfile}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14.5px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
-        >
-          <Plus className="size-4" />
-          Criar perfil
-        </button>
-      </div>
+      {/* Add profile — opens the same editor used for editing */}
+      <button
+        type="button"
+        onClick={() => setEditor({ mode: "create" })}
+        className="glass flex w-full items-center justify-center gap-2 rounded-3xl py-4 text-[15px] font-semibold text-primary transition-colors hover:bg-white/60 active:scale-[0.99]"
+      >
+        <Plus className="size-4" strokeWidth={2.5} />
+        Adicionar perfil
+      </button>
 
       {/* PIN section — always the active profile's PIN */}
       <div className="glass rounded-3xl p-4">
@@ -413,6 +402,14 @@ export default function ProfilesPage() {
           onCancel={() => setGateProfile(null)}
         />
       )}
+
+      {/* Create / edit profile sheet */}
+      <AvatarEditor
+        open={editor !== null}
+        profile={editor?.mode === "edit" ? editor.profile : null}
+        onSave={handleEditorSave}
+        onClose={() => setEditor(null)}
+      />
     </div>
   );
 }

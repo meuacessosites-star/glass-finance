@@ -39,10 +39,21 @@ export type ProfileData = {
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
+/** How a profile avatar is shown: an emoji over a background color, or an
+ * uploaded photo with a zoom/pan crop (scale 1–4, pan −1..1 normalized to the
+ * visible overflow). */
+export type ProfileAvatar = {
+  kind: "emoji" | "image";
+  emoji: string;
+  image: string | null; // data URL when kind === "image"
+  bg: string; // background color (hex) behind the emoji / while loading
+  crop: { scale: number; panX: number; panY: number };
+};
+
 export type AppProfile = {
   id: string;
   name: string;
-  emoji: string;
+  avatar: ProfileAvatar;
   data: ProfileData;
 };
 
@@ -90,6 +101,33 @@ const str = (v: unknown, fallback: string) =>
 const pin4 = (v: unknown): string | null =>
   typeof v === "string" && /^\d{4}$/.test(v) ? v : null;
 
+export const DEFAULT_AVATAR_BG = "#DFE9FB";
+
+const num = (v: unknown, fallback: number, min: number, max: number) =>
+  typeof v === "number" && Number.isFinite(v)
+    ? Math.min(max, Math.max(min, v))
+    : fallback;
+
+function sanitizeAvatar(v: unknown, fallbackEmoji: string): ProfileAvatar {
+  const a = (v ?? {}) as Record<string, unknown>;
+  const crop = (a.crop ?? {}) as Record<string, unknown>;
+  const image =
+    typeof a.image === "string" && a.image.startsWith("data:image")
+      ? a.image
+      : null;
+  return {
+    kind: image && a.kind === "image" ? "image" : "emoji",
+    emoji: str(a.emoji, fallbackEmoji),
+    image,
+    bg: str(a.bg, DEFAULT_AVATAR_BG),
+    crop: {
+      scale: num(crop.scale, 1, 1, 4),
+      panX: num(crop.panX, 0, -1, 1),
+      panY: num(crop.panY, 0, -1, 1),
+    },
+  };
+}
+
 function sanitizeCategories(v: unknown): AppCategory[] {
   if (!Array.isArray(v)) return defaultData().categories;
   const list = v
@@ -128,7 +166,20 @@ function buildProfiles(raw: unknown): AppProfile[] {
     : [];
 
   if (rawProfiles.length === 0) {
-    return [{ id: "profile-1", name: "Marina", emoji: "🌿", data: defaultData() }];
+    return [
+      {
+        id: "profile-1",
+        name: "Marina",
+        avatar: {
+          kind: "emoji",
+          emoji: "🌿",
+          image: null,
+          bg: DEFAULT_AVATAR_BG,
+          crop: { scale: 1, panX: 0, panY: 0 },
+        },
+        data: defaultData(),
+      },
+    ];
   }
 
   const legacy = Array.isArray(parsed.categories); // old flat format
@@ -140,7 +191,10 @@ function buildProfiles(raw: unknown): AppProfile[] {
     const base = {
       id: str(p.id, uid("profile")),
       name: str(p.name, "Perfil"),
-      emoji: str(p.emoji, "👤"),
+      avatar: sanitizeAvatar(
+        p.avatar,
+        typeof p.emoji === "string" ? p.emoji : "👤",
+      ),
     };
     const nested =
       p.data && typeof p.data === "object"
@@ -193,7 +247,18 @@ function loadState(): AppStoreState {
   } catch {
     return {
       profiles: [
-        { id: "profile-1", name: "Marina", emoji: "🌿", data: defaultData() },
+        {
+          id: "profile-1",
+          name: "Marina",
+          avatar: {
+            kind: "emoji",
+            emoji: "🌿",
+            image: null,
+            bg: DEFAULT_AVATAR_BG,
+            crop: { scale: 1, panX: 0, panY: 0 },
+          },
+          data: defaultData(),
+        },
       ],
       activeProfileId: "profile-1",
       pinUsage: "open",
@@ -216,7 +281,11 @@ type AppStoreValue = {
   deleteCategory: (id: string) => void;
   addCard: (data: { name: string; last4: string; color: string }) => void;
   deleteCard: (id: string) => void;
-  addProfile: (data: { name: string; emoji: string }) => void;
+  addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
+  updateProfile: (
+    id: string,
+    patch: Partial<Pick<AppProfile, "name" | "avatar">>,
+  ) => void;
   /** Returns false when the profile could not be deleted (it was the last one). */
   deleteProfile: (id: string) => boolean;
   setActiveProfile: (id: string) => void;
@@ -311,6 +380,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             activeProfileId: profile.id,
           };
         }),
+      updateProfile: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          profiles: s.profiles.map((p) =>
+            p.id === id ? { ...p, ...patch } : p,
+          ),
+        })),
       deleteProfile: (id) => {
         if (state.profiles.length <= 1) return false;
         setState((s) => {

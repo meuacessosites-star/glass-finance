@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { PinUsageSelector } from "./PinUsageSelector";
+import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfilePinGate } from "./ProfilePinGate";
 import { SquircleIcon } from "./ThemeToggle";
 
@@ -188,9 +189,11 @@ export function Sidebar() {
                 onClick={() => setShowProfiles((v) => !v)}
                 className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/50 p-3 text-left transition-colors hover:bg-white/70"
               >
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-lg shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]">
-                  {activeProfile?.emoji ?? "👤"}
-                </div>
+                <ProfileAvatar
+                  profile={activeProfile}
+                  className="size-11 shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]"
+                  emojiClassName="text-lg"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-bold text-glass-ink">
                     {activeProfile?.name ?? "Meu perfil"}
@@ -226,16 +229,15 @@ export function Sidebar() {
                           active ? "bg-primary/10" : "hover:bg-white/50",
                         )}
                       >
-                        <div
+                        <ProfileAvatar
+                          profile={profile}
                           className={cn(
-                            "flex size-9 shrink-0 items-center justify-center rounded-full text-base",
-                            active
-                              ? "bg-gradient-to-br from-[#5b9dff] to-[#5856d6]"
-                              : "bg-white/70",
+                            "size-9",
+                            active &&
+                              "ring-2 ring-primary ring-offset-2 ring-offset-white/60",
                           )}
-                        >
-                          {profile.emoji}
-                        </div>
+                          emojiClassName="text-base"
+                        />
                         <p
                           className={cn(
                             "min-w-0 flex-1 truncate text-[14px] font-semibold",

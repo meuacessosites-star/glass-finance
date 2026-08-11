@@ -4,12 +4,12 @@ import { Link } from "react-router";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { ProfileAvatar } from "@/components/app/ProfileAvatar";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore } from "@/lib/app-store";
 import {
   currentMonthKey,
   formatCurrency,
-  initials,
   monthLabel,
   monthShortLabel,
   monthTotals,
@@ -41,9 +41,11 @@ export default function HomePage() {
         className="flex items-center gap-3"
       >
         <SidebarTrigger />
-        <div className="flex size-11 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-sm font-bold text-white shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]">
-          {initials(activeProfile?.name || user?.name || "Marina Costa")}
-        </div>
+        <ProfileAvatar
+          profile={activeProfile}
+          className="size-11 shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]"
+          emojiClassName="text-lg"
+        />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] text-muted-foreground">Bem-vinda de volta</p>
           <p className="truncate text-[17px] font-bold tracking-tight text-foreground">
