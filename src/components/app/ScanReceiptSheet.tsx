@@ -10,6 +10,7 @@ import {
   CreditCard,
   FileText,
   ImagePlus,
+  Link2,
   RefreshCw,
   ScanLine,
   X,
@@ -24,8 +25,12 @@ import {
   draftPurchase,
 } from "@/lib/purchase-format";
 import type { NfceScrapeResult } from "@/convex/nfceParser";
-import type { AiReceiptResult } from "@/convex/aiVision";
-import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
+import {
+  decodeQrFromDataUrl,
+  imageToDataUrl,
+  parseQrPayload,
+  SCAN_CATEGORIES,
+} from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
@@ -37,19 +42,20 @@ import {
 } from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — 100% Vision LLM (SEM QR Code).
-//   1. Foto recebida → conversão segura para base64 (console.log verifica).
-//   2. Envio DIRETO do base64 para o modelo de Visão no backend
-//      (src/convex/aiVision.ts — GPT-4o-mini via gateway VLY e/ou Gemini).
-//   3. O modelo devolve EXATAMENTE o JSON { estabelecimento, valor_total,
-//      itens: [{ qtd, produto, valor }] } e o cliente preenche a tela com as
-//      regras condicionais (3+ itens → categoria; 1–2 → qtd + produto;
-//      Rascunho → loja + lista limpa).
-//   4. A tela de erro só aparece se a IA falhar ou a foto for ilegível.
+// Escanear Nota — 100% determinístico (SEM IA, SEM OCR).
+//   1. Foto recebida → decodificação de QR Code com jsQR (UMA tentativa,
+//      orçamento de ~1s — nunca fica "caçando").
+//   2. QR com URL da NFC-e → scrape da SEFAZ no backend (convex/nfce.ts,
+//      cheerio) → dados EXATOS preenchem a tela de aprovação.
+//   3. QR com payload PIX → valor/beneficiário lidos direto do código.
+//   4. QR ilegível/ausente ou scrape com erro → mensagem amigável + campo
+//      "Cole o link do QR Code da nota aqui" (link manual).
+//   5. As regras condicionais (3+ itens → categoria; 1–2 → "qtd x produto";
+//      Rascunho → loja + lista limpa) são aplicadas no preenchimento.
 // ---------------------------------------------------------------------------
 
 type Step = "source" | "scan" | "edit" | "approve";
-type ScanPhase = "vision" | "success" | "failed";
+type ScanPhase = "reading" | "link" | "success";
 
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
@@ -77,18 +83,20 @@ export function ScanReceiptSheet({
 }) {
   const { categories, cards, addTransaction } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
-  const extractReceipt = useAction(api.aiVision.extractReceipt);
+  const scrapeNfce = useAction(api.nfce.scrapeNfce);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
-  const [scanPhase, setScanPhase] = useState<ScanPhase>("vision");
+  const [scanPhase, setScanPhase] = useState<ScanPhase>("reading");
   const [scanStatus, setScanStatus] = useState("");
   const [scanResultInfo, setScanResultInfo] = useState("");
-  // Motivo técnico da falha da IA (ex.: "vly http 401", "no-gemini-key") —
-  // exibido de forma discreta na tela de erro para facilitar o diagnóstico.
+  // Mensagem técnica (ex.: "http 404", "url não permitida") exibida de forma
+  // discreta quando o scrape do link falha.
   const [scanError, setScanError] = useState("");
+  // Campo de link manual (fallback quando o QR não é legível).
+  const [manualLink, setManualLink] = useState("");
 
-  // Form fields (prefilled only with data exata do QR/scrape)
+  // Form fields (prefilled only with dados exatos do QR/scrape)
   const [title, setTitle] = useState("");
   const [cents, setCents] = useState(0);
   const [categoryId, setCategoryId] = useState("");
@@ -123,10 +131,11 @@ export function ScanReceiptSheet({
     if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
     setStep("source");
     setImages([]);
-    setScanPhase("vision");
+    setScanPhase("reading");
     setScanStatus("");
     setScanResultInfo("");
     setScanError("");
+    setManualLink("");
     setTitle("");
     setCents(0);
     setCategoryId("");
@@ -210,7 +219,6 @@ export function ScanReceiptSheet({
     );
   };
 
-
   /** Termina uma leitura bem-sucedida e leva à tela de aprovação. */
   const finishScan = (runId: number) => {
     setScanPhase("success");
@@ -221,176 +229,137 @@ export function ScanReceiptSheet({
     }, 450);
   };
 
-  /** Valida e converte uma forma de pagamento vinda do modelo para o id do
-   * seletor ("" quando o texto não diz nada confiável). */
-  const asPaymentMethod = (
-    m: string | undefined,
-  ): PaymentMethodId | "" =>
-    m &&
-    ["pix", "dinheiro", "cartao", "boleto", "transferencia"].includes(m)
-      ? (m as PaymentMethodId)
-      : "";
-
-
-  /** Aplica um resultado vindo do modelo Vision — mesmo fluxo do scrape,
-   * com as regras condicionais de Descrição/Rascunho (via applyScraped) e,
-   * quando o modelo informa, tipo (receita/despesa) e forma de pagamento. */
-  const applyAiResult = (res: AiReceiptResult) => {
-    applyScraped(res);
-    if (res.type === "income") {
-      setType("income");
-      setPaymentMethod(res.paymentMethod ? asPaymentMethod(res.paymentMethod) : "pix");
-      // Comprovante de depósito/Pix recebido: descrição fala em "Pix recebido".
-      if (!res.items.length) {
-        setTitle(res.store ? `Pix recebido de ${res.store}` : "Pix recebido");
-      }
-    } else if (res.type === "expense") {
-      setType("expense");
-      setPaymentMethod(asPaymentMethod(res.paymentMethod));
-    } else {
-      setPaymentMethod(asPaymentMethod(res.paymentMethod));
+  /**
+   * Bifurcação silenciosa após a leitura do QR: URL → scrape da SEFAZ;
+   * PIX → preenchimento direto. Falha no scrape → fase "link" (manual),
+   * SEM tela de erro — apenas mensagem amigável + campo de link.
+   */
+  const aplicarScrape = async (url: string, runId: number) => {
+    setScanPhase("reading");
+    setScanStatus("QR encontrado — buscando os dados da nota na SEFAZ…");
+    let res: ScrapeResult;
+    try {
+      res = await scrapeNfce({ url });
+    } catch (e) {
+      console.error("[Leitor de Notas] Erro no scrape:", e);
+      res = { ok: false, items: [], error: "scrape-falhou" };
     }
-    if (!categoryId) setCategoryId(defaultCategoryId());
-    setScanResultInfo(
-      `Leitura por visão · ${res.store || "imagem"} · dados extraídos da foto`,
+    if (runId !== runIdRef.current) return;
+    if (res.ok && (res.store || res.total || res.items.length)) {
+      applyScraped(res);
+      finishScan(runId);
+      return;
+    }
+    // Scrape falhou → link manual (sem IA, sem OCR).
+    setScanPhase("link");
+    setScanStatus(
+      "Não foi possível acessar a página da nota pelo link. Confira se ele está completo e tente de novo:",
     );
-  };
-
-
-  /** Aguarda `ms` milissegundos — garante que o estado "Analisando a
-   * imagem…" nunca seja um flash (sem chave de IA o retorno do modelo é
-   * instantâneo). */
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-
-  /** Converte o arquivo da foto em base64 (data URL JPEG) de forma segura,
-   * com verificação via console.log. É a PRIMEIRA operação do pipeline. */
-  const converterParaBase64 = async (file: File): Promise<string> => {
-    // 1200px/0.8: resolução suficiente para o Vision LLM e payload bem abaixo
-    // do limite da action do Convex (fotos maiores podem estourar a requisição).
-    const dataUrl = await imageToDataUrl(file, 1200, 0.8);
-    console.log("[Leitor de Notas] Foto convertida para base64 com sucesso:", {
-      ok: dataUrl.startsWith("data:image/jpeg"),
-      tamanho: `${Math.round(dataUrl.length / 1024)} KB`,
-      arquivo: file.name,
-      bytes: file.size,
-    });
-    return dataUrl;
+    setScanError(res.error ?? "scrape-falhou");
   };
 
   /**
-   * FUNÇÃO CENTRAL — Leitor de Notas 100% Vision (SEM QR Code).
-   *
-   * Fluxo estrito e à prova de falhas:
-   *   1) Converte o File em base64 com segurança (console.log de verificação);
-   *   2) Envia o base64 DIRETAMENTE para o modelo de Visão (backend Convex +
-   *      GPT-4o-mini/Gemini) — nenhuma etapa intermediária;
-   *   3) O modelo devolve EXATAMENTE o JSON { estabelecimento, valor_total,
-   *      itens: [{ qtd, produto, valor }] } e o cliente preenche a tela
-   *      aplicando as regras condicionais (3+ itens → categoria; 1–2 → qtd +
-   *      produto; Rascunho → loja + lista limpa);
-   *   4) A tela de erro só aparece se a IA falhar ou a foto for ilegível.
+   * FUNÇÃO CENTRAL — processa uma foto de forma 100% determinística:
+   *   1) Converte o arquivo em data URL (sem IA);
+   *   2) UMA tentativa de QR Code com jsQR (orçamento de ~1s);
+   *   3) QR com URL → scrape da SEFAZ; QR PIX → preenchimento direto;
+   *   4) Sem QR legível → mensagem amigável + campo de link manual.
+   * Nenhuma etapa usa IA nem OCR. O fluxo nunca "caça" o QR.
    */
-  const lerNotaComVisao = async (input: File | string) => {
+  const processarImagem = async (file: File) => {
     const runId = runIdRef.current;
+    sourceFileRef.current = file;
 
-    // 1) Conversão segura → base64 (a primeira coisa a fazer).
-    let img: string | null = null;
-    if (typeof input === "string") {
-      img = input;
-    } else {
-      sourceFileRef.current = input;
-      try {
-        img = await converterParaBase64(input);
-      } catch (e) {
-        console.error(
-          "[Leitor de Notas] Falha ao converter a foto para base64:",
-          e,
-        );
-        img = null;
-      }
+    setStep("scan");
+    setScanPhase("reading");
+    setScanStatus("Procurando o QR Code da nota…");
+    setScanError("");
+    setManualLink("");
+
+    // 1) Conversão segura da imagem.
+    let dataUrl: string | null = null;
+    try {
+      dataUrl = await imageToDataUrl(file, 1600, 0.9);
+      console.log("[Leitor de Notas] Foto convertida:", {
+        ok: dataUrl.startsWith("data:"),
+        tamanho: `${Math.round(dataUrl.length / 1024)} KB`,
+        arquivo: file.name,
+      });
+    } catch (e) {
+      console.error("[Leitor de Notas] Falha na conversão da imagem:", e);
     }
     if (runId !== runIdRef.current) return;
-    if (!img) {
-      // Sem imagem não há o que enviar ao modelo — erro final (único caso).
-      setStep("scan");
-      setScanPhase("failed");
+    if (!dataUrl) {
+      setScanPhase("link");
       setScanStatus(
-        "Não foi possível abrir essa imagem. Tente outra foto ou preencha manualmente.",
+        "Não conseguimos abrir essa imagem. Cole o link do QR Code da nota abaixo ou tente outra foto:",
       );
-      setScanError("conversao-base64-falhou");
+      setScanError("conversao-imagem-falhou");
       return;
     }
+    setImages([dataUrl]);
 
-    // 2) Estado de análise + envio DIRETO ao modelo de Visão (sem QR code).
-    setStep("scan");
-    setScanPhase("vision");
-    setScanStatus("Analisando a imagem…");
-    setImages([img]);
-
-    let aiRes: AiReceiptResult | null = null;
-    try {
-      // Mínimo de ~1,4s de "Analisando a imagem…" para a transição ser
-      // percebida mesmo quando a resposta da IA é instantânea.
-      [aiRes] = await Promise.all([
-        extractReceipt({ image: img }),
-        sleep(1400),
-      ]);
-    } catch (e) {
-      console.error("[Leitor de Notas] Erro na chamada do modelo de Visão:", e);
-      aiRes = null;
-    }
+    // 2) UMA tentativa de QR Code (orçamento ~1s) — sem caçada multi-resolução.
+    const raw = await decodeQrFromDataUrl(dataUrl, 1000);
     if (runId !== runIdRef.current) return;
-    if (aiRes?.ok && (aiRes.total || aiRes.store || aiRes.items.length)) {
-      // 3) Preenchimento: o JSON estruturado vira a tela de aprovação com as
-      //    regras condicionais aplicadas.
-      applyAiResult(aiRes);
+    const payload = parseQrPayload(raw ?? "");
+
+    // 3) Bifurcação silenciosa com base no conteúdo do QR.
+    if (payload?.kind === "url") {
+      await aplicarScrape(payload.url, runId);
+      return;
+    }
+    if (payload?.kind === "pix") {
+      setScanStatus("QR encontrado — dados do Pix lidos…");
+      if (payload.value && payload.value > 0) {
+        setCents(Math.round(payload.value * 100));
+      }
+      setTitle(payload.merchant ? `Pix · ${payload.merchant}` : "Pix");
+      setPaymentMethod("pix");
+      if (!categoryId) setCategoryId(defaultCategoryId());
+      setScanResultInfo(
+        `Leitura do QR · Pix · ${payload.merchant || "recebedor"}`,
+      );
       finishScan(runId);
       return;
     }
 
-    // 4) SÓ aqui (IA falhou ou foto ilegível) → tela de erro, com o motivo
-    //    técnico exato (ex.: "vly http 401", "no-gemini-key") para depurar.
-    setScanPhase("failed");
+    // 4) QR ilegível/ausente → mensagem amigável + campo de link manual.
+    //    Nenhum erro é mostrado; o usuário cola o link e seguimos o scrape.
+    setScanPhase("link");
     setScanStatus(
-      "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto ou preencha manualmente.",
+      "Não encontramos um QR Code legível na foto. Tire uma foto mais nítida do QR — ou cole o link do QR Code da nota abaixo:",
     );
-    setScanError(aiRes?.error ?? "resposta-vazia");
   };
 
-  /** Traduz o código técnico de erro da IA numa orientação clara: problema
-   * de configuração (chave) vs. imagem ilegível vs. timeout. */
-  const orientacaoErroIA = (raw: string): string => {
-    if (
-      /no-vly-key|no-gemini-key|no-openai-key|vly http 401|invalid token/i.test(
-        raw,
-      )
-    ) {
-      return "A leitura por IA não está configurada: nenhuma chave válida de provedor foi encontrada. Adicione GOOGLE_API_KEY (ou OPENAI_API_KEY) na aba Keys do projeto e tente novamente.";
+  /** Fallback manual: usuário cola o link do QR Code da nota. */
+  const processarLink = async () => {
+    const runId = runIdRef.current;
+    const link = manualLink.trim();
+    if (!/^https?:\/\//i.test(link)) {
+      setScanError("Informe um link completo, começando com https://");
+      return;
     }
-    if (/timeout/i.test(raw)) {
-      return "A leitura demorou demais para responder. Tente novamente.";
-    }
-    if (/http 4|http 5|rejected|empty|failed/i.test(raw)) {
-      return "O serviço de IA recusou a leitura. Tente outra foto mais nítida ou preencha manualmente.";
-    }
-    return "A IA não conseguiu identificar uma nota legível na imagem. Tente uma foto mais nítida e com boa iluminação.";
+    setStep("scan");
+    setScanPhase("reading");
+    setScanStatus("Buscando os dados da nota na SEFAZ…");
+    setScanError("");
+    await aplicarScrape(link, runId);
   };
-
 
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    // Tudo acontece dentro de `lerNotaComVisao`: base64 → modelo Vision →
-    // aprovação (ou erro final). Nenhum erro é disparado neste ponto.
-    void lerNotaComVisao(file);
+    // Tudo acontece dentro de `processarImagem`: QR → scrape → aprovação
+    // (ou campo de link manual). Nenhum erro é disparado neste ponto.
+    void processarImagem(file);
   };
 
   const handleRetry = () => {
-    const input = sourceFileRef.current ?? images[0];
-    if (!input) return;
-    void lerNotaComVisao(input);
+    const file = sourceFileRef.current;
+    if (!file) return;
+    void processarImagem(file);
   };
 
   const handleManualFill = () => {
@@ -447,11 +416,11 @@ export function ScanReceiptSheet({
   };
 
   const scanStatusTitle =
-    scanPhase === "vision"
-      ? "Analisando a imagem…"
+    scanPhase === "reading"
+      ? "Lendo a nota…"
       : scanPhase === "success"
         ? "Dados encontrados"
-        : "Não conseguimos ler";
+        : "QR Code não legível";
 
   return (
     <AnimatePresence>
@@ -471,8 +440,8 @@ export function ScanReceiptSheet({
                 {step === "approve" ? "Revisar e aprovar" : "Escanear nota"}
               </h3>
               <p className="text-[12.5px] text-glass-sub">
-                {step === "source" && "Fotografe o cupom ou escolha uma imagem"}
-                {step === "scan" && "Analisando a imagem…"}
+                {step === "source" && "Fotografe o cupom ou cole o link do QR Code"}
+                {step === "scan" && "Lendo o QR Code da nota…"}
                 {step === "edit" && "Confira e ajuste os campos"}
                 {step === "approve" && "Tudo certo antes de salvar?"}
               </p>
@@ -489,14 +458,14 @@ export function ScanReceiptSheet({
 
           {/* ---------------- SOURCE ---------------- */}
           {step === "source" && (
-            <div className="flex flex-1 flex-col items-center overflow-y-auto no-scrollbar px-5 pb-8 pt-6 text-center">
+            <div className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center">
               <div className="flex size-20 items-center justify-center rounded-[1.6rem] bg-[#1FBF4F]/15 shadow-[0_14px_34px_-14px_rgba(31,191,79,0.6)]">
                 <ScanLine className="size-9 text-[#17a443]" strokeWidth={2.2} />
               </div>
-              <p className="mt-5 max-w-[280px] text-[14px] leading-relaxed text-glass-sub">
-                A inteligência artificial lê o texto da nota na foto e preenche
-                automaticamente: estabelecimento, valor e itens. Tudo passa
-                pela sua revisão antes de salvar.
+              <p className="mt-5 max-w-[300px] text-[14px] leading-relaxed text-glass-sub">
+                Fotografe o QR Code da nota fiscal (NFC-e) ou escolha uma
+                imagem. O sistema lê o QR, busca os dados oficiais na SEFAZ e
+                preenche tudo para você revisar.
               </p>
 
               <div className="mt-8 w-full space-y-3">
@@ -518,6 +487,42 @@ export function ScanReceiptSheet({
                 </button>
               </div>
 
+              <div className="mt-7 w-full">
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-glass-faint/40" />
+                  <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-faint">
+                    Não tem a foto?
+                  </p>
+                  <span className="h-px flex-1 bg-glass-faint/40" />
+                </div>
+                <label className="glass glass-soft mt-3 flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left">
+                  <Link2 className="size-4 shrink-0 text-glass-sub" />
+                  <input
+                    value={manualLink}
+                    onChange={(e) => setManualLink(e.target.value)}
+                    placeholder="Cole o link do QR Code da nota aqui"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="w-full bg-transparent text-[13.5px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!/^https?:\/\//i.test(manualLink.trim())}
+                  onClick={() => void processarLink()}
+                  className="glass mt-3 flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98] disabled:opacity-40"
+                >
+                  <Link2 className="size-4" />
+                  Buscar dados da nota
+                </button>
+                {scanError && (
+                  <p className="mt-2 text-[12px] font-medium text-[#FF3B30]">
+                    {scanError}
+                  </p>
+                )}
+              </div>
+
               <input
                 ref={cameraRef}
                 type="file"
@@ -536,11 +541,11 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          {/* ---------------- SCAN (analisando a imagem) ---------------- */}
+          {/* ---------------- SCAN (lendo o QR / link manual) ---------------- */}
           {step === "scan" && (
             <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
               <div className="mx-auto mt-3 w-full max-w-[250px]">
-                {scanPhase !== "failed" && (
+                {scanPhase === "reading" && (
                   <button
                     type="button"
                     onClick={() => setStep("source")}
@@ -562,7 +567,7 @@ export function ScanReceiptSheet({
                       <ScanLine className="size-10 text-white/50" />
                     </div>
                   )}
-                  {scanPhase !== "failed" && (
+                  {scanPhase === "reading" && (
                     <>
                       <div className="pointer-events-none absolute inset-0 bg-[#0b1630]/10" />
                       <span className="pointer-events-none absolute left-3 top-3 h-5 w-5 rounded-tl-xl border-l-[3px] border-t-[3px] border-white/90" />
@@ -588,8 +593,8 @@ export function ScanReceiptSheet({
                       <span
                         className={cn(
                           "size-2.5 shrink-0 animate-pulse rounded-full",
-                          scanPhase === "failed"
-                            ? "bg-[#FF3B30]"
+                          scanPhase === "link"
+                            ? "bg-[#FF9500]"
                             : "bg-[#FF9500]",
                         )}
                       />
@@ -598,41 +603,57 @@ export function ScanReceiptSheet({
                       <p className="text-[13.5px] font-semibold text-glass-ink">
                         {scanStatusTitle}
                       </p>
-                      <p className="text-[12px] text-glass-sub">
-                        {scanStatus}
-                      </p>
+                      <p className="text-[12px] text-glass-sub">{scanStatus}</p>
                     </div>
                   </div>
 
-                  {scanPhase === "failed" && (
+                  {scanPhase === "link" && (
                     <div className="mt-3 space-y-2.5">
+                      {/* Campo de link manual (fallback) */}
+                      <label className="glass glass-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5">
+                        <Link2 className="size-4 shrink-0 text-glass-sub" />
+                        <input
+                          value={manualLink}
+                          onChange={(e) => setManualLink(e.target.value)}
+                          placeholder="Cole o link do QR Code da nota aqui"
+                          inputMode="url"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          className="w-full bg-transparent text-[13px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint"
+                        />
+                      </label>
+                      {scanError && (
+                        <p className="px-1 text-[11.5px] font-medium text-[#FF3B30]">
+                          {/^https?:\/\//i.test(manualLink.trim())
+                            ? "Não foi possível buscar os dados. Confira o link e tente de novo."
+                            : "Informe um link completo, começando com https://"}
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => void processarLink()}
+                          className="flex items-center justify-center gap-1.5 rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
+                        >
+                          <Link2 className="size-3.5" />
+                          Buscar dados
+                        </button>
                         <button
                           type="button"
                           onClick={handleRetry}
                           className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
                         >
                           <RefreshCw className="size-3.5" />
-                          Tentar novamente
-                        </button>                        <button
-                          type="button"
-                          onClick={handleManualFill}
-                          className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
-                        >
-                          Preencher manualmente
+                          Outra foto
                         </button>
                       </div>
-
-                      {scanError && (
-                        <div className="space-y-1.5">
-                          <p className="rounded-xl bg-white/40 px-3 py-2 text-[12px] font-semibold leading-snug text-glass-ink">
-                            {orientacaoErroIA(scanError)}
-                          </p>
-                          <p className="px-1 text-center text-[10.5px] font-medium text-glass-faint">
-                            Detalhe técnico: {scanError}
-                          </p>
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={handleManualFill}
+                        className="w-full rounded-full py-2.5 text-[13px] font-semibold text-glass-sub transition-colors hover:bg-white/40 active:scale-[0.98]"
+                      >
+                        Preencher manualmente
+                      </button>
                     </div>
                   )}
                 </div>

@@ -1,13 +1,17 @@
 // ---------------------------------------------------------------------------
-// Leitor de Notas — categorização e preparação de imagens.
+// Leitor de Notas — categorização, preparação de imagens e QR Code.
 //
-// SEM QR CODE: a leitura da nota é 100% feita por um modelo Vision LLM no
-// backend (src/convex/aiVision.ts). Este módulo fornece apenas:
+// SEM INTELIGÊNCIA ARTIFICIAL: a leitura da nota é 100% determinística —
+// QR Code via jsQR + scraping da SEFAZ no backend (src/convex/nfce.ts).
+// Este módulo fornece:
 //   - categorias sugeridas (SCAN_CATEGORIES) e classificação por palavras-
 //     chave (findCategoryId, usada também pelo comando de voz);
 //   - conversão de imagem para data URL compacta (imageToDataUrl);
+//   - decodificação de QR Code com jsQR (decodeQrFromDataUrl) e parsing do
+//     payload (parseQrPayload: URL da NFC-e ou código PIX copia-e-cola);
 //   - parseBrl para valores em pt-BR (comando de voz).
 // ---------------------------------------------------------------------------
+import jsQR from "jsqr";
 
 export type ScanCategory = {
   id: string;
@@ -438,4 +442,87 @@ export function imageToDataUrl(
     ctx.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL("image/jpeg", quality);
   })();
+}
+
+// ---------------------------------------------------------------------------
+// QR Code — decodificação determinística (jsQR) e parsing do payload.
+// Sem IA, sem OCR: uma única tentativa com orçamento de tempo; se não achar
+// o QR, retorna null na hora e o cliente oferece o campo de link manual.
+// ---------------------------------------------------------------------------
+
+export type QrPayload =
+  | { kind: "url"; url: string }
+  | { kind: "pix"; merchant?: string; value?: number }
+  | null;
+
+/** Decodifica UM QR Code de uma data URL de imagem com jsQR. Faz uma única
+ * renderização (máx. 1600px) e UMA chamada de decodificação — nunca fica
+ * "caçando". Devolve o texto bruto do QR ou null em ~1s. */
+export async function decodeQrFromDataUrl(
+  dataUrl: string,
+  timeoutMs = 1000,
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  try {
+    const img = await loadImage(dataUrl);
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    if (Date.now() > deadline) return null;
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "attemptBoth",
+    });
+    return code?.data || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Faz o parse do payload EMV (PIX copia-e-cola) nos campos de interesse. */
+function parseEmv(payload: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let i = 0;
+  while (i + 4 <= payload.length) {
+    const id = payload.slice(i, i + 2);
+    const lenStr = payload.slice(i + 2, i + 4);
+    if (!/^\d{2}$/.test(id) || !/^\d{2}$/.test(lenStr)) break;
+    const len = parseInt(lenStr, 10);
+    if (len <= 0 || i + 4 + len > payload.length) break;
+    out[id] = payload.slice(i + 4, i + 4 + len);
+    i += 4 + len;
+  }
+  return out;
+}
+
+/** Interpreta o texto bruto de um QR Code:
+ *  - URL http(s) → { kind: "url" } (vai para o scrape da SEFAZ);
+ *  - payload PIX (000201…) → { kind: "pix", merchant, value };
+ *  - qualquer outra coisa → null. */
+export function parseQrPayload(raw: string): QrPayload {
+  const t = raw.trim();
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) {
+    return { kind: "url", url: t };
+  }
+  if (t.startsWith("000201") && t.length >= 20) {
+    const fields = parseEmv(t);
+    const merchant = fields["59"]?.trim();
+    let value: number | undefined;
+    const amountRaw = fields["54"] ?? "";
+    if (/^\d{1,12}(\.\d{1,2})?$/.test(amountRaw)) {
+      const n = parseFloat(amountRaw);
+      if (Number.isFinite(n) && n > 0) value = n;
+    }
+    return { kind: "pix", merchant: merchant || undefined, value };
+  }
+  return null;
 }
