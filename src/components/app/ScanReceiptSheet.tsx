@@ -121,6 +121,9 @@ export function ScanReceiptSheet({
   const successTimerRef = useRef<number | null>(null);
   // Category chip refs, so the selected chip can be scrolled into view.
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Receiver name from a PIX QR, so toggling Despesa/Receita rewrites the
+  // description to "Pix enviado para …" / "Pix recebido de …" automatically.
+  const pixNameRef = useRef<string | null>(null);
 
   // Fresh state every time the sheet opens.
   useEffect(() => {
@@ -145,6 +148,7 @@ export function ScanReceiptSheet({
     sourceFileRef.current = null;
     dateTouchedRef.current = false;
     typeTouchedRef.current = false;
+    pixNameRef.current = null;
   }, [open]);
 
   // Clear the success timer on unmount.
@@ -218,12 +222,18 @@ export function ScanReceiptSheet({
     );
   };
 
+  /** Descrição para QR PIX: "Pix recebido de {nome}" (receita) ou
+   * "Pix enviado para {nome}" (despesa) — comprovante de depósito/Pix. */
+  const pixDescription = (name: string, t: "expense" | "income") =>
+    t === "income" ? `Pix recebido de ${name}` : `Pix enviado para ${name}`;
+
   /** Preenche a partir de um QR PIX "copia e cola" — valor e recebedor vêm
    * exatos do código (o campo 59 é o nome do recebedor/estabelecimento). */
   const applyPixQr = (qr: QrResult) => {
     if (qr.amount && qr.amount > 0) setCents(Math.round(qr.amount * 100));
     const name = qr.name?.trim() || "Pix";
-    setTitle(name);
+    pixNameRef.current = name;
+    setTitle(pixDescription(name, type));
     if (!typeTouchedRef.current) setType("expense");
     setPaymentMethod("pix");
     if (qr.description) {
@@ -646,8 +656,14 @@ export function ScanReceiptSheet({
                   <button
                     type="button"
                     onClick={() => {
-                      setType("expense");
+                      const next: "expense" | "income" = "expense";
+                      setType(next);
                       typeTouchedRef.current = true;
+                      if (pixNameRef.current) {
+                        const prev = pixDescription(pixNameRef.current, type);
+                        if (!title.trim() || title === prev)
+                          setTitle(pixDescription(pixNameRef.current, next));
+                      }
                     }}
                     className={cn(
                       "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
@@ -661,8 +677,14 @@ export function ScanReceiptSheet({
                   <button
                     type="button"
                     onClick={() => {
-                      setType("income");
+                      const next: "expense" | "income" = "income";
+                      setType(next);
                       typeTouchedRef.current = true;
+                      if (pixNameRef.current) {
+                        const prev = pixDescription(pixNameRef.current, type);
+                        if (!title.trim() || title === prev)
+                          setTitle(pixDescription(pixNameRef.current, next));
+                      }
                     }}
                     className={cn(
                       "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
