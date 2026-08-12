@@ -3,6 +3,7 @@ import { Outlet } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
+import { AddTransactionSheet } from "@/components/app/AddTransactionSheet";
 import { PinLock } from "@/components/app/PinLock";
 import { Sidebar, SidebarProvider } from "@/components/app/Sidebar";
 import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
@@ -14,6 +15,7 @@ import { AppStoreProvider, useAppStore } from "@/lib/app-store";
  */
 function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const { activeProfile, pinUsage } = useAppStore();
 
   // Lock on app open only when the active profile has a PIN AND the "Uso do
@@ -44,7 +46,15 @@ function DashboardShell() {
             onToggleAdd={() => setAddOpen((open) => !open)}
           />
           <HomeIndicator />
-          <AddMenu open={addOpen} onClose={() => setAddOpen(false)} />
+          <AddMenu
+            open={addOpen}
+            onClose={() => setAddOpen(false)}
+            onManual={() => setManualOpen(true)}
+          />
+          <AddTransactionSheet
+            open={manualOpen}
+            onClose={() => setManualOpen(false)}
+          />
 
           {/* Sidebar + PIN lock (on top of everything) */}
           <Sidebar />

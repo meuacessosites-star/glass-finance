@@ -10,16 +10,19 @@ import {
   formatCurrency,
   monthKey,
   monthShortLabel,
-  transactions,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-const allMonths = [...new Set(transactions.map((t) => monthKey(t.date)))].sort(
-  (a, b) => b.localeCompare(a),
-);
-
 export default function TransactionsPage() {
-  const { categories } = useAppStore();
+  const { categories, transactions } = useAppStore();
+
+  const allMonths = useMemo(
+    () =>
+      [...new Set(transactions.map((t) => monthKey(t.date)))].sort((a, b) =>
+        b.localeCompare(a),
+      ),
+    [transactions],
+  );
   const [month, setMonth] = useState<string>(allMonths[0]);
   const [category, setCategory] = useState<string>("todas");
 
@@ -28,7 +31,7 @@ export default function TransactionsPage() {
       .filter((t) => monthKey(t.date) === month)
       .filter((t) => category === "todas" || t.categoryId === category)
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [month, category]);
+  }, [month, category, transactions]);
 
   const expenseTotal = filtered
     .filter((t) => t.amount < 0)

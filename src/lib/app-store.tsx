@@ -6,7 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { categories as seedCategories } from "./mock-data";
+import {
+  categories as seedCategories,
+  transactions as seedTransactions,
+  type Transaction,
+} from "./mock-data";
 
 // ---------------------------------------------------------------------------
 // GranaScan client store — personalization data (categories, cards, profiles,
@@ -36,6 +40,7 @@ export type AppCard = {
 export type ProfileData = {
   categories: AppCategory[];
   cards: AppCard[];
+  transactions: Transaction[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
@@ -77,6 +82,7 @@ function defaultData(): ProfileData {
   return {
     categories: seedCategories.map((c) => ({ ...c })),
     cards: DEFAULT_CARDS.map((c) => ({ ...c })),
+    transactions: seedTransactions.map((t) => ({ ...t })),
     pin: null,
   };
 }
@@ -85,6 +91,7 @@ function cloneData(data: ProfileData): ProfileData {
   return {
     categories: data.categories.map((c) => ({ ...c })),
     cards: data.cards.map((c) => ({ ...c })),
+    transactions: data.transactions.map((t) => ({ ...t })),
     pin: data.pin,
   };
 }
@@ -154,6 +161,27 @@ function sanitizeCards(v: unknown): AppCard[] {
   return list;
 }
 
+function sanitizeTransactions(v: unknown): Transaction[] {
+  if (!Array.isArray(v)) return seedTransactions.map((t) => ({ ...t }));
+  const list = v
+    .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
+    .map((t) => ({
+      id: str(t.id, uid("t")),
+      title: str(t.title, "Transação"),
+      categoryId: str(t.categoryId, "outros"),
+      amount:
+        typeof t.amount === "number" && Number.isFinite(t.amount)
+          ? t.amount
+          : 0,
+      date:
+        typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(t.date)
+          ? t.date.slice(0, 10)
+          : "2026-08-01",
+    }))
+    .filter((t) => t.amount !== 0);
+  return list.length > 0 ? list : seedTransactions.map((t) => ({ ...t }));
+}
+
 /**
  * Builds the profile list from persisted data, migrating the legacy flat shape
  * (top-level categories/cards/pin shared by all profiles) into per-profile
@@ -207,6 +235,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
         data: {
           categories: sanitizeCategories(nested.categories),
           cards: sanitizeCards(nested.cards),
+          transactions: sanitizeTransactions(nested.transactions),
           pin: pin4(nested.pin),
         },
       };
@@ -217,6 +246,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
       data: {
         categories: sharedCategories.map((c) => ({ ...c })),
         cards: sharedCards.map((c) => ({ ...c })),
+        transactions: seedTransactions.map((t) => ({ ...t })),
         pin:
           legacy && base.id === parsed.activeProfileId
             ? pin4(parsed.pin)
@@ -274,6 +304,7 @@ type AppStoreValue = {
   // Active profile's isolated data (convenience getters):
   categories: AppCategory[];
   cards: AppCard[];
+  transactions: Transaction[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   addCategory: (data: { label: string; color: string; icon: string }) => void;
@@ -281,6 +312,12 @@ type AppStoreValue = {
   deleteCategory: (id: string) => void;
   addCard: (data: { name: string; last4: string; color: string }) => void;
   deleteCard: (id: string) => void;
+  addTransaction: (data: {
+    title: string;
+    categoryId: string;
+    amount: number;
+    date: string;
+  }) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
   updateProfile: (
     id: string,
@@ -316,6 +353,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const activeData = active?.data ?? {
       categories: [] as AppCategory[],
       cards: [] as AppCard[],
+      transactions: [] as Transaction[],
       pin: null,
     };
 
@@ -338,6 +376,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       activeProfile: active,
       categories: activeData.categories,
       cards: activeData.cards,
+      transactions: activeData.transactions,
       pin: activeData.pin,
       categoryById,
       addCategory: (data) =>
@@ -366,6 +405,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => ({
           ...d,
           cards: d.cards.filter((c) => c.id !== id),
+        })),
+      addTransaction: (data) =>
+        patchActiveData((d) => ({
+          ...d,
+          transactions: [{ id: uid("t"), ...data }, ...d.transactions],
         })),
       addProfile: (data) =>
         setState((s) => {

@@ -52,9 +52,12 @@ const options: {
 export function AddMenu({
   open,
   onClose,
+  onManual,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Called when “Adicionar Manual” is chosen — opens the add screen. */
+  onManual?: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -63,9 +66,13 @@ export function AddMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const handlePick = (label: string) => {
+  const handlePick = (option: (typeof options)[number]) => {
     onClose();
-    toast(`${label} chega em breve`, {
+    if (option.id === "manual") {
+      onManual?.();
+      return;
+    }
+    toast(`${option.label} chega em breve`, {
       description: "Estamos finalizando este recurso para você ✨",
     });
   };
@@ -125,7 +132,7 @@ export function AddMenu({
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.06 + index * 0.045 }}
-                  onClick={() => handlePick(option.label)}
+                  onClick={() => handlePick(option)}
                   className="glass glass-soft flex w-full items-center gap-4 rounded-2xl px-3 py-3 text-left transition-transform active:scale-[0.98]"
                 >
                   <SquircleIcon

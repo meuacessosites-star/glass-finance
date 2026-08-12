@@ -14,12 +14,11 @@ import {
   monthShortLabel,
   monthTotals,
   openingBalance,
-  transactions,
 } from "@/lib/mock-data";
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { activeProfile } = useAppStore();
+  const { activeProfile, transactions } = useAppStore();
 
   const { income, expense } = monthTotals(transactions, currentMonthKey);
   const balance = openingBalance + income - expense;

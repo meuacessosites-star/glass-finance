@@ -10,7 +10,6 @@ import {
   monthShortLabel,
   monthlySeries,
   monthTotals,
-  transactions,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +30,7 @@ function GlassTooltip({ active, payload, label }: any) {
 }
 
 export default function ReportsPage() {
-  const { categoryById } = useAppStore();
+  const { categoryById, transactions } = useAppStore();
   const month = currentMonthKey;
   const { list } = monthTotals(transactions, month);
   const monthName = monthShortLabel(month);
