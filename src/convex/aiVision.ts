@@ -1,3 +1,5 @@
+"use node";
+
 // ---------------------------------------------------------------------------
 // Leitor de Notas — Prioridade 2 (a SOLUÇÃO DEFINITIVA): extração de dados da
 // imagem por um modelo Vision LLM. Quando o QR não existe / não decodifica ou
@@ -146,53 +148,73 @@ function finalizeAi(
   return { ok: true, result: mapped };
 }
 
-/** URL do endpoint OpenAI-compatível do gateway VLY (honra a base do env). */
-function vlyChatUrl(): string {
-  const b = (process.env.VLY_INTEGRATION_BASE_URL ?? "https://integrations.vly.ai/v1/llm")
+/** Candidatos do endpoint OpenAI-compatível do gateway VLY, em ordem: o
+ * endpoint conhecido primeiro (integrations.vly.ai — o host documentado
+ * integrations.freebuff.com não responde mais), depois derivados de
+ * VLY_INTEGRATION_BASE_URL quando o env define (desduplicados). */
+function vlyChatUrls(): string[] {
+  const base = (process.env.VLY_INTEGRATION_BASE_URL ?? "")
     .trim()
     .replace(/\/+$/, "");
-  if (b.endsWith("/chat/completions")) return b;
-  if (b.endsWith("/v1/llm")) return `${b}/chat/completions`;
-  return `${b}/v1/llm/chat/completions`;
+  const candidates = [
+    "https://integrations.vly.ai/v1/llm/chat/completions",
+    ...(base
+      ? [
+          base.endsWith("/chat/completions")
+            ? base
+            : base.endsWith("/v1/llm")
+              ? `${base}/chat/completions`
+              : `${base}/v1/llm/chat/completions`,
+        ]
+      : []),
+  ];
+  return candidates.filter((u, i, a) => a.indexOf(u) === i);
 }
 
-/** Provedor 1 — gateway VLY com modelo multimodal (chave automática). */
+/** Provedor 1 — gateway VLY com modelo multimodal (chave automática). Tenta
+ * os endpoints candidatos em ordem; o primeiro que responder 2xx vence. */
 async function tryVly(
   image: string,
   key: string,
   deadline: number,
 ): Promise<{ ok: true; result: AiReceiptResult } | { ok: false; error: string }> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) return { ok: false, error: "timeout" };
-  try {
-    const res = await fetch(vlyChatUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 1500,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Extraia os dados desta nota fiscal." },
-              { type: "image_url", image_url: { url: image } },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(Math.min(18_000, remaining)),
-    });
-    if (!res.ok) return { ok: false, error: `vly http ${res.status}` };
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    return finalizeAi(data.choices?.[0]?.message?.content ?? "", "vly");
-  } catch (e) {
-    return { ok: false, error: (e as Error).message ?? "vly-failed" };
+  let lastError = "vly-failed";
+  for (const url of vlyChatUrls()) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return { ok: false, error: "timeout" };
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 1500,
+          messages: [
+            { role: "system", content: PROMPT },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Extraia os dados desta nota fiscal." },
+                { type: "image_url", image_url: { url: image } },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(Math.min(18_000, remaining)),
+      });
+      if (!res.ok) {
+        lastError = `vly http ${res.status}`;
+        continue;
+      }
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      return finalizeAi(data.choices?.[0]?.message?.content ?? "", "vly");
+    } catch (e) {
+      lastError = (e as Error).message ?? "vly-failed";
+    }
   }
+  return { ok: false, error: lastError };
 }
 
 /** Provedor 2 — Google Gemini (GOOGLE_API_KEY). */

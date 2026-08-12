@@ -262,7 +262,9 @@ export function ScanReceiptSheet({
   /** Converte o arquivo da foto em base64 (data URL JPEG) de forma segura,
    * com verificação via console.log. É a PRIMEIRA operação do pipeline. */
   const converterParaBase64 = async (file: File): Promise<string> => {
-    const dataUrl = await imageToDataUrl(file, 1400);
+    // 1200px/0.8: resolução suficiente para o Vision LLM e payload bem abaixo
+    // do limite da action do Convex (fotos maiores podem estourar a requisição).
+    const dataUrl = await imageToDataUrl(file, 1200, 0.8);
     console.log("[Leitor de Notas] Foto convertida para base64 com sucesso:", {
       ok: dataUrl.startsWith("data:image/jpeg"),
       tamanho: `${Math.round(dataUrl.length / 1024)} KB`,
