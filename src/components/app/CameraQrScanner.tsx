@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, QrCode, RefreshCw } from "lucide-react";
+import {
+  Camera,
+  Check,
+  Flashlight,
+  ImagePlus,
+  QrCode,
+  RefreshCw,
+} from "lucide-react";
 import jsQR from "jsqr";
 import { otsuBinarize } from "@/lib/receipt-scan";
 
@@ -10,18 +17,31 @@ import { otsuBinarize } from "@/lib/receipt-scan";
 // 2nd frame retries at higher resolution and every 4th frame adds an Otsu
 // binarization (low-contrast receipts) plus the native BarcodeDetector API
 // when the browser has it (Chrome/Edge/Android), which is far more tolerant
-// of small/tilted codes. When a code is found the stream stops, the frame is
-// captured as a data URL and handed to the parent for the scrape/parse flow.
-// Falls back gracefully to a message when camera access is denied/unavailable.
+// of small/tilted codes.
+//
+// Além da leitura ao vivo, há um botão de DISPARO (shutter): ele congela o
+// frame atual e o envia para o pipeline completo de decodificação de imagem
+// (detector nativo + jsQR em várias resoluções + binarizações), que lê QRs
+// que o loop ao vivo perde (código pequeno, inclinado ou com reflexo). Se a
+// câmera não abre (permissão negada/iframe), o usuário cai direto nas opções
+// de foto/galeria.
 // ---------------------------------------------------------------------------
 
 const SCAN_W = 640;
 
+type ImageCaptureLike = {
+  applyConstraints: (c: { advanced?: Record<string, unknown>[] }) => Promise<void>;
+};
+
 export function CameraQrScanner({
   onResult,
+  onCapture,
   onClose,
 }: {
   onResult: (payload: string, frameDataUrl: string) => void;
+  /** Shutter fallback: a still frame was captured — run the full image
+   * pipeline on it (native + multi-resolution + binarizations). */
+  onCapture: (frameDataUrl: string) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -30,6 +50,7 @@ export function CameraQrScanner({
   const rafRef = useRef(0);
   const frameCountRef = useRef(0);
   const foundRef = useRef(false);
+  const capturingRef = useRef(false);
   const nativeRef = useRef<{
     detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
   } | null>(null);
@@ -39,6 +60,9 @@ export function CameraQrScanner({
   const [found, setFound] = useState<{ payload: string; frame: string } | null>(
     null,
   );
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [secondsLooking, setSecondsLooking] = useState(0);
   const aliveRef = useRef(true);
 
   // Native BarcodeDetector (Chrome/Edge/Android) — muito mais tolerante a QR
@@ -76,6 +100,23 @@ export function CameraQrScanner({
         return;
       }
       streamRef.current = stream;
+      // Lanterna (ImageCapture + torch) — só Chrome/Edge/Android suportam.
+      // Testa com torch:false (não acende a lanterna sem querer): se a
+      // constraint resolve, o toggle fica disponível.
+      const w = window as unknown as {
+        ImageCapture?: new (track: MediaStreamTrack) => ImageCaptureLike;
+      };
+      if (typeof w.ImageCapture === "function") {
+        try {
+          const ic = new w.ImageCapture(stream.getVideoTracks()[0]);
+          void ic
+            .applyConstraints({ advanced: [{ torch: false }] })
+            .then(() => setTorchSupported(true))
+            .catch(() => setTorchSupported(false));
+        } catch {
+          setTorchSupported(false);
+        }
+      }
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => undefined);
@@ -172,17 +213,57 @@ export function CameraQrScanner({
     setFound({ payload, frame });
   };
 
+  /** Botão de disparo: congela o frame atual em alta resolução e manda para o
+   * pipeline completo de decodificação (o mesmo de foto/galeria). O QR pode
+   * ser pequeno, inclinado ou com reflexo — a leitura ao vivo falha, mas a
+   * análise da imagem parada encontra. */
+  const captureStill = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || capturingRef.current) return;
+    capturingRef.current = true;
+    try {
+      const capW = Math.min(1600, video.videoWidth);
+      const capH = Math.round((video.videoHeight / video.videoWidth) * capW);
+      const canvas = document.createElement("canvas");
+      canvas.width = capW;
+      canvas.height = capH;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, capW, capH);
+        const frame = canvas.toDataURL("image/jpeg", 0.92);
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        cancelAnimationFrame(rafRef.current);
+        onCapture(frame);
+      }
+    } catch {
+      capturingRef.current = false;
+    }
+  };
+
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const w = window as unknown as {
+      ImageCapture?: new (t: MediaStreamTrack) => ImageCaptureLike;
+    };
+    if (typeof w.ImageCapture !== "function") return;
+    try {
+      const ic = new w.ImageCapture(track);
+      await ic.applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn(!torchOn);
+    } catch {
+      setTorchSupported(false);
+    }
+  };
+
   const tick = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || foundRef.current) return;
+    if (!video || !canvas || foundRef.current || capturingRef.current) return;
     frameCountRef.current += 1;
     const n = frameCountRef.current;
     if (video.readyState >= 2 && video.videoWidth > 0) {
-      // 640px a cada frame (rápido); em frames pares tenta também 1280px
-      // (QR pequenos precisam de mais pixels por módulo); a cada 4 frames,
-      // binarização Otsu + BarcodeDetector nativo. Nenhum erro derruba o
-      // loop — ele volta a agendar o próximo frame sempre.
       let payload: string | null = null;
       if (n % 2 === 1) {
         payload = tryDecode(video, canvas, SCAN_W);
@@ -225,6 +306,17 @@ export function CameraQrScanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Depois de alguns segundos sem leitura, mostra uma dica prática.
+  useEffect(() => {
+    if (!found && !error) {
+      const start = Date.now();
+      const iv = window.setInterval(() => {
+        setSecondsLooking(Math.floor((Date.now() - start) / 1000));
+      }, 1000);
+      return () => window.clearInterval(iv);
+    }
+  }, [found, error]);
+
   return (
     <div className="flex flex-1 flex-col">
       {/* Viewfinder */}
@@ -258,13 +350,22 @@ export function CameraQrScanner({
           <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 px-6 text-center">
             <QrCode className="size-10 text-white/60" />
             <p className="text-[13px] leading-relaxed text-white/85">{error}</p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full bg-white/15 px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/25"
-            >
-              Voltar
-            </button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full bg-white/15 px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/25"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex items-center gap-1.5 rounded-full bg-white/15 px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/25"
+              >
+                <ImagePlus className="size-3.5" /> Usar foto
+              </button>
+            </div>
           </div>
         )}
 
@@ -280,7 +381,9 @@ export function CameraQrScanner({
                 <Check className="size-7 text-[#34C759]" strokeWidth={2.8} />
               </span>
               <div>
-                <p className="text-[15px] font-bold text-white">QR code encontrado</p>
+                <p className="text-[15px] font-bold text-white">
+                  QR code encontrado
+                </p>
                 <p className="mt-1 line-clamp-2 break-all text-[11.5px] leading-relaxed text-white/60">
                   {found.payload}
                 </p>
@@ -316,11 +419,51 @@ export function CameraQrScanner({
       {/* Hidden canvas used by the decode loop */}
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* Controls under the viewfinder */}
       {!found && !error && (
-        <p className="mt-4 px-6 text-center text-[12px] leading-relaxed text-glass-sub">
-          O QR das notas fiscais (NFC-e) traz a data de emissão e identifica o
-          estabelecimento — o valor é lido da nota na sequência.
-        </p>
+        <div className="mt-5 flex items-center justify-center gap-4">
+          {/* Torch */}
+          {torchSupported && (
+            <button
+              type="button"
+              aria-label={torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+              onClick={toggleTorch}
+              className={`glass flex size-12 items-center justify-center rounded-full text-white transition-all active:scale-90 ${
+                torchOn ? "bg-[#FFCC00]/30" : ""
+              }`}
+            >
+              <Flashlight className="size-5" />
+            </button>
+          )}
+          {/* Shutter — fallback when the live loop misses the code */}
+          <button
+            type="button"
+            onClick={captureStill}
+            className="group relative flex size-[74px] items-center justify-center rounded-full bg-white/25 transition-all hover:bg-white/35 active:scale-95"
+            aria-label="Fotografar QR para análise"
+          >
+            <span className="flex size-[58px] items-center justify-center rounded-full border-[3px] border-white bg-white/10 transition-colors group-hover:bg-white/20">
+              <Camera className="size-6 text-white" />
+            </span>
+          </button>
+          {/* Spacer keeps the shutter centered when no torch */}
+          <span className={`size-12 ${torchSupported ? "" : "invisible"}`} />
+        </div>
+      )}
+
+      {!found && !error && (
+        <div className="mt-4 px-6 text-center">
+          <p className="text-[12px] leading-relaxed text-glass-sub">
+            O QR das notas fiscais (NFC-e) traz a data de emissão e identifica
+            o estabelecimento — o valor é lido da nota na sequência.
+          </p>
+          {secondsLooking >= 5 && (
+            <p className="mt-2 text-[12px] font-semibold leading-relaxed text-glass-ink">
+              Sem leitura ainda? Aproxime o código e mantenha parado, ou toque
+              no botão de foto abaixo para analisar o QR em detalhe.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

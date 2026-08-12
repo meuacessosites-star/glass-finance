@@ -709,13 +709,42 @@ function adaptiveBinarize(
 
 type QrRender = { w: number; h: number; smooth: boolean; size: number };
 
-/** Decodes a QR code in an image (original File or data URL) and returns the
+/** Renders the source image onto a fresh canvas at the given size. Returns
+ * the canvas (caller decides what to do with it) or null when 2D context is
+ * unavailable. */
+function renderCanvas(img: HTMLImageElement, r: QrRender): HTMLCanvasElement | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = r.w;
+  canvas.height = r.h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = r.smooth;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, r.w, r.h);
+  ctx.drawImage(img, 0, 0, r.w, r.h);
+  return canvas;
+}
+
+/**
+ * Decodes a QR code in an image (original File or data URL) and returns the
  * classified payload (NFC-e URL, PIX BR Code, …). Returns null on no QR /
- * decode failure — never throws. Camada 1 usa o BarcodeDetector nativo na
- * imagem em resolução original; camadas 2–3 usam jsQR em várias
- * renderizações e binarizações. */
+ * decode failure — never throws.
+ *
+ * Ordem das camadas:
+ *   1) BarcodeDetector nativo (Chrome/Edge/Android) na imagem em resolução
+ *      original e, se falhar, numa renderização reduzida (alguns navegadores
+ *      desistem de imagens gigantes);
+ *   2) jsQR em várias renderizações — descidas suavizadas para fotos grandes,
+ *      subidas com vizinho mais próximo para capturas pequenas;
+ *   3) binarizações Otsu + adaptativa para sombra/baixo contraste.
+ *
+ * `onProgress` recebe um rótulo curto em português entre as camadas, para a
+ * tela de escaneamento mostrar que a leitura está progredindo (fotos grandes
+ * demoram alguns segundos — antes parecia travado).
+ */
 export async function decodeQrPayload(
   input: File | string,
+  onProgress?: (label: string) => void,
 ): Promise<QrResult | null> {
   try {
     const src = typeof input === "string" ? input : await fileToDataUrl(input);
@@ -724,14 +753,7 @@ export async function decodeQrPayload(
     const h0 = img.height;
     if (!w0 || !h0) return null;
 
-    // Camada 1 — detector nativo na imagem em resolução original.
-    const native = await detectNative(img);
-    if (native) return parseQrFromPayload(native);
-
-    // Camada 2 — jsQR em várias renderizações. Descidas (1400→2000→2800,
-    // suavizadas) para fotos grandes; subidas com vizinho mais próximo para
-    // capturas pequenas onde o QR ocupa poucos pixels (a interpolação
-    // bilinear borra as bordas dos módulos e derruba o jsQR).
+    // Renderizações em várias resoluções (ver Camada 2 acima para a lógica).
     const maxSide = Math.max(w0, h0);
     const sizes = new Set<number>();
     sizes.add(Math.min(1400, maxSide));
@@ -749,30 +771,46 @@ export async function decodeQrPayload(
       }))
       .sort((a, b) => a.size - b.size);
 
-    const renderBase = (r: QrRender): Uint8ClampedArray | null => {
-      const canvas = document.createElement("canvas");
-      canvas.width = r.w;
-      canvas.height = r.h;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return null;
-      ctx.imageSmoothingEnabled = r.smooth;
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, r.w, r.h);
-      ctx.drawImage(img, 0, 0, r.w, r.h);
-      return ctx.getImageData(0, 0, r.w, r.h).data;
-    };
+    // Camada 1 — detector nativo na imagem original e, se falhar, no render
+    // de maior resolução (QR pequeno dentro de uma foto enorme).
+    onProgress?.("Procurando o QR code na imagem…");
+    let native = await detectNative(img);
+    if (native) return parseQrFromPayload(native);
+    const biggest = renders[renders.length - 1];
+    if (biggest && biggest.size < maxSide) {
+      const canvas = renderCanvas(img, biggest);
+      if (canvas) {
+        native = await detectNative(canvas);
+        if (native) return parseQrFromPayload(native);
+      }
+    }
 
+    // Camada 2 — jsQR nas renderizações, da menor (rápida) para a maior.
     for (const r of renders) {
-      const base = renderBase(r);
+      onProgress?.(
+        r.size > 2000
+          ? "Analisando em alta resolução…"
+          : "Lendo o QR code…",
+      );
+      const canvas = renderCanvas(img, r);
+      if (!canvas) continue;
+      const base = canvas
+        .getContext("2d", { willReadFrequently: true })
+        ?.getImageData(0, 0, r.w, r.h).data;
       if (!base) continue;
       const code = jsQR(base, r.w, r.h);
       if (code?.data) return parseQrFromPayload(code.data);
     }
 
-    // Camada 3 — binarizações (sombras/baixo contraste). A adaptativa é cara
-    // em imagens muito grandes, então só roda até ~4 MP por render.
+    // Camada 3 — binarizações (sombra/brilho/contraste baixo). A adaptativa
+    // é cara em imagens grandes, então só roda até ~4 MP por render.
     for (const r of renders) {
-      const base = renderBase(r);
+      onProgress?.("Ajustando contraste da imagem…");
+      const canvas = renderCanvas(img, r);
+      if (!canvas) continue;
+      const base = canvas
+        .getContext("2d", { willReadFrequently: true })
+        ?.getImageData(0, 0, r.w, r.h).data;
       if (!base) continue;
       const passes: Uint8ClampedArray[] = [otsuBinarize(base)];
       if (r.w * r.h <= 4_000_000) passes.push(adaptiveBinarize(base, r.w, r.h));

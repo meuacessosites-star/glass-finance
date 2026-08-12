@@ -330,13 +330,27 @@ export function ScanReceiptSheet({
    */
   const runScan = async (input: File | string, knownPayload?: string) => {
     const runId = runIdRef.current;
+    const startedAt = Date.now();
     setScanPhase("detecting");
     setScanStatus("Detectando QR code na imagem…");
     try {
       const qr = knownPayload
         ? parseQrFromPayload(knownPayload)
-        : await decodeQrPayload(input);
+        : await decodeQrPayload(input, (label) => {
+            // Só atualiza o status se ainda é a mesma leitura (a tela pode
+            // ter sido fechada/reaberta enquanto o pipeline rodava).
+            if (runId === runIdRef.current) setScanStatus(label);
+          });
       if (runId !== runIdRef.current) return;
+      // Guarda de tempo: fotos gigantes demoram — depois de ~25s avisa que
+      // provavelmente não há QR legível em vez de deixar a tela "presa".
+      if (!qr && Date.now() - startedAt > 25_000) {
+        setScanPhase("failed");
+        setScanStatus(
+          "A imagem é muito grande e não encontramos o QR. Tente outra foto, cole o código ou preencha manualmente.",
+        );
+        return;
+      }
       await handleParsedQr(qr);
     } catch {
       if (runId !== runIdRef.current) return;
@@ -384,6 +398,17 @@ export function ScanReceiptSheet({
     setScanPhase("detecting");
     setScanStatus("Lendo o QR code…");
     void runScan(frame, payload);
+  };
+
+  /** Shutter fallback: the live loop couldn't read the code, but the user
+   * captured a still — the FULL image pipeline (native + multi-resolution +
+   * binarizations) reads codes the live loop misses. */
+  const handleCameraCapture = (frame: string) => {
+    setImages([frame]);
+    setStep("scan");
+    setScanPhase("detecting");
+    setScanStatus("Analisando a foto em detalhe…");
+    void runScan(frame);
   };
 
   const handleRetry = () => {
@@ -551,6 +576,7 @@ export function ScanReceiptSheet({
             <div className="flex flex-1 flex-col px-5 pb-6 pt-3">
               <CameraQrScanner
                 onResult={handleCameraResult}
+                onCapture={handleCameraCapture}
                 onClose={() => setStep("source")}
               />
             </div>
@@ -560,6 +586,16 @@ export function ScanReceiptSheet({
           {step === "scan" && (
             <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
               <div className="mx-auto mt-3 w-full max-w-[250px]">
+                {scanPhase !== "failed" && (
+                  <button
+                    type="button"
+                    onClick={() => setStep("source")}
+                    className="glass glass-soft mb-3 flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
+                  >
+                    <ImagePlus className="size-3.5" />
+                    Escolher outra foto
+                  </button>
+                )}
                 <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
                   {images[0] ? (
                     <img
