@@ -18,7 +18,9 @@ import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { useAppStore } from "@/lib/app-store";
 import {
   decodeQrPayload,
+  extractItems,
   findCategoryId,
+  formatItemsText,
   imageToDataUrl,
   parseReceiptText,
   scanReceiptWithTimeout,
@@ -164,6 +166,16 @@ export function ScanReceiptSheet({
         return;
       }
       setOcrState("done");
+      // Prefill the draft with the item list (name + qty + price) when the
+      // note is still empty, and fall back to the first item as the
+      // description when no store name was recognized.
+      const items = extractItems(text);
+      if (items.length > 0) {
+        setNote((prev) => (prev.trim() ? prev : formatItemsText(items)));
+        if (!parsed.title) {
+          setTitle((prev) => (prev.trim() ? prev : items[0]?.name ?? ""));
+        }
+      }
       // Fill only the fields the user hasn't touched yet. The date starts
       // as "today" only as a placeholder — the OCR date overrides it unless
       // the user picked a date manually.

@@ -787,6 +787,93 @@ export function parseReceiptText(text: string): ScanResult {
 }
 
 // ---------------------------------------------------------------------------
+// Item list — extracts the "what was bought" from the receipt so the draft
+// can be prefilled with an organized list of name + quantity + price.
+// ---------------------------------------------------------------------------
+
+export type ReceiptItem = {
+  name: string;
+  qty: string; // "1 un", "5 kg", "2x"… "" when the receipt has no quantity
+  price: number; // positive BRL value
+};
+
+/** Lines that are never items (totals, payment, headers, dates, metadata). */
+const ITEM_SKIP =
+  /total|subtotal|troco|dinheiro|pagamento|cartao|credito|debito|desconto|taxa|juros|multa|acrescimo|frete|fiscal|cnpj|cpf|inscricao|endereco|telefone|fone|data|hora|emitid|protocolo|cupom|nfc-e|nf-e|chave|pix|referencia|entrega|pedido|consumidor|operador|caixa|validade|venc|leitura|sequencial|parcela|autorizacao|quantidade|nr\.|numero/i;
+
+const QTY_UNITS = "UN|UNIDADE|UNID|UND|QTD|QTDE|CX|PCT|PAC|PACOTE|X|KG|G|ML|L|GR";
+
+/** Cleans an item-name fragment: item codes, bare numbers and junk chars. */
+function stripNameNoise(name: string): string {
+  return name
+    .replace(/^\d{3,}\s*/, "") // item codes ("001 ")
+    .replace(/^\s*[.:;,•|=\-]+/, "") // leading separators
+    .replace(/\s*\d+(?:[.,]\d+)?\s*$/, "") // trailing bare numbers
+    .replace(/\s{2,}/g, " ")
+    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
+    .trim();
+}
+
+const titleCase = (s: string) =>
+  s.replace(
+    /\p{L}+/gu,
+    (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+  );
+
+/**
+ * Parses the item list from a receipt: lines with a name, optional quantity
+ * and a trailing price ("PIPOCA 1 UN 5,00"). Headers, totals and payment
+ * lines are ignored. Returns at most 10 items.
+ */
+export function extractItems(text: string): ReceiptItem[] {
+  const items: ReceiptItem[] = [];
+  for (const rawLine of text.split("\n")) {
+    const line = maskDatesTimes(rawLine.trim());
+    if (!line || ITEM_SKIP.test(norm(line))) continue;
+    const pm = line.match(
+      new RegExp(`(?:r?\\$?\\s*)?${AMOUNT_RE}\\s*$`, "i"),
+    );
+    if (!pm) continue;
+    const price = parseAmountToken(pm[1]);
+    if (!(price > 0)) continue;
+    let namePart = line.slice(0, pm.index ?? 0).trim();
+    if (namePart.length < 3) continue;
+
+    // Quantity: "1 UN", "5KG", "2X", "1,5KG"… anywhere in the name.
+    let qty = "";
+    const qm = namePart.match(
+      new RegExp(`(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s*(${QTY_UNITS})\\b(?=\\s|$)`, "i"),
+    );
+    if (qm) {
+      qty = `${qm[1]} ${qm[2].toLowerCase()}`;
+      namePart = namePart.replace(qm[0], " ").trim();
+    }
+
+    const name = titleCase(stripNameNoise(namePart));
+    if (name.length < 2) continue;
+    if (items.length >= 10) break;
+    items.push({ name, qty, price });
+  }
+  return items;
+}
+
+/** "• Pipoca 1 un · R$ 5,00" — the organized list used to prefill the draft. */
+export function formatItemsText(items: ReceiptItem[]): string {
+  if (!items.length) return "";
+  const lines = items.map((it) => {
+    const qty = it.qty ? ` ${it.qty}` : "";
+    const price = it.price.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+    return `• ${it.name}${qty} · ${price}`;
+  });
+  let out = `Itens da nota:\n${lines.join("\n")}`;
+  if (out.length > 290) out = out.slice(0, 287) + "…";
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Images
 // ---------------------------------------------------------------------------
 
