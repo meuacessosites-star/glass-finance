@@ -36,10 +36,12 @@ export type Transaction = {
   time?: string; // HH:MM — set when scanned from a receipt
   note?: string; // free text (draft / observations)
   attachments?: string[]; // receipt photos (data URLs)
-  /** Payment method id: pix | dinheiro | cartao | credito | debito | boleto | transferencia */
+  /** Payment method id: pix | dinheiro | cartao | boleto | transferencia */
   paymentMethod?: string;
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
   cardId?: string;
+  /** When paymentMethod is "cartao": "credito" | "debito". */
+  cardMode?: string;
 };
 
 export const transactions: Transaction[] = [

@@ -201,6 +201,12 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.cardId === "string" && t.cardId.trim()
           ? t.cardId.trim().slice(0, 40)
           : undefined,
+      cardMode:
+        t.cardMode === "credito" || t.cardMode === "debito"
+          ? t.cardMode
+          : t.paymentMethod === "credito" || t.paymentMethod === "debito"
+            ? t.paymentMethod
+            : undefined,
     }))
     .filter((t) => t.amount !== 0);
   return list.length > 0 ? list : seedTransactions.map((t) => ({ ...t }));
@@ -347,6 +353,7 @@ type AppStoreValue = {
     attachments?: string[];
     paymentMethod?: string;
     cardId?: string;
+    cardMode?: "credito" | "debito";
   }) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
   updateProfile: (

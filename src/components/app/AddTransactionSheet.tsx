@@ -10,8 +10,10 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "./CategoryIcon";
 import {
   PaymentMethodSelector,
+  type CardMode,
   type PaymentMethodId,
 } from "./PaymentMethodSelector";
 
@@ -42,6 +44,7 @@ export function AddTransactionSheet({
   const [categoryId, setCategoryId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
+  const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
 
   // Fresh form every time the sheet opens.
@@ -52,6 +55,7 @@ export function AddTransactionSheet({
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
     setPaymentMethod("");
+    setCardMode("");
     setCardId(null);
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
@@ -91,6 +95,7 @@ export function AddTransactionSheet({
       date,
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
+      cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
     });
     toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
       description: "Já aparece no seu resumo e no histórico.",
@@ -223,13 +228,10 @@ export function AddTransactionSheet({
                         selected ? { backgroundColor: c.color } : undefined
                       }
                     >
-                      <span
-                        className="size-2 rounded-full"
-                        style={{
-                          backgroundColor: selected
-                            ? "rgba(255,255,255,0.95)"
-                            : c.color,
-                        }}
+                      <CategoryIcon
+                        categoryId={c.id}
+                        size="size-5"
+                        iconSize="size-3"
                       />
                       {c.label}
                     </button>
@@ -245,11 +247,19 @@ export function AddTransactionSheet({
               </p>
               <PaymentMethodSelector
                 value={paymentMethod}
-                onValueChange={setPaymentMethod}
+                onValueChange={(v) => {
+                  setPaymentMethod(v);
+                  if (v === "cartao") setCardMode("credito");
+                  else {
+                    setCardMode("");
+                    setCardId(null);
+                  }
+                }}
+                cardMode={cardMode}
+                onCardModeChange={setCardMode}
                 cardId={cardId}
                 onCardChange={setCardId}
                 cards={cards}
-                income={type === "income"}
               />
             </div>
 

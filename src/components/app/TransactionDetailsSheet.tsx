@@ -6,7 +6,10 @@ import { useAppStore } from "@/lib/app-store";
 import { dayLabel, formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
-import { PAYMENT_METHOD_LABELS } from "./PaymentMethodSelector";
+import {
+  CARD_MODE_LABELS,
+  PAYMENT_METHOD_LABELS,
+} from "./PaymentMethodSelector";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 
@@ -29,8 +32,15 @@ export function TransactionDetailsSheet({
   const category = categoryById[transaction.categoryId] ?? fallback;
   const isIncome = transaction.amount > 0;
   const attachments = transaction.attachments ?? [];
-  const paymentLabel = transaction.paymentMethod
-    ? PAYMENT_METHOD_LABELS[transaction.paymentMethod] ?? transaction.paymentMethod
+  const rawMethod = transaction.paymentMethod ?? "";
+  const methodId =
+    rawMethod === "credito" || rawMethod === "debito" ? "cartao" : rawMethod;
+  const mode =
+    transaction.cardMode ??
+    (rawMethod === "credito" || rawMethod === "debito" ? rawMethod : undefined) ??
+    "";
+  const paymentLabel = methodId
+    ? PAYMENT_METHOD_LABELS[methodId] ?? methodId
     : null;
   const paymentCard = transaction.cardId
     ? cards.find((c) => c.id === transaction.cardId)
@@ -129,6 +139,9 @@ export function TransactionDetailsSheet({
                   <CreditCard className="size-4 shrink-0 text-glass-sub" />
                   <p className="text-[13px] font-medium text-glass-ink">
                     Pagamento · {paymentLabel}
+                    {methodId === "cartao" && mode
+                      ? ` · ${CARD_MODE_LABELS[mode as "credito" | "debito"] ?? mode}`
+                      : ""}
                     {paymentCard
                       ? ` · ${paymentCard.name} ····${paymentCard.last4}`
                       : ""}

@@ -31,9 +31,12 @@ import {
 } from "@/lib/receipt-scan";
 import { cn } from "@/lib/utils";
 import { CameraQrScanner } from "./CameraQrScanner";
+import { CategoryIcon } from "./CategoryIcon";
 import {
+  CARD_MODE_LABELS,
   normalizePaymentMethod,
   PaymentMethodSelector,
+  type CardMode,
   type PaymentMethodId,
 } from "./PaymentMethodSelector";
 
@@ -86,6 +89,7 @@ export function ScanReceiptSheet({
   const [note, setNote] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
+  const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
   // Raw OCR text — shown collapsed so the user can see what was read (and
   // why a field came back empty).
@@ -125,6 +129,7 @@ export function ScanReceiptSheet({
     setNote("");
     setType("expense");
     setPaymentMethod("");
+    setCardMode("");
     setCardId(null);
     setRawText("");
     setQrInfo("");
@@ -210,7 +215,13 @@ export function ScanReceiptSheet({
       );
       setTime((prev) => (prev ? prev : parsed.time));
       if (!typeTouchedRef.current) setType(parsed.type);
-      setPaymentMethod(normalizePaymentMethod(parsed.paymentMethod));
+      {
+        const { method, cardMode: mode } = normalizePaymentMethod(
+          parsed.paymentMethod,
+        );
+        setPaymentMethod(method);
+        if (method === "cartao" && mode) setCardMode(mode);
+      }
       setQrInfo(
         qr
           ? qr.amount
@@ -308,6 +319,7 @@ export function ScanReceiptSheet({
       attachments: images.length ? images : undefined,
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
+      cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
     });
     toast("Nota escaneada e salva", {
       description: "Ela já aparece no seu histórico, com a nota anexada.",
@@ -678,13 +690,10 @@ export function ScanReceiptSheet({
                             selected ? { backgroundColor: c.color } : undefined
                           }
                         >
-                          <span
-                            className="size-2 rounded-full"
-                            style={{
-                              backgroundColor: selected
-                                ? "rgba(255,255,255,0.95)"
-                                : c.color,
-                            }}
+                          <CategoryIcon
+                            categoryId={c.id}
+                            size="size-5"
+                            iconSize="size-3"
                           />
                           {c.label}
                         </button>
@@ -702,12 +711,17 @@ export function ScanReceiptSheet({
                     value={paymentMethod}
                     onValueChange={(v) => {
                       setPaymentMethod(v);
-                      if (v !== "cartao") setCardId(null);
+                      if (v === "cartao") setCardMode("credito");
+                      else {
+                        setCardMode("");
+                        setCardId(null);
+                      }
                     }}
+                    cardMode={cardMode}
+                    onCardModeChange={setCardMode}
                     cardId={cardId}
                     onCardChange={setCardId}
                     cards={cards}
-                    income={type === "income"}
                   />
                 </div>
 
@@ -830,6 +844,12 @@ export function ScanReceiptSheet({
                       <span className="glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub">
                         <CreditCard className="size-3" />
                         {PAYMENT_LABELS[paymentMethod] ?? paymentMethod}
+                        {paymentMethod === "cartao" && cardMode
+                          ? ` · ${
+                              CARD_MODE_LABELS[cardMode as "credito" | "debito"] ??
+                              cardMode
+                            }`
+                          : ""}
                         {cardId &&
                           ` · ${cards.find((c) => c.id === cardId)?.name ?? ""}`.trim()}
                       </span>
