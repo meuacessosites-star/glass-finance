@@ -254,6 +254,36 @@ const norm = (s: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+/**
+ * A digit position in OCR text — thermal print confuses 0/O, 5/S, 1/l/I,
+ * 2/Z, 8/B and 4/A, so these letters are accepted where a digit is expected.
+ */
+const D = "[0-9OoIiLlSZB4Aa]";
+
+/** Maps OCR letter confusions back to digits ("9O" → "90", "l4" → "14",
+ * "1A" → "14"). */
+function ocrDigits(token: string): string {
+  return token
+    .replace(/[Oo]/g, "0")
+    .replace(/[Ss]/g, "5")
+    .replace(/[IiLl]/g, "1")
+    .replace(/[Zz]/g, "2")
+    .replace(/[Bb]/g, "8")
+    .replace(/[Aa]/g, "4");
+}
+
+/** norm() plus the same letter→digit mapping, applied to BOTH the receipt
+ * text and the category keywords so "5UPERMERCADO" still matches
+ * "supermercado" — and clean text keeps matching too. */
+const ocrNorm = (s: string) =>
+  norm(s)
+    .replace(/o/g, "0")
+    .replace(/s/g, "5")
+    .replace(/[il]/g, "1")
+    .replace(/z/g, "2")
+    .replace(/b/g, "8")
+    .replace(/a/g, "4");
+
 /** "1.234,56" / "12,50" / "1.250" → number. */
 export function parseBrl(input: string): number {
   let t = input.replace(/[^\d.,]/g, "");
@@ -274,29 +304,63 @@ export function parseBrl(input: string): number {
 
 /**
  * Picks the best amount: an explicit "total/valor/pago" line first (ignoring
- * "total itens"), then the last R$ value on the receipt.
+ * "total itens"), then the last R$ value on the receipt. Amounts go through
+ * fuzzy parsing so cents survive OCR noise ("28,9O", "28 90", "T0TAL").
  */
 function findAmount(text: string): number {
+  const amount = new RegExp(
+    `(${D}+(?:[.,]${D}{3})*(?:[.,\\s]+${D}{1,2}))`,
+  );
+  const totalKinds =
+    "t[0o]tal(?: a p[0o]gar| p[0o]g[0o])?|v[0o]l[0o]r(?: t[0o]tal)?|a p[0o]gar";
   const totalLine = text.match(
-    /^\s*(?:total(?: a pagar| pago)?|valor(?: total)?|a pagar)\b(?!\s*itens)[^0-9]*([\d.,]+)/im,
+    new RegExp(`^\\s*(?:${totalKinds})\\b(?!\\s*itens)[^0-9]*${amount.source}`, "im"),
   );
   if (totalLine) {
-    const n = parseBrl(totalLine[1]);
+    const n = parseAmountToken(totalLine[1]);
     if (n > 0) return n;
   }
   const totalAnywhere = text.match(
-    /\btotal(?: a pagar| pago)?\b(?!\s*itens)[^0-9]*([\d.,]+)/i,
+    new RegExp(`\\b(?:${totalKinds})\\b(?!\\s*itens)[^0-9]*${amount.source}`, "i"),
   );
   if (totalAnywhere) {
-    const n = parseBrl(totalAnywhere[1]);
+    const n = parseAmountToken(totalAnywhere[1]);
     if (n > 0) return n;
   }
-  const values = [...text.matchAll(/r\$\s*([\d.,]+)/gi)].map((m) =>
-    parseBrl(m[1]),
-  );
+  const values = [
+    ...text.matchAll(new RegExp(`\\br[$5]\\s*${amount.source}`, "gi")),
+  ].map((m) => parseAmountToken(m[1]));
   const last = values[values.length - 1];
   if (last && last > 0) return last;
   return 0;
+}
+
+/**
+ * Parses a possibly-fuzzy BRL amount token, recovering cents lost to OCR:
+ * "28,9O" → 28.9, "28 90" → 28.9, "1.234,56" → 1234.56.
+ */
+function parseAmountToken(token: string): number {
+  let t = ocrDigits(token);
+  // "28 90" / "28, 90" → "28,90" (the comma blurred into a space on thermal
+  // print, or a space inserted after it).
+  t = t.replace(/^(\d+(?:[.,]\d{3})*)[.,\s]+(\d{1,2})$/, "$1,$2");
+  t = t.replace(/[^\d.,]/g, "");
+  if (!t) return 0;
+  const hasComma = t.includes(",");
+  const hasDot = t.includes(".");
+  if (hasComma && hasDot) {
+    t = t.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    t = t.replace(",", ".");
+  } else if (hasDot) {
+    const after = t.split(".")[1] ?? "";
+    if (after.length === 3) t = t.replace(".", "");
+  }
+  // Receipts always print two decimals — a lone decimal digit is one the OCR
+  // dropped (usually a 0 read as O, recovered above; pad the rest).
+  if (t.includes(".") && t.split(".")[1].length === 1) t += "0";
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Removes CNPJ / IE / phone / URL / long number runs from a title line. */
@@ -323,7 +387,11 @@ const BAD_TITLE_LINE =
  */
 function looksLikeStoreName(line: string): boolean {
   if ((line.match(/[a-zA-ZÀ-ÿ]/g) ?? []).length < 4) return false;
-  if (/[a-zA-ZÀ-ÿ]\d|\d[a-zA-ZÀ-ÿ]/.test(line)) return false;
+  // Several digits embedded mid-word (letter-digit-letter) = barcode / access
+  // key gibberish ("WVOB8o0oH-CEE"); a single one ("CARREF0UR", "H0TEL")
+  // is plain OCR noise on a real name and still passes. Lookahead so
+  // overlapping hits count ("o0o" next to "B8o" in the same word).
+  if ((line.match(/[a-zA-ZÀ-ÿ](?=\d[a-zA-ZÀ-ÿ])/g) ?? []).length >= 2) return false;
   if (/[-_=+*•|.,/]{4,}/.test(line)) return false;
   if (/([a-zA-ZÀ-ÿ])\1{3,}/.test(line)) return false;
   return true;
@@ -338,7 +406,8 @@ function findTitle(text: string): string {
     const cleaned = stripNoise(line);
     if (!/[a-zà-ú]{3,}/i.test(cleaned)) continue; // needs real words
     if (BAD_TITLE_LINE.test(cleaned)) continue; // header boilerplate
-    if (/^\d/.test(cleaned)) continue; // item / code line
+    if (/^[0-9]+(?:\s|$)/.test(cleaned)) continue; // item / code line (a lone leading
+    // confusion digit like "5UPERMERCADO" is OCR noise on a real name, not a code)
     if (/\d+[,.]\d{2}\s*$/.test(cleaned)) continue; // ends with a price → item line
     if (!looksLikeStoreName(cleaned)) continue; // barcode / OCR gibberish
     return cleaned.slice(0, 40);
@@ -384,18 +453,20 @@ const CONTEXT_KEYWORDS: Record<string, string[]> = {
 /** Short generic words that only match in the store title, not item text. */
 const TITLE_ONLY_KEYWORDS = new Set(["cafe", "agua", "energia"]);
 
-/** Matches every category's keywords against one normalized haystack scope. */
+/** Matches every category's keywords against one OCR-normalized haystack
+ * scope. Both sides go through ocrNorm, so "5UPERMERCADO" still matches the
+ * keyword "supermercado" (and clean text keeps matching too). */
 function matchInCategory(haystack: string, isTitle: boolean): string {
   for (const cat of SCAN_CATEGORIES) {
     if (cat.id === "outros") continue;
     for (const kw of cat.keywords) {
-      const k = norm(kw);
+      const k = ocrNorm(kw);
       if (!k) continue;
-      const contextual = CONTEXT_KEYWORDS[k];
+      const contextual = CONTEXT_KEYWORDS[norm(kw)];
       if (contextual) {
-        if (!isTitle && !contextual.some((c) => haystack.includes(norm(c))))
+        if (!isTitle && !contextual.some((c) => haystack.includes(ocrNorm(c))))
           continue;
-      } else if (TITLE_ONLY_KEYWORDS.has(k) && !isTitle) {
+      } else if (TITLE_ONLY_KEYWORDS.has(norm(kw)) && !isTitle) {
         continue;
       }
       if (wordBoundaryIncludes(haystack, k)) return cat.id;
@@ -407,7 +478,7 @@ function matchInCategory(haystack: string, isTitle: boolean): string {
 /** Matches a text against the scan/voice category keywords. */
 export function findCategoryId(text: string, title = ""): string {
   // 1) The store name is the strongest signal.
-  const titleNorm = norm(title);
+  const titleNorm = ocrNorm(title);
   if (titleNorm) {
     const byTitle = matchInCategory(titleNorm, true);
     if (byTitle) return byTitle;
@@ -420,19 +491,24 @@ export function findCategoryId(text: string, title = ""): string {
     .filter(Boolean)
     .slice(0, 12);
   for (const line of lines) {
-    const id = matchInCategory(norm(line), false);
+    const id = matchInCategory(ocrNorm(line), false);
     if (id) return id;
   }
   // 3) Full text, strong keywords only.
-  return matchInCategory(norm(text), false) || "outros";
+  return matchInCategory(ocrNorm(text), false) || "outros";
 }
 
-/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM") inside a line. */
+/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM") inside a line,
+ * with OCR-tolerant digits ("l4:3Z" → "14:32"). */
 function findTimeInLine(line: string): string {
-  const m = line.match(/([01]\d|2[0-3]):([0-5]\d)/);
-  if (m) return `${m[1]}:${m[2]}`;
-  const h = line.match(/([01]\d|2[0-3])h([0-5]\d)/i);
-  return h ? `${h[1]}:${h[2]}` : "";
+  const m = line.match(
+    new RegExp(`([01lIiL]${D}|2[0-3OoIiLlSZB])[:h]([0-5OoIiLlSZB]${D})`, "i"),
+  );
+  if (!m) return "";
+  const hh = parseInt(ocrDigits(m[1]), 10);
+  const mm = parseInt(ocrDigits(m[2]), 10);
+  if (hh > 23 || mm > 59) return "";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
 /** Emission-context words (data/hora/emissão/saída/venda/compra). */
@@ -443,17 +519,17 @@ const VALIDITY_CTX = /(^|[^a-z])(val|validade|venc|vencimento|expir)/i;
 function findDate(text: string): { date: string; time: string } {
   const lines = text.split("\n");
   let best: { date: string; line: string; score: number } | null = null;
-  const dmyRe = /(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})/;
-  const isoRe = /(\d{4})-(\d{2})-(\d{2})/;
+  const dmyRe = new RegExp(`(${D}{2})[\\/.\\-](${D}{2})[\\/.\\-](${D}{4})`);
+  const isoRe = new RegExp(`(${D}{4})-(${D}{2})-(${D}{2})`);
 
   for (const line of lines) {
     const ctx = norm(line);
     if (VALIDITY_CTX.test(ctx)) continue; // "VAL 30/08/2026" etc. — not the purchase date
     const dm = line.match(dmyRe);
     if (dm) {
-      const d = parseInt(dm[1], 10);
-      const mo = parseInt(dm[2], 10);
-      const y = parseInt(dm[3], 10);
+      const d = parseInt(ocrDigits(dm[1]), 10);
+      const mo = parseInt(ocrDigits(dm[2]), 10);
+      const y = parseInt(ocrDigits(dm[3]), 10);
       if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2000 && y <= 2100) {
         const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
         const score = EMISSION_CTX.test(ctx) ? 2 : 1;
@@ -462,10 +538,11 @@ function findDate(text: string): { date: string; time: string } {
     }
     const im = line.match(isoRe);
     if (im) {
-      const mo = parseInt(im[2], 10);
-      const d = parseInt(im[3], 10);
-      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-        const date = im[0];
+      const y = parseInt(ocrDigits(im[1]), 10);
+      const mo = parseInt(ocrDigits(im[2]), 10);
+      const d = parseInt(ocrDigits(im[3]), 10);
+      if (y >= 2000 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
         const score = EMISSION_CTX.test(ctx) ? 2 : 1;
         if (!best || score > best.score) best = { date, line, score };
       }
@@ -481,10 +558,11 @@ function findDate(text: string): { date: string; time: string } {
     time = findTimeInLine(after) || findTimeInLine(best.line);
   }
   if (!time) {
-    // The date line had no time — look only at lines that mention HORA/emissão
-    // (never scan item lines: prices like "12:50" can be OCR'd with a colon).
+    // The date line had no time — look only at lines that mention
+    // HORA/emissão/leitura (never scan item lines: prices like "12:50" can be
+    // OCR'd with a colon).
     for (const line of lines) {
-      if (/\bhora\b|emiss|saida/.test(norm(line))) {
+      if (/\bhora\b|emiss|saida|leitura/.test(norm(line))) {
         time = findTimeInLine(line);
         if (time) break;
       }
