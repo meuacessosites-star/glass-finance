@@ -298,11 +298,14 @@ export function ScanReceiptSheet({
         finishScan(runId);
         return;
       }
+      // O QR da nota em si já carrega o CNPJ → nome da loja: mesmo sem o
+      // scrape, deixamos o formulário pronto para só digitar o valor.
+      if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
       setScanPhase("failed");
       setScanStatus(
         res?.error
-          ? `Não foi possível consultar a nota na SEFAZ (${res.error}). Tente colar a URL novamente ou preencha manualmente.`
-          : "Não foi possível consultar a nota na SEFAZ. Tente novamente ou preencha manualmente.",
+          ? `Não deu para consultar a nota na SEFAZ (${res.error}). A loja já foi preenchida — digite o valor e ajuste o que precisar.`
+          : "Não deu para consultar a nota na SEFAZ. A loja já foi preenchida — digite o valor e ajuste o que precisar.",
       );
       return;
     }

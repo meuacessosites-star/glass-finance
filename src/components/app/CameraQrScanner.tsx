@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, QrCode, RefreshCw } from "lucide-react";
 import jsQR from "jsqr";
+import { otsuBinarize } from "@/lib/receipt-scan";
 
 // ---------------------------------------------------------------------------
-// CameraQrScanner — live QR reader straight from the browser camera. The
-// video feed is drawn to a small canvas every other animation frame and
-// decoded with jsQR; when a code is found the stream stops, the frame is
-// captured as a data URL and handed to the parent for the OCR/parse flow.
+// CameraQrScanner — live QR reader straight from the browser camera. Every
+// frame is drawn to a small canvas and decoded with jsQR (fast path); every
+// 2nd frame retries at higher resolution and every 4th frame adds an Otsu
+// binarization (low-contrast receipts) plus the native BarcodeDetector API
+// when the browser has it (Chrome/Edge/Android), which is far more tolerant
+// of small/tilted codes. When a code is found the stream stops, the frame is
+// captured as a data URL and handed to the parent for the scrape/parse flow.
 // Falls back gracefully to a message when camera access is denied/unavailable.
 // ---------------------------------------------------------------------------
 
@@ -26,6 +30,10 @@ export function CameraQrScanner({
   const rafRef = useRef(0);
   const frameCountRef = useRef(0);
   const foundRef = useRef(false);
+  const nativeRef = useRef<{
+    detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
+  } | null>(null);
+  const nativeBusyRef = useRef(false);
 
   const [error, setError] = useState("");
   const [found, setFound] = useState<{ payload: string; frame: string } | null>(
@@ -33,8 +41,32 @@ export function CameraQrScanner({
   );
   const aliveRef = useRef(true);
 
+  // Native BarcodeDetector (Chrome/Edge/Android) — muito mais tolerante a QR
+  // pequenos ou inclinados que o jsQR. Firefox/Safari não têm: seguem só com
+  // jsQR.
+  useEffect(() => {
+    const w = window as unknown as {
+      BarcodeDetector?: new (opts: { formats: string[] }) => {
+        detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
+      };
+    };
+    if (typeof w.BarcodeDetector === "function") {
+      try {
+        nativeRef.current = new w.BarcodeDetector({ formats: ["qr_code"] });
+      } catch {
+        nativeRef.current = null;
+      }
+    }
+  }, []);
+
   const startCamera = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError(
+          "Este navegador não libera a câmera aqui. Use “Tirar foto” ou “Escolher da galeria”.",
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1280 } },
         audio: false,
@@ -87,35 +119,95 @@ export function CameraQrScanner({
     }
   };
 
+  /** Versão binarizada por Otsu do frame — ajuda em cupom desbotado, sombra
+   * ou brilho, onde o binarizador interno do jsQR não separa QR do fundo. */
+  const tryOtsu = (
+    video: HTMLVideoElement,
+    canvas: HTMLCanvasElement,
+    width: number,
+  ): string | null => {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    try {
+      canvas.width = width;
+      canvas.height = Math.round((vh / vw) * width);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const code = jsQR(otsuBinarize(data), canvas.width, canvas.height);
+      return code?.data ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** Encontrou um payload: para a câmera, captura o frame atual em alta
+   * resolução (para anexar à transação) e avisa o pai, que segue para o
+   * scrape/parse. */
+  const onCode = (payload: string) => {
+    if (foundRef.current) return;
+    foundRef.current = true;
+    const video = videoRef.current;
+    let frame = "";
+    if (video && video.videoWidth > 0) {
+      try {
+        const bigW = 1200;
+        const bigH =
+          Math.round((video.videoHeight / video.videoWidth) * bigW) || bigW;
+        const big = document.createElement("canvas");
+        big.width = bigW;
+        big.height = bigH;
+        const bctx = big.getContext("2d");
+        if (bctx) bctx.drawImage(video, 0, 0, bigW, bigH);
+        frame = big.toDataURL("image/jpeg", 0.85);
+      } catch {
+        frame = "";
+      }
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    cancelAnimationFrame(rafRef.current);
+    setFound({ payload, frame });
+  };
+
   const tick = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || foundRef.current) return;
     frameCountRef.current += 1;
-    // Tenta a cada 2 frames: primeiro 640px (rápido); se não achar, 1280px
-    // (QR pequenos precisam de mais pixels por módulo). Nenhum erro derruba o
-    // loop — ele volta a agendar o próximo frame sempre.
-    if (video.readyState >= 2 && frameCountRef.current % 2 === 0) {
-      const payload =
-        tryDecode(video, canvas, SCAN_W) ?? tryDecode(video, canvas, SCAN_W * 2);
+    const n = frameCountRef.current;
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      // 640px a cada frame (rápido); em frames pares tenta também 1280px
+      // (QR pequenos precisam de mais pixels por módulo); a cada 4 frames,
+      // binarização Otsu + BarcodeDetector nativo. Nenhum erro derruba o
+      // loop — ele volta a agendar o próximo frame sempre.
+      let payload: string | null = null;
+      if (n % 2 === 1) {
+        payload = tryDecode(video, canvas, SCAN_W);
+      } else {
+        payload =
+          tryDecode(video, canvas, SCAN_W) ??
+          tryDecode(video, canvas, SCAN_W * 2);
+        if (!payload && n % 4 === 0) payload = tryOtsu(video, canvas, SCAN_W);
+      }
       if (payload) {
-        foundRef.current = true;
-        // Captura o frame atual em resolução maior para anexar à transação.
-        const big = document.createElement("canvas");
-        const bigW = 1200;
-        const bigH = Math.round((video.videoHeight / video.videoWidth) * bigW) || bigW;
-        big.width = bigW;
-        big.height = bigH;
-        const bctx = big.getContext("2d");
-        if (bctx) bctx.drawImage(video, 0, 0, bigW, bigH);
-        setFound({
-          payload,
-          frame: big.toDataURL("image/jpeg", 0.85),
-        });
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        cancelAnimationFrame(rafRef.current);
+        onCode(payload);
         return;
+      }
+      if (n % 4 === 0 && nativeRef.current && !nativeBusyRef.current) {
+        nativeBusyRef.current = true;
+        nativeRef.current
+          .detect(video)
+          .then((codes) => {
+            const raw = codes?.[0]?.rawValue;
+            if (typeof raw === "string" && raw && !foundRef.current) onCode(raw);
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            nativeBusyRef.current = false;
+          });
       }
     }
     rafRef.current = requestAnimationFrame(tick);
@@ -142,6 +234,7 @@ export function CameraQrScanner({
             <video
               ref={videoRef}
               playsInline
+              autoPlay
               muted
               className="aspect-[3/4] w-full object-cover"
             />

@@ -576,38 +576,144 @@ export function parseBrCode(
   return out;
 }
 
-/** Converte um ImageData em versões normalizadas para o jsQR: original,
- * cinza, invertido (QR claro-em-fundo-escuro) e limiar (preto/branco puro,
- * para fotos com ruído/sombra). */
-function qrPasses(base: Uint8ClampedArray): Uint8ClampedArray[] {
-  const gray = new Uint8ClampedArray(base);
-  const inv = new Uint8ClampedArray(base);
-  const thr = new Uint8ClampedArray(base);
-  for (let i = 0; i < base.length; i += 4) {
-    const g = 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
-    gray[i] = g;
-    gray[i + 1] = g;
-    gray[i + 2] = g;
-    gray[i + 3] = 255;
-    inv[i] = 255 - base[i];
-    inv[i + 1] = 255 - base[i + 1];
-    inv[i + 2] = 255 - base[i + 2];
-    inv[i + 3] = 255;
-    const t = g > 128 ? 255 : 0;
-    thr[i] = t;
-    thr[i + 1] = t;
-    thr[i + 2] = t;
-    thr[i + 3] = 255;
+// ---------------------------------------------------------------------------
+// Detecção de QR — três camadas, da mais robusta à mais barata:
+//   1) BarcodeDetector nativo (Chrome/Edge/Android): roda na imagem em
+//      resolução original e lê QR pequenos ou inclinados que o jsQR perde;
+//   2) jsQR em várias renderizações (descida suavizada para fotos grandes,
+//      subida com vizinho mais próximo — bordas de módulo nítidas — para
+//      capturas pequenas);
+//   3) binarização Otsu e limiar adaptativo (integral image) para fotos com
+//      sombra, brilho ou contraste baixo, onde o binarizador interno do jsQR
+//      falha.
+// ---------------------------------------------------------------------------
+
+type NativeCode = { rawValue: string };
+
+type NativeDetector = {
+  detect: (source: CanvasImageSource) => Promise<NativeCode[]>;
+};
+
+/** Singleton do BarcodeDetector nativo, quando o navegador tem (Chrome,
+ * Edge, Android). Nunca lança. */
+function getNativeDetector(): NativeDetector | null {
+  const w = window as unknown as {
+    BarcodeDetector?: new (opts: { formats: string[] }) => NativeDetector;
+  };
+  if (typeof w.BarcodeDetector !== "function") return null;
+  try {
+    return new w.BarcodeDetector({ formats: ["qr_code"] });
+  } catch {
+    return null;
   }
-  return [base, gray, inv, thr];
 }
+
+/** Tenta ler o QR com o detector nativo do navegador (se existir). */
+async function detectNative(source: CanvasImageSource): Promise<string | null> {
+  try {
+    const detector = getNativeDetector();
+    if (!detector) return null;
+    const codes = await detector.detect(source);
+    const raw = codes?.[0]?.rawValue;
+    return typeof raw === "string" && raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Binariza uma imagem RGBA em preto/branco com o limiar automático de Otsu
+ * (escolhe o limiar que melhor separa o QR do fundo, sem valor fixo que
+ * falha em fotos claras/escuras demais). */
+export function otsuBinarize(base: Uint8ClampedArray): Uint8ClampedArray {
+  const hist = new Uint32Array(256);
+  const total = base.length / 4;
+  for (let i = 0; i < base.length; i += 4) {
+    hist[(0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2]) | 0]++;
+  }
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0;
+  let wB = 0;
+  let bestVar = -1;
+  let thr = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > bestVar) {
+      bestVar = v;
+      thr = t;
+    }
+  }
+  const out = new Uint8ClampedArray(base);
+  for (let i = 0; i < out.length; i += 4) {
+    const lum = 0.299 * out[i] + 0.587 * out[i + 1] + 0.114 * out[i + 2];
+    const v = lum < thr ? 0 : 255;
+    out[i] = v;
+    out[i + 1] = v;
+    out[i + 2] = v;
+    out[i + 3] = 255;
+  }
+  return out;
+}
+
+/** Binarização adaptativa (média local via integral image): cada pixel vira
+ * preto/branco comparado com a média da vizinhança — robusta a sombras,
+ * brilho e fundo degradê, que derrubam qualquer limiar fixo. */
+function adaptiveBinarize(
+  base: Uint8ClampedArray,
+  w: number,
+  h: number,
+): Uint8ClampedArray {
+  const itg = new Float64Array(w * h);
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      row += 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
+      itg[y * w + x] = row + (y > 0 ? itg[(y - 1) * w + x] : 0);
+    }
+  }
+  const out = new Uint8ClampedArray(base);
+  const s = Math.max(16, Math.round(Math.min(w, h) / 16));
+  const half = s >> 1;
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - half);
+    const y1 = Math.min(h - 1, y + half);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - half);
+      const x1 = Math.min(w - 1, x + half);
+      const sum =
+        itg[y1 * w + x1] -
+        (x0 > 0 ? itg[y1 * w + x0 - 1] : 0) -
+        (y0 > 0 ? itg[(y0 - 1) * w + x1] : 0) +
+        (x0 > 0 && y0 > 0 ? itg[(y0 - 1) * w + x0 - 1] : 0);
+      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const mean = sum / count;
+      const i = (y * w + x) * 4;
+      const lum = 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
+      const v = lum < mean - 4 ? 0 : 255;
+      out[i] = v;
+      out[i + 1] = v;
+      out[i + 2] = v;
+      out[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
+type QrRender = { w: number; h: number; smooth: boolean; size: number };
 
 /** Decodes a QR code in an image (original File or data URL) and returns the
  * classified payload (NFC-e URL, PIX BR Code, …). Returns null on no QR /
- * decode failure — never throws. Tries several render sizes (upscaling small
- * screenshots and reading larger photos at higher resolution so small QRs
- * keep enough pixels per module) and, for each size, the original, grayscale,
- * inverted and thresholded passes. */
+ * decode failure — never throws. Camada 1 usa o BarcodeDetector nativo na
+ * imagem em resolução original; camadas 2–3 usam jsQR em várias
+ * renderizações e binarizações. */
 export async function decodeQrPayload(
   input: File | string,
 ): Promise<QrResult | null> {
@@ -617,38 +723,63 @@ export async function decodeQrPayload(
     const w0 = img.width;
     const h0 = img.height;
     if (!w0 || !h0) return null;
+
+    // Camada 1 — detector nativo na imagem em resolução original.
+    const native = await detectNative(img);
+    if (native) return parseQrFromPayload(native);
+
+    // Camada 2 — jsQR em várias renderizações. Descidas (1400→2000→2800,
+    // suavizadas) para fotos grandes; subidas com vizinho mais próximo para
+    // capturas pequenas onde o QR ocupa poucos pixels (a interpolação
+    // bilinear borra as bordas dos módulos e derruba o jsQR).
     const maxSide = Math.max(w0, h0);
+    const sizes = new Set<number>();
+    sizes.add(Math.min(1400, maxSide));
+    if (maxSide > 1400) sizes.add(Math.min(2000, maxSide));
+    if (maxSide > 2000) sizes.add(Math.min(2800, maxSide));
+    if (maxSide < 1600) sizes.add(2400);
+    if (maxSide < 2200) sizes.add(3200);
+    const renders: QrRender[] = [...sizes]
+      .filter((size) => size > 0 && size <= 3200)
+      .map((size) => ({
+        w: Math.max(1, Math.round((w0 * size) / maxSide)),
+        h: Math.max(1, Math.round((h0 * size) / maxSide)),
+        smooth: size <= maxSide,
+        size,
+      }))
+      .sort((a, b) => a.size - b.size);
 
-    // Sizes to try: fit within 1600 (padrão), 2400 para QR pequenos em fotos
-    // grandes, e upscale para capturas pequenas (jsQR precisa de pixels por
-    // módulo suficientes).
-    const targets = new Set<number>();
-    targets.add(Math.min(1600, maxSide));
-    if (maxSide > 1600) targets.add(Math.min(2400, maxSide));
-    if (maxSide < 700) targets.add(1200);
-
-    const attempts: { w: number; h: number; data: Uint8ClampedArray }[] = [];
-    for (const size of targets) {
-      const w = Math.max(1, Math.round(w0 * (size / maxSide)));
-      const h = Math.max(1, Math.round(h0 * (size / maxSide)));
+    const renderBase = (r: QrRender): Uint8ClampedArray | null => {
       const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = r.w;
+      canvas.height = r.h;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) continue;
+      if (!ctx) return null;
+      ctx.imageSmoothingEnabled = r.smooth;
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      const base = ctx.getImageData(0, 0, w, h).data;
-      for (const data of qrPasses(base)) {
-        attempts.push({ w, h, data });
-      }
+      ctx.fillRect(0, 0, r.w, r.h);
+      ctx.drawImage(img, 0, 0, r.w, r.h);
+      return ctx.getImageData(0, 0, r.w, r.h).data;
+    };
+
+    for (const r of renders) {
+      const base = renderBase(r);
+      if (!base) continue;
+      const code = jsQR(base, r.w, r.h);
+      if (code?.data) return parseQrFromPayload(code.data);
     }
 
-    for (const { w, h, data } of attempts) {
-      const code = jsQR(data, w, h);
-      if (!code?.data) continue;
-      return parseQrFromPayload(code.data);
+    // Camada 3 — binarizações (sombras/baixo contraste). A adaptativa é cara
+    // em imagens muito grandes, então só roda até ~4 MP por render.
+    for (const r of renders) {
+      const base = renderBase(r);
+      if (!base) continue;
+      const passes: Uint8ClampedArray[] = [otsuBinarize(base)];
+      if (r.w * r.h <= 4_000_000) passes.push(adaptiveBinarize(base, r.w, r.h));
+      for (const data of passes) {
+        const code = jsQR(data, r.w, r.h);
+        if (code?.data) return parseQrFromPayload(code.data);
+      }
     }
     return null;
   } catch {
