@@ -47,20 +47,21 @@ import {
 } from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — SOLUÇÃO DEFINITIVA, sempre terminando na tela de APROVAÇÃO:
-//   1. O usuário escolhe foto ou usa a câmera → tela de SCANNER dedicada,
-//      com a imagem em destaque e o progresso da leitura.
-//   2. O QR é decodificado (jsQR). Se for URL de NFC-e (SEFAZ), o backend
-//      (action Convex + cheerio) raspa os dados exatos da nota: loja, valor,
-//      data, hora e itens. Se for PIX "copia e cola", valor e recebedor vêm
-//      direto do código.
-//   3. Sem QR (ou scrape falhou) → a imagem vai DIRETAMENTE para um modelo
-//      Vision LLM (gateway VLY e/ou Gemini) com System Prompt estrito que
-//      devolve APENAS o JSON { estabelecimento, valor_total, data, itens }.
-//      O cliente aplica as regras condicionais: 3+ itens → Descrição com
-//      categoria inteligente; 1–2 itens → qtd + primeiro produto; Rascunho →
-//      estabelecimento + lista limpa dos itens. Só se a visão falhar é que a
-//      tela de erro com preenchimento manual aparece.
+// Escanear Nota — pipeline "bulletproof" com a função central
+// `processarImagem(file)`:
+//   1. Foto recebida → estado de loading ("Analisando a imagem…"). Nenhum
+//      erro é disparado neste ponto.
+//   2. Etapa 1 — Decodificação QR (jsQR + BarcodeDetector nativo, tentativa
+//      única com orçamento de ~1s).
+//   3. Bifurcação silenciosa: URL/PIX com dados → caminho exato (scrape
+//      SEFAZ via action Convex + cheerio, ou campos direto do código). Sem
+//      dados/erro → IGNORA silenciosamente e vai para a Etapa 2.
+//   4. Etapa 2 — Visão LLM (fallback): a MESMA imagem vai para o modelo
+//      Vision com JSON estruturado { estabelecimento, valor_total, data,
+//      itens } e as regras condicionais (3+ itens → categoria; 1–2 itens →
+//      qtd + produto; Rascunho → loja + lista limpa).
+//   5. Erro final ("Não conseguimos ler") SÓ no catch da Etapa 2 — quando o
+//      QR falhou E a IA de Visão falhou.
 // ---------------------------------------------------------------------------
 
 type Step = "source" | "camera" | "scan" | "edit" | "approve";
@@ -315,15 +316,6 @@ export function ScanReceiptSheet({
   };
 
 
-  /**
-   * Fallback AUTOMÁTICO do Leitor de Notas: o QR falhou (não decodificou,
-   * não é nota ou a SEFAZ não respondeu) → a imagem vai DIRETAMENTE para um
-   * modelo Vision LLM (gateway VLY e/ou Gemini, no backend) com System Prompt
-   * estrito que devolve APENAS o JSON { estabelecimento, valor_total, data,
-   * itens } — sem OCR de texto, sem parser burro. O cliente aplica as regras
-   * condicionais de Descrição/Rascunho na tela de aprovação. Só se a visão
-   * falhar é que a tela de erro com preenchimento manual aparece.
-   */
   /** Aguarda `ms` milissegundos — garante que o estado "Analisando a
    * imagem…" nunca seja um flash (sem chave de IA o retorno do modelo é
    * instantâneo). */
@@ -331,33 +323,140 @@ export function ScanReceiptSheet({
     new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
   /**
-   * PLANO B — leitura do texto da imagem por Visão LLM. Sempre encadeado
-   * quando o Plano A (QR code / scrape da SEFAZ) não entrega dados. A falha
-   * do QR NUNCA ativa o estado de erro: a UI entra em "Analisando a
-   * imagem…" ANTES de preparar a imagem e permanece nele durante toda a
-   * requisição à IA. A tela de erro só aparece se a requisição FINAL à IA de
-   * Visão falhar ou voltar vazia (sem chave, rede, imagem ilegível).
+   * FUNÇÃO CENTRAL — pipeline "bulletproof" do Leitor de Notas.
+   *
+   * Recebe a imagem (File da galeria/câmera ou frame da câmera ao vivo;
+   * `knownPayload` opcional quando o QR já foi lido ao vivo) e roda o fluxo
+   * sequencial completo:
+   *   1) Loading: "Analisando a imagem…". NENHUM erro é disparado aqui.
+   *   2) Etapa 1 — Decodificação QR (jsQR + BarcodeDetector nativo, tentativa
+   *      única com orçamento de ~1s).
+   *   3) Bifurcação silenciosa: URL/PIX com dados → caminho exato (scrape
+   *      SEFAZ ou campos do código). Falha ou ausência → IGNORA o erro
+   *      silenciosamente, SEM mudar o estado da tela, e segue para a Etapa 2.
+   *   4) Etapa 2 — Visão LLM (fallback): a MESMA imagem vai para o modelo
+   *      Vision com o JSON estruturado (estabelecimento, valor, itens) e as
+   *      regras condicionais de preenchimento.
+   *   5) Erro final — "Não conseguimos ler" SÓ no catch final (QR falhou E a
+   *      IA de Visão falhou). O usuário vê apenas "Analisando a imagem…"
+   *      enquanto QR e Visão rodam nos bastidores.
    */
-  const runFallback = async (runId: number) => {
-    // Feedback imediato da transição Plano A (QR) → Plano B (Texto via LLM).
-    setScanPhase("vision");
-    setScanStatus("Analisando a imagem…");
+  const processarImagem = async (
+    input: File | string,
+    knownPayload?: string,
+  ) => {
+    const runId = runIdRef.current;
 
-    const img = await bestImageForVision();
-    if (runId !== runIdRef.current) return;
-    if (!img) {
-      // Sem imagem não há como tentar a visão — erro real, última alternativa.
+    // 1) Início do processo — estado de loading. Nenhum erro pode aparecer
+    //    daqui até o fim das duas etapas.
+    setStep("scan");
+    setScanPhase("detecting");
+    setScanStatus("Analisando a imagem…");
+    if (typeof input === "string") {
+      setImages([input]);
+    } else {
+      sourceFileRef.current = input;
+      try {
+        setImages([await imageToDataUrl(input, 1000)]);
+      } catch {
+        // imagem ilegível para exibir — o pipeline segue mesmo assim
+      }
+    }
+
+    try {
+      // 2) Etapa 1 — Decodificação QR (tentativa única, orçamento ~1s).
+      //    Qualquer falha vira null (nunca throw): bifurcação silenciosa.
+      let qr: QrResult | null = null;
+      if (knownPayload) {
+        qr = parseQrFromPayload(knownPayload);
+      } else {
+        try {
+          qr = await Promise.race([
+            decodeQrPayload(input, undefined, 900),
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), 1000);
+            }),
+          ]);
+        } catch {
+          qr = null; // IGNORA o erro silenciosamente
+        }
+      }
+      if (runId !== runIdRef.current) return;
+
+      // 3) Bifurcação silenciosa: QR com dados → caminho exato. Sucesso →
+      //    tela de aprovação. Falha/ausência → NÃO muda o estado da tela
+      //    (continua "Analisando a imagem…") e cai na Etapa 2.
+      if (qr && (qr.url || (qr.amount && qr.amount > 0))) {
+        const sucesso = await aplicarDadosDoQr(runId, qr);
+        if (runId !== runIdRef.current) return;
+        if (sucesso) return;
+      }
+
+      // 4) Etapa 2 — Visão LLM (fallback automático) com a mesma imagem.
+      await aplicarVisao(runId, input);
+    } catch {
+      // 5) Tratamento de erro FINAL — única porta da tela "Não conseguimos
+      //    ler": QR falhou E a IA de Visão falhou.
+      if (runId !== runIdRef.current) return;
       setScanPhase("failed");
       setScanStatus(
         "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto, cole o código ou preencha manualmente.",
       );
-      return;
     }
+  };
 
-    // Chamada DIRETA ao modelo Vision: a imagem inteira vai para o modelo com
-    // o System Prompt estrito (JSON exato). O estado "Analisando a imagem…"
-    // fica visível por no mínimo ~1,4s para a transição ser percebida mesmo
-    // quando a resposta da IA é instantânea.
+  /** Aplica os dados EXATOS de um QR já decodificado (PIX "copia e cola" ou
+   * URL de NFC-e/SEFAZ). Devolve true quando preencheu com sucesso; false →
+   * a bifurcação segue silenciosamente para a Etapa 2 (visão). */
+  const aplicarDadosDoQr = async (
+    runId: number,
+    qr: QrResult,
+  ): Promise<boolean> => {
+    // PIX "copia e cola": valor e recebedor exatos do próprio código.
+    if (qr.amount && qr.amount > 0) {
+      applyPixQr(qr);
+      finishScan(runId);
+      return true;
+    }
+    if (!qr.url) return false;
+    // Link que não é nota fiscal (ex.: checkout) → segue para a visão.
+    if (qr.isNfce === false) return false;
+
+    // URL de NFC-e (SEFAZ) → web scraping no backend. A tela continua em
+    // "Analisando a imagem…" — sem nenhum estado de erro intermediário.
+    let res: ScrapeResult | null = null;
+    try {
+      res = await scrapeNfce({ url: qr.url });
+    } catch {
+      res = null;
+    }
+    if (runId !== runIdRef.current) return false;
+    if (res?.ok && (res.total || res.store || res.items.length)) {
+      applyScraped(res, qr);
+      finishScan(runId);
+      return true;
+    }
+    // Scrape falhou → o QR da nota já carrega o CNPJ/nome; mesmo assim
+    // seguimos para a visão por IA antes de qualquer mensagem de erro.
+    if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
+    return false;
+  };
+
+  /** Etapa 2 — leitura do texto da imagem por Visão LLM. Único ponto em que
+   * a tela de erro pode ser ativada (via throw, capturado no catch final de
+   * `processarImagem`): se a requisição final à IA falhar ou voltar vazia. */
+  const aplicarVisao = async (runId: number, input: File | string) => {
+    setScanPhase("vision");
+    setScanStatus("Analisando a imagem…");
+
+    const img =
+      typeof input === "string" ? input : await bestImageForVision();
+    if (runId !== runIdRef.current) return;
+    if (!img) throw new Error("sem-imagem");
+
+    // A imagem inteira vai para o modelo Vision com o System Prompt estrito
+    // (JSON exato). "Analisando a imagem…" fica visível por no mínimo ~1,4s
+    // para a transição ser percebida mesmo quando a resposta é instantânea.
     let aiRes: AiReceiptResult | null = null;
     try {
       [aiRes] = await Promise.all([
@@ -374,168 +473,64 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // ÚNICO ponto de erro real da interface: a requisição final à IA de
-    // Visão falhou ou voltou vazia (sem chave, rede, imagem ilegível).
-    setScanPhase("failed");
-    setScanStatus(
-      "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto, cole o código ou preencha manualmente.",
-    );
+    // QR falhou E a visão falhou/voltou vazia → erro final (catch central).
+    throw new Error("visao-falhou");
   };
 
-  /** Roteia um QR já decodificado: NFC-e → scrape na SEFAZ; Pix BR Code →
-   * campos exatos do código; qualquer falha → fallback automático de visão
-   * por IA (a tela de erro só aparece se a visão também falhar). */
-  const handleParsedQr = async (qr: QrResult | null) => {
-    const runId = runIdRef.current;
-    if (!qr) {
-      // Nenhum QR na imagem → Plano B imediato: leitura do texto por visão
-      // por IA. O estado de erro NÃO é ativado aqui.
-      await runFallback(runId);
-      return;
-    }
 
-    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — a visão por
-    // IA ainda pode ler a foto.
-    if (qr.url && qr.isNfce === false) {
-      await runFallback(runId);
-      return;
-    }
-
-    // NFC-e (URL da SEFAZ) → web scraping no backend.
-    if (qr.url) {
-      setScanPhase("scraping");
-      setScanStatus("Consultando os dados da nota na SEFAZ…");
-      let res: ScrapeResult | null = null;
-      try {
-        res = await scrapeNfce({ url: qr.url });
-      } catch {
-        res = null;
-      }
-      if (runId !== runIdRef.current) return;
-      if (res?.ok && (res.total || res.store || res.items.length)) {
-        applyScraped(res, qr);
-        finishScan(runId);
-        return;
-      }
-      // Scrape falhou → o QR da nota já carrega o CNPJ/nome; mesmo assim
-      // tentamos a leitura da imagem por visão por IA antes de desistir.
-      if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
-      await runFallback(runId);
-      return;
-    }
-
-    // PIX "copia e cola": valor e recebedor exatos do próprio QR.
-    if (qr.amount && qr.amount > 0) {
-      applyPixQr(qr);
-      finishScan(runId);
-      return;
-    }
-
-    await runFallback(runId);
-  };
-
-  /**
-   * Pipeline do scanner: 1) decodifica o QR da imagem (UMA tentativa com
-   * orçamento de ~1s); 2) roteia o payload (NFC-e → scrape no backend; PIX BR
-   * Code → campos direto do código); 3) sem QR (ou orçamento esgotado) → a
-   * imagem vai AUTOMATICAMENTE para a visão por IA, sem tela de erro — a
-   * troca de método é transparente. O estado "failed" só existe se a visão
-   * também falhar.
-   */
-  const runScan = async (input: File | string, knownPayload?: string) => {
-    const runId = runIdRef.current;
-    setScanPhase("detecting");
-    setScanStatus("Procurando QR code…");
-    try {
-      let qr: QrResult | null = null;
-      if (knownPayload) {
-        qr = parseQrFromPayload(knownPayload);
-      } else {
-        // Busca de QR limitada: UMA tentativa com orçamento de ~1s (o próprio
-        // decoder já aborta em 900ms; o race abaixo é a rede de segurança).
-        // Passou disso, segue direto para a leitura da imagem por visão.
-        qr = await Promise.race([
-          decodeQrPayload(
-            input,
-            (label) => {
-              // Só atualiza o status se ainda é a mesma leitura (a tela pode
-              // ter sido fechada/reaberta enquanto o pipeline rodava).
-              if (runId === runIdRef.current) setScanStatus(label);
-            },
-            900,
-          ),
-          new Promise<null>((resolve) => {
-            window.setTimeout(() => resolve(null), 1000);
-          }),
-        ]);
-      }
-      if (runId !== runIdRef.current) return;
-      // Sem QR (ou orçamento esgotado) → fallback automático de visão por IA,
-      // sem mensagem de erro: o usuário nem percebe a troca de método.
-      await handleParsedQr(qr);
-    } catch {
-      if (runId !== runIdRef.current) return;
-      // Qualquer falha na decodificação segue o mesmo caminho transparente.
-      await handleParsedQr(null);
-    }
-  };
-
-  /** Fallback à prova de falhas: cola o código Pix "copia e cola" ou a URL da
-   * nota direto no app, sem depender da câmera/decodificação de imagem. */
+  /** Cola um código Pix "copia e cola" ou URL da nota (sem imagem). Rota
+   * pelo MESMO tratamento de QR do pipeline central; sem imagem não existe
+   * Etapa 2, então a falha cai direto no erro final. */
   const handlePastedPayload = async () => {
     const raw = pastePayload.trim();
     if (!raw) return;
     setPasteOpen(false);
     setPastePayload("");
+    const runId = runIdRef.current;
     setScanPhase("detecting");
-    setScanStatus("Lendo o código colado…");
-    await handleParsedQr(parseQrFromPayload(raw));
-  };
-
-  const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+    setScanStatus("Analisando o código colado…");
     try {
-      const url = await imageToDataUrl(file, 1000);
-      setImages([url]);
-      sourceFileRef.current = file;
-      setStep("scan");
-      setScanPhase("detecting");
-      setScanStatus("Detectando QR code na imagem…");
-      void runScan(file);
+      const qr = parseQrFromPayload(raw);
+      if (qr && (qr.url || (qr.amount && qr.amount > 0))) {
+        const sucesso = await aplicarDadosDoQr(runId, qr);
+        if (runId !== runIdRef.current) return;
+        if (sucesso) return;
+      }
+      throw new Error("codigo-sem-dados");
     } catch {
-      toast("Não foi possível abrir essa imagem", {
-        description: "Tente outra foto.",
-      });
+      if (runId !== runIdRef.current) return;
+      setScanPhase("failed");
+      setScanStatus(
+        "Não conseguimos reconhecer o código colado. Confira se copiou o código Pix completo ou o link da nota e tente novamente.",
+      );
     }
   };
 
-  /** Live-camera path: a QR was detected on screen — capture that frame and
-   * run the same QR → scrape pipeline as a photo. */
-  const handleCameraResult = async (payload: string, frame: string) => {
-    setImages([frame]);
-    setStep("scan");
-    setScanPhase("detecting");
-    setScanStatus("Lendo o QR code…");
-    void runScan(frame, payload);
+  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    // Tudo acontece dentro de `processarImagem`: loading → QR → visão →
+    // aprovação (ou erro final). Nenhum erro é disparado neste ponto.
+    void processarImagem(file);
   };
 
-  /** Shutter fallback: the live loop couldn't read the code, but the user
-   * captured a still — the FULL image pipeline (native + multi-resolution +
-   * binarizations) reads codes the live loop misses. */
+  /** Câmera ao vivo: o QR foi lido na tela — o frame + payload entram no
+   * MESMO pipeline central (Etapa 1 pulada pois já temos o código; se ele não
+   * entregar dados, a Etapa 2 de visão roda no frame). */
+  const handleCameraResult = (payload: string, frame: string) => {
+    void processarImagem(frame, payload);
+  };
+
+  /** Shutter: frame congelado entra no pipeline central completo (QR → visão). */
   const handleCameraCapture = (frame: string) => {
-    setImages([frame]);
-    setStep("scan");
-    setScanPhase("detecting");
-    setScanStatus("Analisando a foto em detalhe…");
-    void runScan(frame);
+    void processarImagem(frame);
   };
 
   const handleRetry = () => {
     const input = sourceFileRef.current ?? images[0];
     if (!input) return;
-    void runScan(input);
+    void processarImagem(input);
   };
 
   const handleManualFill = () => {
@@ -592,15 +587,11 @@ export function ScanReceiptSheet({
   };
 
   const scanStatusTitle =
-    scanPhase === "detecting"
-      ? "Detectando QR code…"
-      : scanPhase === "scraping"
-        ? "Consultando a SEFAZ…"
-        : scanPhase === "vision"
-          ? "Analisando a imagem…"
-          : scanPhase === "success"
-            ? "Dados encontrados"
-            : "Não conseguimos ler";
+    scanPhase === "detecting" || scanPhase === "vision"
+      ? "Analisando a imagem…"
+      : scanPhase === "success"
+        ? "Dados encontrados"
+        : "Não conseguimos ler";
 
   return (
     <AnimatePresence>
