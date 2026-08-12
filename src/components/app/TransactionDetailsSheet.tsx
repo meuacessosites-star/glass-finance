@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { CalendarDays, Clock, FileText, ImageIcon, X } from "lucide-react";
+import { CalendarDays, Clock, CreditCard, FileText, ImageIcon, X } from "lucide-react";
 import { useAppStore } from "@/lib/app-store";
 import { dayLabel, formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
+import { PAYMENT_METHOD_LABELS } from "./PaymentMethodSelector";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 
@@ -23,11 +24,17 @@ export function TransactionDetailsSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categoryById } = useAppStore();
+  const { categoryById, cards } = useAppStore();
   const [lightbox, setLightbox] = useState<string | null>(null);
   const category = categoryById[transaction.categoryId] ?? fallback;
   const isIncome = transaction.amount > 0;
   const attachments = transaction.attachments ?? [];
+  const paymentLabel = transaction.paymentMethod
+    ? PAYMENT_METHOD_LABELS[transaction.paymentMethod] ?? transaction.paymentMethod
+    : null;
+  const paymentCard = transaction.cardId
+    ? cards.find((c) => c.id === transaction.cardId)
+    : undefined;
 
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
@@ -114,6 +121,17 @@ export function TransactionDetailsSheet({
                   <Clock className="size-4 shrink-0 text-glass-sub" />
                   <p className="text-[13px] font-medium text-glass-ink">
                     Registrada às {transaction.time}
+                  </p>
+                </div>
+              )}
+              {paymentLabel && (
+                <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
+                  <CreditCard className="size-4 shrink-0 text-glass-sub" />
+                  <p className="text-[13px] font-medium text-glass-ink">
+                    Pagamento · {paymentLabel}
+                    {paymentCard
+                      ? ` · ${paymentCard.name} ····${paymentCard.last4}`
+                      : ""}
                   </p>
                 </div>
               )}

@@ -7,8 +7,10 @@ import {
   Camera,
   Check,
   Clock,
+  CreditCard,
   FileText,
   ImagePlus,
+  QrCode,
   RefreshCw,
   ScanLine,
   X,
@@ -22,11 +24,18 @@ import {
   findCategoryId,
   formatItemsText,
   imageToDataUrl,
+  parseQrFromPayload,
   parseReceiptText,
   scanReceiptWithTimeout,
   SCAN_CATEGORIES,
 } from "@/lib/receipt-scan";
 import { cn } from "@/lib/utils";
+import { CameraQrScanner } from "./CameraQrScanner";
+import {
+  normalizePaymentMethod,
+  PaymentMethodSelector,
+  type PaymentMethodId,
+} from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
 // Escanear Nota — pick a photo (camera or gallery), OCR it in the browser,
@@ -35,7 +44,7 @@ import { cn } from "@/lib/utils";
 // saving. The photos become attachments shown in the transaction details.
 // ---------------------------------------------------------------------------
 
-type Step = "source" | "edit" | "approve";
+type Step = "source" | "camera" | "edit" | "approve";
 type OcrState = "idle" | "scanning" | "done" | "empty" | "failed";
 
 const inputClass =
@@ -60,7 +69,7 @@ export function ScanReceiptSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, addTransaction } = useAppStore();
+  const { categories, cards, addTransaction } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
 
   const [step, setStep] = useState<Step>("source");
@@ -76,7 +85,8 @@ export function ScanReceiptSheet({
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
+  const [cardId, setCardId] = useState<string | null>(null);
   // Raw OCR text — shown collapsed so the user can see what was read (and
   // why a field came back empty).
   const [rawText, setRawText] = useState("");
@@ -115,6 +125,7 @@ export function ScanReceiptSheet({
     setNote("");
     setType("expense");
     setPaymentMethod("");
+    setCardId(null);
     setRawText("");
     setQrInfo("");
     sourceFileRef.current = null;
@@ -138,7 +149,7 @@ export function ScanReceiptSheet({
     return fallback?.id ?? categories[0]?.id ?? "outros";
   };
 
-  const runOcr = async (input: File | string) => {
+  const runOcr = async (input: File | string, knownPayload?: string) => {
     const runId = runIdRef.current;
     setOcrState("scanning");
     try {
@@ -148,14 +159,27 @@ export function ScanReceiptSheet({
       // fallback and its description feeds category detection.
       const [text, qr] = await Promise.all([
         scanReceiptWithTimeout(input),
-        decodeQrPayload(input),
+        knownPayload
+          ? Promise.resolve(parseQrFromPayload(knownPayload))
+          : decodeQrPayload(input),
       ]);
       if (runId !== runIdRef.current) return; // form was reset meanwhile
       const parsed = parseReceiptText(text);
-      if (qr?.amount && qr.amount > 0) parsed.amount = qr.amount;
-      if (!parsed.title && qr?.name) parsed.title = qr.name;
-      if (qr?.description) {
-        const qrCat = findCategoryId(qr.description, qr.name ?? "");
+      // Extract the QR facts into plain locals (avoids TS narrowing through
+      // the awaited value below).
+      const qrAmount = qr?.amount;
+      const qrName = qr?.name;
+      const qrDescription = qr?.description;
+      const qrNfceStore = qr?.nfceStore;
+      const qrNfceDate = qr?.nfceEmissionDate;
+      if (qrAmount && qrAmount > 0) parsed.amount = qrAmount;
+      if (!parsed.title && qrName) parsed.title = qrName;
+      if (!parsed.title && qrNfceStore) parsed.title = qrNfceStore;
+      // An NFC-e access key carries the emission date (AAMM) — it is more
+      // reliable than the OCR date, but the user's manual pick still wins.
+      if (qrNfceDate && !dateTouchedRef.current) parsed.date = qrNfceDate;
+      if (qrDescription) {
+        const qrCat = findCategoryId(qrDescription, qrName ?? "");
         if (qrCat && qrCat !== "outros" && parsed.categoryId === "outros") {
           parsed.categoryId = qrCat;
         }
@@ -186,14 +210,16 @@ export function ScanReceiptSheet({
       );
       setTime((prev) => (prev ? prev : parsed.time));
       if (!typeTouchedRef.current) setType(parsed.type);
-      setPaymentMethod(parsed.paymentMethod);
+      setPaymentMethod(normalizePaymentMethod(parsed.paymentMethod));
       setQrInfo(
         qr
           ? qr.amount
             ? `QR detectado · valor ${qr.amount
                 .toFixed(2)
                 .replace(".", ",")} reais`
-            : "QR detectado · sem valor no código"
+            : qr.nfceStore
+              ? `QR NFC-e detectado · ${qr.nfceStore}`
+              : "QR detectado · sem valor no código"
           : "QR não detectado",
       );
       if (!categoryTouched && parsed.categoryId) {
@@ -230,6 +256,16 @@ export function ScanReceiptSheet({
     } catch {
       toast("Não foi possível abrir essa imagem", { description: "Tente outra foto." });
     }
+  };
+
+  /** Live-camera path: a QR was detected on screen — capture that frame and
+   * run the exact same OCR + QR merge as a photo, so the user gets the same
+   * review flow. */
+  const handleCameraResult = async (payload: string, frame: string) => {
+    setStep("edit");
+    setImages([frame]);
+    setCategoryId(defaultCategoryId());
+    void runOcr(frame, payload);
   };
 
   const handleAddMore = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,6 +306,8 @@ export function ScanReceiptSheet({
       time: time || undefined,
       note: note.trim() || undefined,
       attachments: images.length ? images : undefined,
+      paymentMethod: paymentMethod || undefined,
+      cardId: cardId ?? undefined,
     });
     toast("Nota escaneada e salva", {
       description: "Ela já aparece no seu histórico, com a nota anexada.",
@@ -296,6 +334,7 @@ export function ScanReceiptSheet({
               </h3>
               <p className="text-[12.5px] text-glass-sub">
                 {step === "source" && "Fotografe o cupom ou escolha uma imagem"}
+                {step === "camera" && "Aponte para o QR code da nota fiscal"}
                 {step === "edit" && "Confira o que a leitura encontrou"}
                 {step === "approve" && "Tudo certo antes de salvar?"}
               </p>
@@ -324,8 +363,16 @@ export function ScanReceiptSheet({
               <div className="mt-8 w-full space-y-3">
                 <button
                   type="button"
-                  onClick={() => cameraRef.current?.click()}
+                  onClick={() => setStep("camera")}
                   className="flex w-full items-center justify-center gap-2.5 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-all hover:brightness-105 active:scale-[0.98]"
+                >
+                  <QrCode className="size-[18px]" />
+                  Escanear com a câmera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  className="glass glass-soft flex w-full items-center justify-center gap-2.5 rounded-full py-3.5 text-[15px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
                 >
                   <Camera className="size-[18px]" />
                   Tirar foto
@@ -354,6 +401,16 @@ export function ScanReceiptSheet({
                 accept="image/*"
                 className="hidden"
                 onChange={handlePick}
+              />
+            </div>
+          )}
+
+          {/* ---------------- CAMERA (live QR scanner) ---------------- */}
+          {step === "camera" && (
+            <div className="flex flex-1 flex-col px-5 pb-6 pt-3">
+              <CameraQrScanner
+                onResult={handleCameraResult}
+                onClose={() => setStep("source")}
               />
             </div>
           )}
@@ -636,6 +693,24 @@ export function ScanReceiptSheet({
                   </div>
                 </div>
 
+                {/* Payment method */}
+                <div className="mt-6">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                    Forma de pagamento
+                  </p>
+                  <PaymentMethodSelector
+                    value={paymentMethod}
+                    onValueChange={(v) => {
+                      setPaymentMethod(v);
+                      if (v !== "cartao") setCardId(null);
+                    }}
+                    cardId={cardId}
+                    onCardChange={setCardId}
+                    cards={cards}
+                    income={type === "income"}
+                  />
+                </div>
+
                 {/* Date + time */}
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <div>
@@ -751,6 +826,14 @@ export function ScanReceiptSheet({
                       {categories.find((c) => c.id === categoryId)?.label ??
                         "Outros"}
                     </span>
+                    {paymentMethod && (
+                      <span className="glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub">
+                        <CreditCard className="size-3" />
+                        {PAYMENT_LABELS[paymentMethod] ?? paymentMethod}
+                        {cardId &&
+                          ` · ${cards.find((c) => c.id === cardId)?.name ?? ""}`.trim()}
+                      </span>
+                    )}
                     {images.length > 0 && (
                       <span className="glass rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub">
                         {images.length}{" "}

@@ -482,7 +482,7 @@ function stripNoise(line: string): string {
 }
 
 const BAD_TITLE_LINE =
-  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b/i;
+  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b|\bcentro\b|\bbairro\b|\bcomplemento\b/i;
 
 /**
  * A line that survived cleanup is a plausible store name: mostly letters,
@@ -513,6 +513,8 @@ function findTitle(text: string): string {
     if (BAD_TITLE_LINE.test(cleaned)) continue; // header boilerplate
     if (/^[0-9]+(?:\s|$)/.test(cleaned)) continue; // item / code line (a lone leading
     // confusion digit like "5UPERMERCADO" is OCR noise on a real name, not a code)
+    // "28/ -72 CENTRO" — a house number / address fragment, never a store name.
+    if (/^\d+[\/\-–—]\s*\d*/.test(cleaned)) continue;
     if (/\d+[,.]\d{2}\s*$/.test(cleaned)) continue; // ends with a price → item line
     if (!looksLikeStoreName(cleaned)) continue; // barcode / OCR gibberish
     return cleaned.slice(0, 40);
@@ -973,7 +975,78 @@ export type QrResult = {
   amount?: number;
   name?: string;
   description?: string;
+  /** NFC-e access-key metadata (from a SEFAZ "consultar" URL). */
+  nfceStore?: string;
+  nfceEmissionDate?: string; // yyyy-mm-dd from the AAMM inside the key
 };
+
+/**
+ * Small demo reference of CNPJ → store name, used to turn the NFC-e access
+ * key into a readable description. The key itself only encodes the merchant's
+ * CNPJ (positions 6–19) and the emission date (positions 2–5, AAMM).
+ */
+const NFC_E_CNPJ_NAMES: Record<string, string> = {
+  "00000000000000": "Loja",
+  "06057223000171": "Pão de Açúcar",
+  "07526557000100": "Carrefour",
+  "47960950000121": "Mercado Livre",
+  "05172726000150": "Magazine Luiza",
+  "05433223000123": "Casas Bahia",
+  "00841764000185": "iFood",
+  "03633176000110": "Shopee",
+  "07109258000153": "Rappi",
+  "17368313000184": "Nubank",
+};
+
+/** Formats "06057223000171" → "06.057.223/0001-71". */
+function formatCnpj(cnpj: string): string {
+  return cnpj.replace(
+    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+    "$1.$2.$3/$4-$5",
+  );
+}
+
+/**
+ * Parses an NFC-e QR payload (the SEFAZ "consultar" URL, e.g.
+ * `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=352607…`): extracts the
+ * 44-digit access key, the emission date (AAMM) and the merchant CNPJ, and
+ * resolves the CNPJ to a store name when known. The key never carries the
+ * total — that still comes from OCR (or the user).
+ */
+export function parseNfceQrUrl(payload: string): QrResult | null {
+  const digits = payload.replace(/\D/g, "");
+  // The access key is the longest 44-digit run in the URL (query params like
+  // "p=" carry it). Prefer a digit run that is exactly 44 long, otherwise
+  // fall back to the first 44 digits of the full number string.
+  const exact = digits.match(/(?<!\d)\d{44}(?!\d)/);
+  const key = (exact?.[0] ?? digits.slice(0, 44)) || "";
+  if (key.length !== 44) return null;
+  const uf = parseInt(key.slice(0, 2), 10);
+  if (!(uf >= 11 && uf <= 53)) return null; // not a valid IBGE UF code
+  const aamm = key.slice(2, 6);
+  const cnpj = key.slice(6, 20);
+  const mm = parseInt(aamm.slice(2, 4), 10);
+  if (!(mm >= 1 && mm <= 12)) return null;
+  const yy = parseInt(aamm.slice(0, 2), 10);
+  const year = 2000 + yy;
+  const store = NFC_E_CNPJ_NAMES[cnpj] ?? `Estabelecimento ${formatCnpj(cnpj)}`;
+  return {
+    payload,
+    nfceStore: store,
+    nfceEmissionDate: `${year}-${String(mm).padStart(2, "0")}-01`,
+  };
+}
+
+/**
+ * Classifies any QR payload: PIX "copia e cola" → its structured fields;
+ * NFC-e consult URL → the access-key metadata; otherwise a minimal result
+ * with the raw payload (useful for the camera scanner's preview).
+ */
+export function parseQrFromPayload(payload: string): QrResult {
+  const nfce = parseNfceQrUrl(payload);
+  if (nfce) return nfce;
+  return { payload, ...parseBrCode(payload) };
+}
 
 /** Yields EMV-style fields (2-char id + 2-char length + value). */
 function* emvFields(s: string): Generator<[string, string]> {

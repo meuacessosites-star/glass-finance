@@ -10,6 +10,10 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import {
+  PaymentMethodSelector,
+  type PaymentMethodId,
+} from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
 // AddTransactionSheet — full-screen iOS-style page opened by “Adicionar
@@ -31,12 +35,14 @@ export function AddTransactionSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, addTransaction } = useAppStore();
+  const { categories, cards, addTransaction } = useAppStore();
   const [type, setType] = useState<TxType>("expense");
   const [cents, setCents] = useState(0);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
+  const [cardId, setCardId] = useState<string | null>(null);
 
   // Fresh form every time the sheet opens.
   useEffect(() => {
@@ -45,6 +51,8 @@ export function AddTransactionSheet({
     setCents(0);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
+    setPaymentMethod("");
+    setCardId(null);
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
   }, [open, categories]);
@@ -81,6 +89,8 @@ export function AddTransactionSheet({
       categoryId,
       amount: type === "expense" ? -cents / 100 : cents / 100,
       date,
+      paymentMethod: paymentMethod || undefined,
+      cardId: cardId ?? undefined,
     });
     toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
       description: "Já aparece no seu resumo e no histórico.",
@@ -226,6 +236,21 @@ export function AddTransactionSheet({
                   );
                 })}
               </div>
+            </div>
+
+            {/* Payment method */}
+            <div className="mt-6">
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                Forma de pagamento
+              </p>
+              <PaymentMethodSelector
+                value={paymentMethod}
+                onValueChange={setPaymentMethod}
+                cardId={cardId}
+                onCardChange={setCardId}
+                cards={cards}
+                income={type === "income"}
+              />
             </div>
 
             {/* Date */}
