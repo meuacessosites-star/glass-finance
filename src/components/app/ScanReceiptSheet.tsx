@@ -84,6 +84,9 @@ export function ScanReceiptSheet({
   const [scanPhase, setScanPhase] = useState<ScanPhase>("vision");
   const [scanStatus, setScanStatus] = useState("");
   const [scanResultInfo, setScanResultInfo] = useState("");
+  // Motivo técnico da falha da IA (ex.: "vly http 401", "no-gemini-key") —
+  // exibido de forma discreta na tela de erro para facilitar o diagnóstico.
+  const [scanError, setScanError] = useState("");
 
   // Form fields (prefilled only with data exata do QR/scrape)
   const [title, setTitle] = useState("");
@@ -123,6 +126,7 @@ export function ScanReceiptSheet({
     setScanPhase("vision");
     setScanStatus("");
     setScanResultInfo("");
+    setScanError("");
     setTitle("");
     setCents(0);
     setCategoryId("");
@@ -314,6 +318,7 @@ export function ScanReceiptSheet({
       setScanStatus(
         "Não foi possível abrir essa imagem. Tente outra foto ou preencha manualmente.",
       );
+      setScanError("conversao-base64-falhou");
       return;
     }
 
@@ -344,11 +349,13 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // 4) SÓ aqui (IA falhou ou foto ilegível) → tela de erro.
+    // 4) SÓ aqui (IA falhou ou foto ilegível) → tela de erro, com o motivo
+    //    técnico exato (ex.: "vly http 401", "no-gemini-key") para depurar.
     setScanPhase("failed");
     setScanStatus(
       "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto ou preencha manualmente.",
     );
+    setScanError(aiRes?.error ?? "resposta-vazia");
   };
 
 
@@ -588,8 +595,7 @@ export function ScanReceiptSheet({
                         >
                           <RefreshCw className="size-3.5" />
                           Tentar novamente
-                        </button>
-                        <button
+                        </button>                        <button
                           type="button"
                           onClick={handleManualFill}
                           className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
@@ -598,6 +604,11 @@ export function ScanReceiptSheet({
                         </button>
                       </div>
 
+                      {scanError && (
+                        <p className="px-1 text-center text-[11px] font-medium text-glass-faint">
+                          Detalhe técnico: {scanError}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
