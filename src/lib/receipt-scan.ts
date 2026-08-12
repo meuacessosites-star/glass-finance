@@ -210,6 +210,27 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     keywords: ["presente", "lembrancinha", "boutique"],
   },
   {
+    id: "salario",
+    label: "Salário",
+    color: "#34C759",
+    icon: "salario",
+    keywords: [
+      "salario",
+      "salário",
+      "holerite",
+      "pagamento de salario",
+      "pagamento de salário",
+      "folha de pagamento",
+    ],
+  },
+  {
+    id: "freelance",
+    label: "Freelance",
+    color: "#AF52DE",
+    icon: "freelance",
+    keywords: ["freelance", "freela", "pro labore", "prolabore"],
+  },
+  {
     id: "assinaturas",
     label: "Assinaturas",
     color: "#00C7BE",
@@ -247,6 +268,8 @@ export type ScanResult = {
   categoryId: string;
   date: string; // yyyy-mm-dd ("" when not found)
   time: string; // HH:MM ("" when not found)
+  type: "income" | "expense"; // receita/despesa
+  paymentMethod: string; // pix | dinheiro | cartao | credito | debito | boleto | transferencia | ""
 };
 
 const norm = (s: string) =>
@@ -712,6 +735,43 @@ function findDate(text: string): { date: string; time: string } {
   return { date: best?.date ?? "", time };
 }
 
+/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO" are money IN. */
+const INCOME_HINTS =
+  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento/i;
+
+/** Expense signals — payments, purchases, bills, subscriptions, sent PIX. */
+const EXPENSE_HINTS =
+  /pagamento|compra|cupom|nota fiscal|fatura|boleto|d[ée]bito|saque|pix enviado|envio pix|transfer[êe]ncia enviada|despesa|assinatura|mensalidade|conta de|cart[ãa]o/i;
+
+/** Determines whether the scanned receipt is money IN (receita) or money OUT
+ * (despesa). Income signals win ("PIX RECEBIDO"); otherwise payment signals
+ * mark an expense; neutral store receipts default to expense. */
+export function detectType(text: string): "income" | "expense" {
+  const t = norm(text);
+  if (INCOME_HINTS.test(t)) return "income";
+  if (EXPENSE_HINTS.test(t)) return "expense";
+  return "expense";
+}
+
+const PAYMENT_METHODS: Array<{ id: string; label: string; re: RegExp }> = [
+  { id: "pix", label: "Pix", re: /\bpix\b|bcb\.pix/i },
+  { id: "dinheiro", label: "Dinheiro", re: /\bdinheiro\b/i },
+  { id: "cartao", label: "Cartão", re: /\bcart[ãa]o\b/i },
+  { id: "credito", label: "Crédito", re: /\bcr[ée]dito\b/i },
+  { id: "debito", label: "Débito", re: /\bd[ée]bito\b/i },
+  { id: "boleto", label: "Boleto", re: /\bboleto\b/i },
+  { id: "transferencia", label: "Transferência", re: /transfer[êe]ncia/i },
+];
+
+/** First payment method mentioned in the receipt text ("" when none). */
+export function findPaymentMethod(text: string): string {
+  const t = norm(text);
+  for (const m of PAYMENT_METHODS) {
+    if (m.re.test(t)) return m.id;
+  }
+  return "";
+}
+
 export function parseReceiptText(text: string): ScanResult {
   const { date, time } = findDate(text);
   const title = findTitle(text);
@@ -721,6 +781,8 @@ export function parseReceiptText(text: string): ScanResult {
     categoryId: findCategoryId(text, title),
     date,
     time,
+    type: detectType(text),
+    paymentMethod: findPaymentMethod(text),
   };
 }
 
@@ -881,11 +943,36 @@ export async function decodeQrPayload(
     canvas.height = h;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return null;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0, w, h);
-    const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h);
-    if (!code?.data) return null;
-    const parsed = parseBrCode(code.data);
-    return { payload: code.data, ...parsed };
+    const base = ctx.getImageData(0, 0, w, h).data;
+
+    // Try the photo as-is, then grayscale, then inverted — QR codes on
+    // dark-mode screenshots (white-on-dark) only decode on the inverted pass.
+    const attempts: Uint8ClampedArray[] = [base];
+    const gray = new Uint8ClampedArray(base);
+    const inv = new Uint8ClampedArray(base);
+    for (let i = 0; i < base.length; i += 4) {
+      const g = 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
+      gray[i] = g;
+      gray[i + 1] = g;
+      gray[i + 2] = g;
+      gray[i + 3] = 255;
+      inv[i] = 255 - base[i];
+      inv[i + 1] = 255 - base[i + 1];
+      inv[i + 2] = 255 - base[i + 2];
+      inv[i + 3] = 255;
+    }
+    attempts.push(gray, inv);
+
+    for (const data of attempts) {
+      const code = jsQR(data, w, h);
+      if (!code?.data) continue;
+      const parsed = parseBrCode(code.data);
+      return { payload: code.data, ...parsed };
+    }
+    return null;
   } catch {
     return null;
   }

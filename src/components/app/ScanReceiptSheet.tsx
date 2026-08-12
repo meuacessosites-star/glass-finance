@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   CalendarDays,
   Camera,
   Check,
@@ -39,6 +41,16 @@ const inputClass =
 
 const INCOME_IDS = new Set(["salario", "freelance"]);
 
+const PAYMENT_LABELS: Record<string, string> = {
+  pix: "Pix",
+  dinheiro: "Dinheiro",
+  cartao: "Cartão",
+  credito: "Crédito",
+  debito: "Débito",
+  boleto: "Boleto",
+  transferencia: "Transferência",
+};
+
 export function ScanReceiptSheet({
   open,
   onClose,
@@ -61,9 +73,14 @@ export function ScanReceiptSheet({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
+  const [type, setType] = useState<"expense" | "income">("expense");
+  const [paymentMethod, setPaymentMethod] = useState("");
   // Raw OCR text — shown collapsed so the user can see what was read (and
   // why a field came back empty).
   const [rawText, setRawText] = useState("");
+  // QR decode status, also shown collapsed ("QR não detectado" / "QR
+  // detectado · valor R$ 9,90" / "… sem valor no código").
+  const [qrInfo, setQrInfo] = useState("");
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
@@ -74,6 +91,11 @@ export function ScanReceiptSheet({
   const sourceFileRef = useRef<File | null>(null);
   // True once the user picks the date manually — the OCR date never overrides it.
   const dateTouchedRef = useRef(false);
+  // True once the user picks Despesa/Receita manually — the OCR never overrides it.
+  const typeTouchedRef = useRef(false);
+  // Category chip refs, so the selected chip can be scrolled into view (the
+  // row is horizontally scrollable and the match may be off-screen).
+  const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Fresh state every time the sheet opens.
   useEffect(() => {
@@ -89,10 +111,24 @@ export function ScanReceiptSheet({
     setDate(new Date().toISOString().slice(0, 10));
     setTime("");
     setNote("");
+    setType("expense");
+    setPaymentMethod("");
     setRawText("");
+    setQrInfo("");
     sourceFileRef.current = null;
     dateTouchedRef.current = false;
+    typeTouchedRef.current = false;
   }, [open]);
+
+  // Keep the selected category chip visible in the scrollable chips row.
+  useEffect(() => {
+    if (!categoryId) return;
+    chipRefs.current[categoryId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [categoryId]);
 
   /** Default expense category (used before OCR answers). */
   const defaultCategoryId = () => {
@@ -137,6 +173,17 @@ export function ScanReceiptSheet({
         dateTouchedRef.current ? prev : parsed.date || prev,
       );
       setTime((prev) => (prev ? prev : parsed.time));
+      if (!typeTouchedRef.current) setType(parsed.type);
+      setPaymentMethod(parsed.paymentMethod);
+      setQrInfo(
+        qr
+          ? qr.amount
+            ? `QR detectado · valor ${qr.amount
+                .toFixed(2)
+                .replace(".", ",")} reais`
+            : "QR detectado · sem valor no código"
+          : "QR não detectado",
+      );
       if (!categoryTouched && parsed.categoryId) {
         const suggested = SCAN_CATEGORIES.find(
           (c) => c.id === parsed.categoryId,
@@ -206,7 +253,7 @@ export function ScanReceiptSheet({
     addTransaction({
       title: title.trim(),
       categoryId,
-      amount: -cents / 100, // receipts are expenses
+      amount: type === "income" ? cents / 100 : -cents / 100,
       date,
       time: time || undefined,
       note: note.trim() || undefined,
@@ -430,14 +477,76 @@ export function ScanReceiptSheet({
                       <summary className="cursor-pointer select-none text-[12.5px] font-bold text-glass-sub">
                         Ver o que a leitura encontrou
                       </summary>
+                      <div className="mt-2 space-y-1 text-[12px] text-glass-sub">
+                        <p>
+                          Tipo:{" "}
+                          <span className="font-bold text-glass-ink">
+                            {type === "income" ? "Receita" : "Despesa"}
+                          </span>
+                          {paymentMethod && (
+                            <>
+                              {" "}
+                              · Pagamento:{" "}
+                              <span className="font-bold text-glass-ink">
+                                {PAYMENT_LABELS[paymentMethod] ??
+                                  paymentMethod}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                        {categoryId && (
+                          <p>
+                            Categoria:{" "}
+                            <span className="font-bold text-glass-ink">
+                              {categories.find((c) => c.id === categoryId)
+                                ?.label ?? "Outros"}
+                            </span>
+                          </p>
+                        )}
+                        <p>{qrInfo}</p>
+                      </div>
                       <pre className="no-scrollbar mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-white/40 p-2.5 text-[11px] leading-relaxed text-glass-sub">
                         {rawText}
                       </pre>
                     </details>
                   )}
 
+                {/* Type: despesa / receita */}
+                <div className="mt-6 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setType("expense");
+                      typeTouchedRef.current = true;
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
+                      type === "expense"
+                        ? "bg-[#FF3B30]/12 text-[#FF3B30] ring-1 ring-[#FF3B30]/40"
+                        : "glass text-glass-sub",
+                    )}
+                  >
+                    <ArrowDownLeft className="size-4" /> Despesa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setType("income");
+                      typeTouchedRef.current = true;
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
+                      type === "income"
+                        ? "bg-[#1FBF4F]/12 text-[#17a443] ring-1 ring-[#17a443]/40"
+                        : "glass text-glass-sub",
+                    )}
+                  >
+                    <ArrowUpRight className="size-4" /> Receita
+                  </button>
+                </div>
+
                 {/* Amount */}
-                <div className="mt-6 text-center">
+                <div className="mt-4 text-center">
                   <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                     Valor
                   </p>
@@ -447,7 +556,12 @@ export function ScanReceiptSheet({
                     onChange={(e) => handleAmount(e.target.value)}
                     placeholder="R$ 0,00"
                     aria-label="Valor"
-                    className="mt-1 w-full bg-transparent text-center text-[36px] font-bold tracking-tight text-[#FF3B30] outline-none"
+                    className={cn(
+                      "mt-1 w-full bg-transparent text-center text-[36px] font-bold tracking-tight outline-none",
+                      type === "income"
+                        ? "text-[#17a443]"
+                        : "text-[#FF3B30]",
+                    )}
                   />
                   <div className="mx-auto mt-2 h-0.5 w-16 rounded-full bg-primary/30" />
                 </div>
@@ -477,6 +591,9 @@ export function ScanReceiptSheet({
                       return (
                         <button
                           key={c.id}
+                          ref={(el) => {
+                            chipRefs.current[c.id] = el;
+                          }}
                           type="button"
                           onClick={() => {
                             setCategoryId(c.id);
@@ -597,8 +714,16 @@ export function ScanReceiptSheet({
                     </div>
                   </div>
 
-                  <p className="amount-tabular mt-4 text-[32px] font-bold leading-none tracking-tight text-[#FF3B30]">
-                    −{amountLabel}
+                  <p
+                    className={cn(
+                      "amount-tabular mt-4 text-[32px] font-bold leading-none tracking-tight",
+                      type === "income"
+                        ? "text-[#17a443]"
+                        : "text-[#FF3B30]",
+                    )}
+                  >
+                    {type === "income" ? "" : "−"}
+                    {amountLabel}
                   </p>
 
                   <div className="mt-4 flex flex-wrap items-center gap-2">
