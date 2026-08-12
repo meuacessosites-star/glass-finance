@@ -425,38 +425,48 @@ export function ScanReceiptSheet({
   };
 
   /**
-   * Pipeline do scanner: 1) decodifica o QR da imagem; 2) roteia o payload
-   * (NFC-e → scrape no backend; PIX BR Code → campos direto do código; nada →
-   * estado "failed" com opções de retry / colar código / preenchimento manual).
+   * Pipeline do scanner: 1) decodifica o QR da imagem (UMA tentativa com
+   * orçamento de ~1s); 2) roteia o payload (NFC-e → scrape no backend; PIX BR
+   * Code → campos direto do código); 3) sem QR (ou orçamento esgotado) → a
+   * imagem vai AUTOMATICAMENTE para a visão por IA, sem tela de erro — a
+   * troca de método é transparente. O estado "failed" só existe se a visão
+   * também falhar.
    */
   const runScan = async (input: File | string, knownPayload?: string) => {
     const runId = runIdRef.current;
-    const startedAt = Date.now();
     setScanPhase("detecting");
-    setScanStatus("Detectando QR code na imagem…");
+    setScanStatus("Procurando QR code…");
     try {
-      const qr = knownPayload
-        ? parseQrFromPayload(knownPayload)
-        : await decodeQrPayload(input, (label) => {
-            // Só atualiza o status se ainda é a mesma leitura (a tela pode
-            // ter sido fechada/reaberta enquanto o pipeline rodava).
-            if (runId === runIdRef.current) setScanStatus(label);
-          });
-      if (runId !== runIdRef.current) return;
-      // Guarda de tempo: fotos gigantes demoram — depois de ~25s avisa que
-      // provavelmente não há QR legível em vez de deixar a tela "presa".
-      if (!qr && Date.now() - startedAt > 25_000) {
-        setScanPhase("failed");
-        setScanStatus(
-          "A imagem é muito grande e não encontramos o QR. Tente outra foto, cole o código ou preencha manualmente.",
-        );
-        return;
+      let qr: QrResult | null = null;
+      if (knownPayload) {
+        qr = parseQrFromPayload(knownPayload);
+      } else {
+        // Busca de QR limitada: UMA tentativa com orçamento de ~1s (o próprio
+        // decoder já aborta em 900ms; o race abaixo é a rede de segurança).
+        // Passou disso, segue direto para a leitura da imagem por visão.
+        qr = await Promise.race([
+          decodeQrPayload(
+            input,
+            (label) => {
+              // Só atualiza o status se ainda é a mesma leitura (a tela pode
+              // ter sido fechada/reaberta enquanto o pipeline rodava).
+              if (runId === runIdRef.current) setScanStatus(label);
+            },
+            900,
+          ),
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), 1000);
+          }),
+        ]);
       }
+      if (runId !== runIdRef.current) return;
+      // Sem QR (ou orçamento esgotado) → fallback automático de visão por IA,
+      // sem mensagem de erro: o usuário nem percebe a troca de método.
       await handleParsedQr(qr);
     } catch {
       if (runId !== runIdRef.current) return;
-      setScanPhase("failed");
-      setScanStatus("Não foi possível ler essa imagem. Tente novamente.");
+      // Qualquer falha na decodificação segue o mesmo caminho transparente.
+      await handleParsedQr(null);
     }
   };
 
