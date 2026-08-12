@@ -1,11 +1,10 @@
 import * as Tesseract from "tesseract.js";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — client-side OCR (Tesseract.js, Portuguese, fully offline
-// via the assets shipped in /public/tesseract and /public/tessdata) plus a
-// parser that turns raw receipt text into structured fields: merchant, BRL
-// amount, category, date and time. All heuristics are safe: if nothing
-// matches, the field stays empty so the user can fill it manually.
+// Escanear Nota — client-side OCR (Tesseract.js, Portuguese) plus a parser
+// that turns raw receipt text into structured fields: merchant, BRL amount,
+// category, date and time. All heuristics are safe: if nothing matches, the
+// field stays empty so the user can fill it manually.
 // ---------------------------------------------------------------------------
 
 export type ScanCategory = {
@@ -552,21 +551,20 @@ export async function prepareForOcr(input: File | string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// OCR — fully local: worker, core and Portuguese traineddata ship in
-// /public so scanning works even when the preview sandbox blocks CDNs.
+// OCR — Tesseract.js loading the worker, core and Portuguese traineddata
+// from its default jsDelivr CDN (the /public copies aren't served by the
+// preview proxy, which returns 502 for static files).
 // ---------------------------------------------------------------------------
 
-const BASE = import.meta.env.BASE_URL || "/";
-
-/** OCR an image (original File or data URL) with Tesseract.js — local assets. */
+/**
+ * OCR an image (original File or data URL) with Tesseract.js. The worker,
+ * core and Portuguese traineddata load from the default jsDelivr CDN — the
+ * copies under /public are unreachable in the preview proxy (it returns 502
+ * for static files), while the CDN is verified reachable from the sandbox.
+ */
 export async function scanReceiptText(input: File | string): Promise<string> {
   const prepared = await prepareForOcr(input);
-  const worker = await Tesseract.createWorker("por", Tesseract.OEM.LSTM_ONLY, {
-    workerPath: `${BASE}tesseract/worker.min.js`,
-    corePath: `${BASE}tesseract`,
-    langPath: `${BASE}tessdata`,
-    gzip: true,
-  });
+  const worker = await Tesseract.createWorker("por", Tesseract.OEM.LSTM_ONLY);
   try {
     const { data } = await worker.recognize(prepared);
     return data.text ?? "";
