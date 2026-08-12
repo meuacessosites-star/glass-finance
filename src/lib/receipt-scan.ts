@@ -1,3 +1,4 @@
+import jsQR from "jsqr";
 import * as Tesseract from "tesseract.js";
 
 // ---------------------------------------------------------------------------
@@ -319,7 +320,7 @@ export function parseBrl(input: string): number {
 /** A BRL amount token. The lookahead requires at least one REAL digit so a
  * fuzzy letter class never lets "TOTAL"'s own letters be read as a number
  * (e.g. the trailing "L" of "VALOR TOTAL" becoming 1). */
-const AMOUNT_RE = `((?=[${D_BODY}]*[0-9])${D}+(?:[.,]${D}{3})*(?:[., ]+${D}{1,2})?)`;
+const AMOUNT_RE = `((?=[${D_BODY}]*[0-9])${D}+(?:[.,]${D}{3})*(?:[.,;”"'’ ]+${D}{1,2})?)`;
 
 /** Letter → OCR confusion set, used to build fuzzy keywords. */
 const L: Record<string, string> = {
@@ -421,7 +422,7 @@ function findAmount(text: string): number {
  * "28,9O" → 28.9, "28 90" → 28.9, "1.234,56" → 1234.56.
  */
 function parseAmountToken(token: string): number {
-  let t = ocrDigits(token);
+  let t = ocrDigits(token).replace(/[”"'’;]/g, ","); // blurred ",90" → quote glyph
   // "28 90" / "28, 90" → "28,90" (the comma blurred into a space on thermal
   // print, or a space inserted after it).
   t = t.replace(/^(\d+(?:[.,]\d{3})*)[.,\s]+(\d{1,2})$/, "$1,$2");
@@ -597,26 +598,80 @@ const EMISSION_CTX = /(^|[^a-z])(data|hora)|emiss|saida|emit|venda|compra/i;
 /** Expiry / due-date words — never the purchase date ("DATA DE VALIDADE"). */
 const VALIDITY_CTX = /(^|[^a-z])(val|validade|venc|vencimento|expir)/i;
 
+/** PT-BR month abbreviations → number ("ago" → 8), for "10/ago" dates. */
+const MONTHS: Record<string, number> = {
+  jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+  jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
+};
+
+/** Year for dates without one: the current year — or the previous one if that
+ * would land in the future (receipts are never dated ahead). */
+function inferYear(mo: number, d: number): number {
+  const now = new Date();
+  const y = now.getFullYear();
+  if (new Date(y, mo - 1, d) > new Date(y, now.getMonth(), now.getDate() + 1)) {
+    return y - 1;
+  }
+  return y;
+}
+
 function findDate(text: string): { date: string; time: string } {
   const lines = text.split("\n");
-  let best: { date: string; line: string; score: number } | null = null;
-  const dmyRe = new RegExp(`(${D}{2})[\\/.\\-](${D}{2})[\\/.\\-](${D}{4})`);
+  let best: { date: string; line: string; score: number; end: number } | null = null;
+  // dd/mm/yyyy, dd/mm (year inferred), yyyy-mm-dd and month-name dates like
+  // "10/ago - 23:30". The no-year variants use a lookbehind so "…/0001-12"
+  // (CNPJ branch digits) is never read as a date.
+  const dmyRe = new RegExp(
+    `(?<![0-9])(${D}{2})[\\/.\\-](${D}{2})(?:[\\/.\\-](${D}{4}))?`,
+  );
+  const monRe = new RegExp(
+    `(?<![0-9])(0?[1-9]|[12]\\d|3[01])[\\/.\\-]\\s*(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zà-ú]*`,
+    "i",
+  );
   const isoRe = new RegExp(`(${D}{4})-(${D}{2})-(${D}{2})`);
 
   for (const line of lines) {
     const ctx = norm(line);
     if (VALIDITY_CTX.test(ctx)) continue; // "VAL 30/08/2026" etc. — not the purchase date
+
     const dm = line.match(dmyRe);
     if (dm) {
       const d = parseInt(ocrDigits(dm[1]), 10);
       const mo = parseInt(ocrDigits(dm[2]), 10);
-      const y = parseInt(ocrDigits(dm[3]), 10);
+      const y = dm[3] ? parseInt(ocrDigits(dm[3]), 10) : inferYear(mo, d);
       if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2000 && y <= 2100) {
         const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
         const score = EMISSION_CTX.test(ctx) ? 2 : 1;
-        if (!best || score > best.score) best = { date, line, score };
+        if (!best || score > best.score) {
+          best = {
+            date,
+            line,
+            score,
+            end: (dm.index ?? 0) + dm[0].length,
+          };
+        }
       }
     }
+
+    const mon = line.match(monRe);
+    if (mon) {
+      const d = parseInt(mon[1], 10);
+      const mo = MONTHS[mon[2].toLowerCase()];
+      if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12) {
+        const y = inferYear(mo, d);
+        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
+        if (!best || score > best.score) {
+          best = {
+            date,
+            line,
+            score,
+            end: (mon.index ?? 0) + mon[0].length,
+          };
+        }
+      }
+    }
+
     const im = line.match(isoRe);
     if (im) {
       const y = parseInt(ocrDigits(im[1]), 10);
@@ -625,18 +680,23 @@ function findDate(text: string): { date: string; time: string } {
       if (y >= 2000 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
         const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
         const score = EMISSION_CTX.test(ctx) ? 2 : 1;
-        if (!best || score > best.score) best = { date, line, score };
+        if (!best || score > best.score) {
+          best = {
+            date,
+            line,
+            score,
+            end: (im.index ?? 0) + im[0].length,
+          };
+        }
       }
     }
   }
 
   let time = "";
   if (best) {
-    // Prefer the time right after the date token ("DATA 05/08/2026 14:32:05"),
-    // then any valid time on the emission line itself.
-    const dm = best.line.match(dmyRe) ?? best.line.match(isoRe);
-    const after = dm ? best.line.slice((dm.index ?? 0) + dm[0].length) : best.line;
-    time = findTimeInLine(after) || findTimeInLine(best.line);
+    // Prefer the time right after the date token ("DATA 05/08/2026 14:32:05"
+    // or "10/ago - 23:30"), then any valid time on the emission line itself.
+    time = findTimeInLine(best.line.slice(best.end)) || findTimeInLine(best.line);
   }
   if (!time) {
     // The date line had no time — look only at lines that mention
@@ -751,6 +811,84 @@ export async function prepareForOcr(input: File | string): Promise<string> {
   }
   ctx.putImageData(imageData, 0, 0);
   return canvas.toDataURL("image/png");
+}
+
+// ---------------------------------------------------------------------------
+// QR codes — decode PIX "copia e cola" (BR Code) payloads from the photo:
+// field 54 is the amount, 59 the merchant name and 62 the description/txid.
+// A payment-screen QR is often MORE reliable than OCR for the exact value.
+// ---------------------------------------------------------------------------
+
+export type QrResult = {
+  payload: string;
+  amount?: number;
+  name?: string;
+  description?: string;
+};
+
+/** Yields EMV-style fields (2-char id + 2-char length + value). */
+function* emvFields(s: string): Generator<[string, string]> {
+  let i = 0;
+  while (i + 4 <= s.length) {
+    const id = s.slice(i, i + 2);
+    const len = parseInt(s.slice(i + 2, i + 4), 10);
+    if (!/^\d{2}$/.test(id) || !Number.isFinite(len) || len < 0) break;
+    const value = s.slice(i + 4, i + 4 + len);
+    if (value.length < len) break;
+    yield [id, value];
+    i += 4 + len;
+  }
+}
+
+/** Parses a BR Code / PIX "copia e cola" payload into useful fields. */
+export function parseBrCode(
+  payload: string,
+): Pick<QrResult, "amount" | "name" | "description"> {
+  const out: Pick<QrResult, "amount" | "name" | "description"> = {};
+  for (const [id, value] of emvFields(payload)) {
+    if (id === "54" && out.amount === undefined) {
+      const n = parseFloat(value.replace(",", "."));
+      if (Number.isFinite(n) && n > 0) out.amount = n;
+    } else if (id === "59" && out.name === undefined && value.trim()) {
+      out.name = value.trim().slice(0, 40);
+    } else if (id === "62" && out.description === undefined) {
+      // Sub-fields: 07 additional info, 01 reference label, 05 txid.
+      for (const [sub, subValue] of emvFields(value)) {
+        if ((sub === "07" || sub === "01" || sub === "05") && subValue.trim()) {
+          out.description = subValue.trim().slice(0, 60);
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Decodes a QR code in an image (original File or data URL) and, when it is
+ * a PIX "copia e cola" payload, returns its structured data. Returns null on
+ * no QR / decode failure — never throws. */
+export async function decodeQrPayload(
+  input: File | string,
+): Promise<QrResult | null> {
+  try {
+    const src = typeof input === "string" ? input : await fileToDataUrl(input);
+    const img = await loadImage(src);
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h);
+    if (!code?.data) return null;
+    const parsed = parseBrCode(code.data);
+    return { payload: code.data, ...parsed };
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

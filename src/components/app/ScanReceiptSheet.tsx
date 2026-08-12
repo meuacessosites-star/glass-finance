@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { useAppStore } from "@/lib/app-store";
 import {
+  decodeQrPayload,
+  findCategoryId,
   imageToDataUrl,
   parseReceiptText,
   scanReceiptWithTimeout,
@@ -102,9 +104,24 @@ export function ScanReceiptSheet({
     const runId = runIdRef.current;
     setOcrState("scanning");
     try {
-      const text = await scanReceiptWithTimeout(input);
+      // OCR and QR decoding run in parallel. A payment-screen QR (PIX
+      // "copia e cola") carries the EXACT value, which OCR often mangles
+      // ("R$ 9”" → 9,00), so its amount wins; its merchant name is a title
+      // fallback and its description feeds category detection.
+      const [text, qr] = await Promise.all([
+        scanReceiptWithTimeout(input),
+        decodeQrPayload(input),
+      ]);
       if (runId !== runIdRef.current) return; // form was reset meanwhile
       const parsed = parseReceiptText(text);
+      if (qr?.amount && qr.amount > 0) parsed.amount = qr.amount;
+      if (!parsed.title && qr?.name) parsed.title = qr.name;
+      if (qr?.description) {
+        const qrCat = findCategoryId(qr.description, qr.name ?? "");
+        if (qrCat && qrCat !== "outros" && parsed.categoryId === "outros") {
+          parsed.categoryId = qrCat;
+        }
+      }
       setRawText(text);
       if (!parsed.title && parsed.amount <= 0) {
         setOcrState("empty");
