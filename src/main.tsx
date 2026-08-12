@@ -88,7 +88,28 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+
+/** Shown instead of a blank page when the Convex URL env is missing (e.g. it
+ * wasn't re-injected after a sandbox restart). Without this guard,
+ * `new ConvexReactClient(undefined)` throws during module evaluation — before
+ * React mounts — which the RootErrorBoundary can't catch. */
+function MissingConvexScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+      <div className="max-w-lg text-center">
+        <p className="text-sm font-semibold">Configuração pendente</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          A variável VITE_CONVEX_URL não está definida neste ambiente. Adicione
+          a URL do deploy do Convex nas chaves do projeto (Keys) e reinicie o
+          preview.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 
 
@@ -116,7 +137,14 @@ function RouteSyncer() {
 }
 
 
-createRoot(document.getElementById("root")!).render(
+if (!convex) {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <MissingConvexScreen />
+    </StrictMode>,
+  );
+} else {
+  createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
       <ToolbarErrorBoundary>
@@ -158,4 +186,5 @@ createRoot(document.getElementById("root")!).render(
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,
-);
+  );
+}
