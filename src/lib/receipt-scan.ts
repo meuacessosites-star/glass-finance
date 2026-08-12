@@ -313,7 +313,21 @@ function stripNoise(line: string): string {
 }
 
 const BAD_TITLE_LINE =
-  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|nfc|sat|protocolo/i;
+  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b/i;
+
+/**
+ * A line that survived cleanup is a plausible store name: mostly letters,
+ * no digits glued to letters (barcodes / access keys OCR as digit-letter
+ * gibberish like "WVOB8o0oH-CEE"), and no separator runs or 4+ repeated
+ * chars.
+ */
+function looksLikeStoreName(line: string): boolean {
+  if ((line.match(/[a-zA-ZÀ-ÿ]/g) ?? []).length < 4) return false;
+  if (/[a-zA-ZÀ-ÿ]\d|\d[a-zA-ZÀ-ÿ]/.test(line)) return false;
+  if (/[-_=+*•|.,/]{4,}/.test(line)) return false;
+  if (/([a-zA-ZÀ-ÿ])\1{3,}/.test(line)) return false;
+  return true;
+}
 
 function findTitle(text: string): string {
   const lines = text
@@ -326,6 +340,7 @@ function findTitle(text: string): string {
     if (BAD_TITLE_LINE.test(cleaned)) continue; // header boilerplate
     if (/^\d/.test(cleaned)) continue; // item / code line
     if (/\d+[,.]\d{2}\s*$/.test(cleaned)) continue; // ends with a price → item line
+    if (!looksLikeStoreName(cleaned)) continue; // barcode / OCR gibberish
     return cleaned.slice(0, 40);
   }
   return "";
@@ -412,17 +427,28 @@ export function findCategoryId(text: string, title = ""): string {
   return matchInCategory(norm(text), false) || "outros";
 }
 
-function findTime(line: string): string {
+/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM") inside a line. */
+function findTimeInLine(line: string): string {
   const m = line.match(/([01]\d|2[0-3]):([0-5]\d)/);
-  return m ? `${m[1]}:${m[2]}` : "";
+  if (m) return `${m[1]}:${m[2]}`;
+  const h = line.match(/([01]\d|2[0-3])h([0-5]\d)/i);
+  return h ? `${h[1]}:${h[2]}` : "";
 }
+
+/** Emission-context words (data/hora/emissão/saída/venda/compra). */
+const EMISSION_CTX = /(^|[^a-z])(data|hora)|emiss|saida|emit|venda|compra/i;
+/** Expiry / due-date words — never the purchase date ("DATA DE VALIDADE"). */
+const VALIDITY_CTX = /(^|[^a-z])(val|validade|venc|vencimento|expir)/i;
 
 function findDate(text: string): { date: string; time: string } {
   const lines = text.split("\n");
-  let best: { date: string; line: string } | null = null;
+  let best: { date: string; line: string; score: number } | null = null;
   const dmyRe = /(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})/;
   const isoRe = /(\d{4})-(\d{2})-(\d{2})/;
+
   for (const line of lines) {
+    const ctx = norm(line);
+    if (VALIDITY_CTX.test(ctx)) continue; // "VAL 30/08/2026" etc. — not the purchase date
     const dm = line.match(dmyRe);
     if (dm) {
       const d = parseInt(dm[1], 10);
@@ -430,23 +456,41 @@ function findDate(text: string): { date: string; time: string } {
       const y = parseInt(dm[3], 10);
       if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2000 && y <= 2100) {
         const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        // The emission date usually sits on a "DATA/EMISSÃO/SAÍDA" line.
-        if (/emiss|data|saida|sai|emit|venda|compra/.test(norm(line))) {
-          return { date, time: findTime(line) };
-        }
-        if (!best) best = { date, line };
+        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
+        if (!best || score > best.score) best = { date, line, score };
       }
     }
     const im = line.match(isoRe);
     if (im) {
       const mo = parseInt(im[2], 10);
       const d = parseInt(im[3], 10);
-      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && !best) {
-        best = { date: im[0], line };
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+        const date = im[0];
+        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
+        if (!best || score > best.score) best = { date, line, score };
       }
     }
   }
-  return { date: best?.date ?? "", time: findTime(best ? best.line : text) };
+
+  let time = "";
+  if (best) {
+    // Prefer the time right after the date token ("DATA 05/08/2026 14:32:05"),
+    // then any valid time on the emission line itself.
+    const dm = best.line.match(dmyRe) ?? best.line.match(isoRe);
+    const after = dm ? best.line.slice((dm.index ?? 0) + dm[0].length) : best.line;
+    time = findTimeInLine(after) || findTimeInLine(best.line);
+  }
+  if (!time) {
+    // The date line had no time — look only at lines that mention HORA/emissão
+    // (never scan item lines: prices like "12:50" can be OCR'd with a colon).
+    for (const line of lines) {
+      if (/\bhora\b|emiss|saida/.test(norm(line))) {
+        time = findTimeInLine(line);
+        if (time) break;
+      }
+    }
+  }
+  return { date: best?.date ?? "", time };
 }
 
 export function parseReceiptText(text: string): ScanResult {
