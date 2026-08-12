@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { useAppStore } from "@/lib/app-store";
 import {
+  buildBankReceiptTitle,
   decodeQrPayload,
   extractItems,
   findCategoryId,
@@ -189,6 +190,11 @@ export function ScanReceiptSheet({
           parsed.categoryId = qrCat;
         }
       }
+      // Bank receipts read better as natural language — "Pix recebido de …" /
+      // "Pix enviado para …" — with the QR receiver name filling in when the
+      // OCR text had no counterparty. Store receipts are left untouched.
+      const bankTitle = buildBankReceiptTitle(text, qrName ?? "");
+      if (bankTitle) parsed.title = bankTitle;
       setRawText(text);
       if (!parsed.title && parsed.amount <= 0) {
         setOcrState("empty");

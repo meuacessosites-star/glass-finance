@@ -777,10 +777,11 @@ function findDate(text: string): { date: string; time: string } {
   return { date: best?.date ?? "", time };
 }
 
-/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO" are money IN;
- * "favorecido/recebedor" appear on incoming transfers (the recipient). */
+/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO", "depósito" are
+ * money IN. Note: "favorecido/recebedor" is NOT one — the beneficiary appears
+ * on sent transfers too ("Pix enviado … Favorecido: João"). */
 const INCOME_HINTS =
-  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento|favorecido|recebedor/i;
+  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento/i;
 
 /** Expense signals — payments, purchases, bills, subscriptions, sent PIX. */
 const EXPENSE_HINTS =
@@ -799,9 +800,10 @@ export function detectType(text: string): "income" | "expense" {
 const PAYMENT_METHODS: Array<{ id: string; label: string; re: RegExp }> = [
   { id: "pix", label: "Pix", re: /\bpix\b|bcb\.pix/i },
   { id: "dinheiro", label: "Dinheiro", re: /\bdinheiro\b/i },
-  { id: "cartao", label: "Cartão", re: /\bcart[ãa]o\b/i },
+  // Crédito/débito before cartão so "CARTAO DE CREDITO" reads as crédito.
   { id: "credito", label: "Crédito", re: /\bcr[ée]dito\b/i },
   { id: "debito", label: "Débito", re: /\bd[ée]bito\b/i },
+  { id: "cartao", label: "Cartão", re: /\bcart[ãa]o\b/i },
   { id: "boleto", label: "Boleto", re: /\bboleto\b/i },
   { id: "transferencia", label: "Transferência", re: /transfer[êe]ncia/i },
 ];
@@ -815,17 +817,137 @@ export function findPaymentMethod(text: string): string {
   return "";
 }
 
+/** Natural-language description templates per payment method (income money
+ * IN / expense money OUT). Card payments never read as income. */
+const BANK_PHRASES: Record<
+  string,
+  { income?: (n: string) => string; expense: (n: string) => string }
+> = {
+  pix: {
+    income: (n) => `Pix recebido${n ? ` de ${n}` : ""}`,
+    expense: (n) => `Pix enviado${n ? ` para ${n}` : ""}`,
+  },
+  transferencia: {
+    income: (n) => `Transferência recebida${n ? ` de ${n}` : ""}`,
+    expense: (n) => `Transferência enviada${n ? ` para ${n}` : ""}`,
+  },
+  dinheiro: {
+    income: (n) => `Dinheiro recebido${n ? ` de ${n}` : ""}`,
+    expense: (n) => `Dinheiro pago${n ? ` a ${n}` : ""}`,
+  },
+  boleto: {
+    income: (n) => `Boleto recebido${n ? ` de ${n}` : ""}`,
+    expense: (n) => `Boleto pago${n ? ` a ${n}` : ""}`,
+  },
+  cartao: {
+    expense: (n) => `Pagamento no cartão${n ? ` em ${n}` : ""}`,
+  },
+  credito: {
+    expense: (n) => `Pagamento no cartão de crédito${n ? ` em ${n}` : ""}`,
+  },
+  debito: {
+    expense: (n) => `Pagamento no cartão de débito${n ? ` em ${n}` : ""}`,
+  },
+};
+
+/** Payment-institution names that are never a counterparty person/store. */
+const BANK_NAME_NOISE =
+  /mercado pago|nupagamentos|instituicao|de pagamento|s\.a\.?\b/i;
+
+/** Counterparty name on a bank receipt: the FAVORECIDO/RECEBEDOR label first,
+ * then the first person-name inside the "Origem/Destino" block (money IN →
+ * the payer in Origem; money OUT → the receiver in Destino). */
+function findCounterpartyName(text: string, income: boolean): string {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const good = (raw: string) => {
+    const n = stripNoise(raw);
+    if (!n || n.length < 4) return "";
+    if (BAD_TITLE_LINE.test(n) || BANK_NAME_NOISE.test(n)) return "";
+    if (!looksLikeStoreName(n)) return "";
+    return titleCase(n)
+      .replace(/\b(de|da|do|das|dos|e)\b/gi, (w) => w.toLowerCase())
+      .slice(0, 40);
+  };
+  // 1) Explicit FAVORECIDO / RECEBEDOR / BENEFICIARIO / ESTABELECIMENTO label.
+  for (let i = 0; i < lines.length; i++) {
+    if (/favorecido|recebedor|beneficiario|estabelecimento/i.test(norm(lines[i]))) {
+      const n = good(lines[i + 1] ?? "");
+      if (n) return n;
+    }
+  }
+  // 2) "Origem e destino" block. Account-number lines ("51.007.564 MARIA…")
+  //    get the leading digits stripped before validation.
+  let inOrigem = false;
+  let inDestino = false;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = norm(lines[i]);
+    if (/^origem\b/.test(ln)) {
+      inOrigem = true;
+      inDestino = false;
+      continue;
+    }
+    if (/^destino\b/.test(ln)) {
+      inOrigem = false;
+      inDestino = true;
+      continue;
+    }
+    if (!(income ? inOrigem : inDestino)) continue;
+    const cleaned = lines[i].replace(/^[\d.*\s]+(?=[A-ZÀ-Ú])/, "").trim();
+    const n = good(cleaned);
+    if (n) return n;
+  }
+  return "";
+}
+
+/** Natural-language description for bank receipts: "Pix recebido de Maria",
+ * "Pix enviado para João", "Transferência recebida de …", "Boleto pago a …",
+ * "Pagamento no cartão em …". Returns "" when the text is not a bank receipt
+ * or a rewrite would be speculative (a store receipt that merely mentions
+ * "agência"/"conta" keeps its store name). `nameOverride` lets callers plug
+ * the QR receiver name when the OCR text had no counterparty. */
+export function buildBankReceiptTitle(
+  text: string,
+  nameOverride = "",
+): string {
+  if (!BANKING_CTX.test(norm(text))) return "";
+  const method = findPaymentMethod(text);
+  const income = detectType(text) === "income";
+  const name = (nameOverride || findCounterpartyName(text, income)).trim();
+  const phrase = BANK_PHRASES[method];
+  if (phrase) {
+    if (income) return phrase.income ? phrase.income(name) : "";
+    return phrase.expense(name);
+  }
+  // No method detected — only rewrite with generic wording when there's an
+  // explicit comprovante/recibo label or a counterparty name.
+  if (name || /comprovante|recibo|extrato/i.test(norm(text))) {
+    return income
+      ? name
+        ? `Depósito recebido de ${name}`
+        : "Depósito recebido"
+      : name
+        ? `Pagamento para ${name}`
+        : "Pagamento";
+  }
+  return "";
+}
+
 export function parseReceiptText(text: string): ScanResult {
   const { date, time } = findDate(text);
-  const title = findTitle(text);
+  const type = detectType(text);
+  const paymentMethod = findPaymentMethod(text);
+  const title = buildBankReceiptTitle(text) || findTitle(text);
   return {
     title,
     amount: findAmount(text),
     categoryId: findCategoryId(text, title),
     date,
     time,
-    type: detectType(text),
-    paymentMethod: findPaymentMethod(text),
+    type,
+    paymentMethod,
   };
 }
 
