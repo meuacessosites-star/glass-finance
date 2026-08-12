@@ -482,7 +482,7 @@ function stripNoise(line: string): string {
 }
 
 const BAD_TITLE_LINE =
-  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b|\bcentro\b|\bbairro\b|\bcomplemento\b/i;
+  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b|\bcentro\b|\bbairro\b|\bcomplemento\b|\binstituicao\b|\bagencia\b|\bconta\b|\boperacao\b|\batendimento\b|\bouvidoria\b|\bfavorecido\b|\brecebedor\b|\borigem\b|\bdestino\b|\bcomprovante\b|\bdeposito\b|\btransferencia\b|\bdepositar\b/i;
 
 /**
  * A line that survived cleanup is a plausible store name: mostly letters,
@@ -507,6 +507,32 @@ function findTitle(text: string): string {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+
+  // 1) An explicit "comprovante/recibo de …" label is the best title on a
+  //    bank receipt (there is no store name).
+  for (const line of lines) {
+    const cleaned = stripNoise(line);
+    const m = cleaned.match(
+      /^(?:comprovante|recibo|extrato)\s+de\s+([a-zà-ú0-9&. ]{3,})$/i,
+    );
+    // OCR drops accents ("transferência" → "transferencia"): normalize both.
+    if (m || (norm(cleaned).match(/^(?:comprovante|recibo|extrato)\s+de\s+[a-z0-9&. ]{3,}$/) ?? []).length) {
+      return cleaned.slice(0, 40);
+    }
+  }
+
+  // 2) On bank receipts, the recipient ("FAVORECIDO / RECEBEDOR") is a
+  //    meaningful title — "Comprovante de depósito · Geovana".
+  for (let i = 0; i < lines.length; i++) {
+    if (/favorecido|recebedor/i.test(norm(lines[i]))) {
+      const name = stripNoise(lines[i + 1] ?? "");
+      if (name && !BAD_TITLE_LINE.test(name) && looksLikeStoreName(name)) {
+        return `Comprovante de depósito · ${name.slice(0, 20)}`.slice(0, 40);
+      }
+    }
+  }
+
+  // 3) Otherwise the store name (same heuristics as before).
   for (const line of lines) {
     const cleaned = stripNoise(line);
     if (!/[a-zà-ú]{3,}/i.test(cleaned)) continue; // needs real words
@@ -582,11 +608,22 @@ function matchInCategory(haystack: string, isTitle: boolean): string {
   return "";
 }
 
+/** Bank-receipt context (comprovante, depósito, PIX, agência, conta…) — the
+ * text is a payment screenshot, NOT a store receipt, so store-ish keywords
+ * ("mercado" in "MERCADO PAGO") must not drive the category. */
+const BANKING_CTX =
+  /comprovante|instituicao de pagamento|numero de conta|nr\. de conta|\bagencia\b|\bfavorecido\b|\brecebedor\b|\borigem\b|\bdestino\b|mercado pago|operacao de|id da transacao|deposit|transferencia|\bestorno\b/i;
+
+/** Categories that still make sense on a bank receipt (income signals). */
+const BANKING_ALLOWED = new Set(["salario", "freelance", "assinaturas"]);
+
 /** Matches a text against the scan/voice category keywords. */
 export function findCategoryId(text: string, title = ""): string {
+  // Bank receipts: suppress store keywords entirely.
+  const bank = BANKING_CTX.test(norm(text));
   // 1) The store name is the strongest signal.
   const titleNorm = ocrNorm(title);
-  if (titleNorm) {
+  if (titleNorm && !bank) {
     const byTitle = matchInCategory(titleNorm, true);
     if (byTitle) return byTitle;
   }
@@ -599,17 +636,20 @@ export function findCategoryId(text: string, title = ""): string {
     .slice(0, 12);
   for (const line of lines) {
     const id = matchInCategory(ocrNorm(line), false);
-    if (id) return id;
+    if (id && (!bank || BANKING_ALLOWED.has(id))) return id;
   }
   // 3) Full text, strong keywords only.
-  return matchInCategory(ocrNorm(text), false) || "outros";
+  const id = matchInCategory(ocrNorm(text), false);
+  if (id && (!bank || BANKING_ALLOWED.has(id))) return id;
+  return "outros";
 }
 
-/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM") inside a line,
- * with OCR-tolerant digits ("l4:3Z" → "14:32"). */
+/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM", and single-digit
+ * hours like "9:44") inside a line, with OCR-tolerant digits
+ * ("l4:3Z" → "14:32"). */
 function findTimeInLine(line: string): string {
   const m = line.match(
-    new RegExp(`([01lIiL]${D}|2[0-3OoIiLlSZB])[:h]([0-5OoIiLlSZB]${D})`, "i"),
+    new RegExp(`((?:[01lIiL]?${D})|2[0-3OoIiLlSZB])[:h]([0-5OoIiLlSZB]${D})`, "i"),
   );
   if (!m) return "";
   const hh = parseInt(ocrDigits(m[1]), 10);
@@ -725,10 +765,10 @@ function findDate(text: string): { date: string; time: string } {
   }
   if (!time) {
     // The date line had no time — look only at lines that mention
-    // HORA/emissão/leitura (never scan item lines: prices like "12:50" can be
-    // OCR'd with a colon).
+    // HORA/emissão/leitura/às (never scan item lines: prices like "12:50" can
+    // be OCR'd with a colon).
     for (const line of lines) {
-      if (/\bhora\b|emiss|saida|leitura/.test(norm(line))) {
+      if (/\bhora\b|emiss|saida|leitura|às|\bas\b|operacao|origem|destino/.test(norm(line))) {
         time = findTimeInLine(line);
         if (time) break;
       }
@@ -737,9 +777,10 @@ function findDate(text: string): { date: string; time: string } {
   return { date: best?.date ?? "", time };
 }
 
-/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO" are money IN. */
+/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO" are money IN;
+ * "favorecido/recebedor" appear on incoming transfers (the recipient). */
 const INCOME_HINTS =
-  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento/i;
+  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento|favorecido|recebedor/i;
 
 /** Expense signals — payments, purchases, bills, subscriptions, sent PIX. */
 const EXPENSE_HINTS =
