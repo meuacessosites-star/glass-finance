@@ -65,6 +65,10 @@ export function ScanReceiptSheet({
   const addMoreRef = useRef<HTMLInputElement | null>(null);
   // Bumped on every open/reset so stale OCR results never fill a fresh form.
   const runIdRef = useRef(0);
+  // Original picked File, kept so "Tentar de novo" re-OCRs at full quality.
+  const sourceFileRef = useRef<File | null>(null);
+  // True once the user picks the date manually — the OCR date never overrides it.
+  const dateTouchedRef = useRef(false);
 
   // Fresh state every time the sheet opens.
   useEffect(() => {
@@ -80,6 +84,8 @@ export function ScanReceiptSheet({
     setDate(new Date().toISOString().slice(0, 10));
     setTime("");
     setNote("");
+    sourceFileRef.current = null;
+    dateTouchedRef.current = false;
   }, [open]);
 
   /** Default expense category (used before OCR answers). */
@@ -88,11 +94,11 @@ export function ScanReceiptSheet({
     return fallback?.id ?? categories[0]?.id ?? "outros";
   };
 
-  const runOcr = async (image: string) => {
+  const runOcr = async (input: File | string) => {
     const runId = runIdRef.current;
     setOcrState("scanning");
     try {
-      const text = await scanReceiptWithTimeout(image);
+      const text = await scanReceiptWithTimeout(input);
       if (runId !== runIdRef.current) return; // form was reset meanwhile
       const parsed = parseReceiptText(text);
       if (!parsed.title && parsed.amount <= 0) {
@@ -100,10 +106,14 @@ export function ScanReceiptSheet({
         return;
       }
       setOcrState("done");
-      // Fill only the fields the user hasn't touched yet.
+      // Fill only the fields the user hasn't touched yet. The date starts
+      // as "today" only as a placeholder — the OCR date overrides it unless
+      // the user picked a date manually.
       setTitle((prev) => (prev.trim() ? prev : parsed.title));
       setCents((prev) => (prev > 0 ? prev : Math.round(parsed.amount * 100)));
-      setDate((prev) => (prev ? prev : parsed.date));
+      setDate((prev) =>
+        dateTouchedRef.current ? prev : parsed.date || prev,
+      );
       setTime((prev) => (prev ? prev : parsed.time));
       if (!categoryTouched && parsed.categoryId) {
         const suggested = SCAN_CATEGORIES.find(
@@ -134,7 +144,8 @@ export function ScanReceiptSheet({
       setImages([url]);
       setCategoryId(defaultCategoryId());
       setStep("edit");
-      void runOcr(url);
+      sourceFileRef.current = file;
+      void runOcr(file);
     } catch {
       toast("Não foi possível abrir essa imagem", { description: "Tente outra foto." });
     }
@@ -270,38 +281,65 @@ export function ScanReceiptSheet({
           {step === "edit" && (
             <>
               <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
-                {/* Attachments strip */}
-                <div className="no-scrollbar -mx-5 flex gap-3 overflow-x-auto px-5 pb-0.5">
-                  {images.map((img, i) => (
-                    <div key={i} className="relative shrink-0">
+                {/* Scan animation while the OCR runs */}
+                {ocrState === "scanning" && images[0] && (
+                  <div className="mx-auto mt-3 w-full max-w-[250px]">
+                    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
                       <img
-                        src={img}
-                        alt={`Nota ${i + 1}`}
-                        className="h-24 w-24 rounded-2xl object-cover shadow-[0_8px_20px_-8px_rgba(15,40,90,0.4)]"
+                        src={images[0]}
+                        alt="Nota sendo lida"
+                        className="absolute inset-0 h-full w-full object-cover"
                       />
+                      <div className="pointer-events-none absolute inset-0 bg-[#0b1630]/10" />
+                      <span className="pointer-events-none absolute left-3 top-3 h-5 w-5 rounded-tl-xl border-l-[3px] border-t-[3px] border-white/90" />
+                      <span className="pointer-events-none absolute right-3 top-3 h-5 w-5 rounded-tr-xl border-r-[3px] border-t-[3px] border-white/90" />
+                      <span className="pointer-events-none absolute bottom-3 left-3 h-5 w-5 rounded-bl-xl border-b-[3px] border-l-[3px] border-white/90" />
+                      <span className="pointer-events-none absolute bottom-3 right-3 h-5 w-5 rounded-br-xl border-b-[3px] border-r-[3px] border-white/90" />
+                      <div className="scan-line" aria-hidden="true" />
+                    </div>
+                    <div className="glass mt-3 flex items-center justify-center gap-2 rounded-full px-4 py-2.5">
+                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#FF9500]" />
+                      <p className="text-[12.5px] font-semibold text-glass-ink">
+                        Lendo a nota…
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Attachments strip (hidden while the scan animation shows) */}
+                {ocrState !== "scanning" && (
+                  <div className="no-scrollbar -mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-0.5">
+                    {images.map((img, i) => (
+                      <div key={i} className="relative shrink-0">
+                        <img
+                          src={img}
+                          alt={`Nota ${i + 1}`}
+                          className="h-24 w-24 rounded-2xl object-cover shadow-[0_8px_20px_-8px_rgba(15,40,90,0.4)]"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Remover foto"
+                          onClick={() => removeImage(i)}
+                          className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-[#FF3B30] text-white shadow-md transition-transform active:scale-90"
+                        >
+                          <X className="size-3.5" strokeWidth={3} />
+                        </button>
+                      </div>
+                    ))}
+                    {images.length < 6 && (
                       <button
                         type="button"
-                        aria-label="Remover foto"
-                        onClick={() => removeImage(i)}
-                        className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-[#FF3B30] text-white shadow-md transition-transform active:scale-90"
+                        onClick={() => addMoreRef.current?.click()}
+                        className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-glass-faint/60 text-glass-sub transition-colors hover:bg-white/40"
                       >
-                        <X className="size-3.5" strokeWidth={3} />
+                        <ImagePlus className="size-5" />
+                        <span className="text-[11px] font-semibold">
+                          Adicionar
+                        </span>
                       </button>
-                    </div>
-                  ))}
-                  {images.length < 6 && (
-                    <button
-                      type="button"
-                      onClick={() => addMoreRef.current?.click()}
-                      className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-glass-faint/60 text-glass-sub transition-colors hover:bg-white/40"
-                    >
-                      <ImagePlus className="size-5" />
-                      <span className="text-[11px] font-semibold">
-                        {images.length === 0 ? "Adicionar" : "Adicionar"}
-                      </span>
-                    </button>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
                 <input
                   ref={addMoreRef}
                   type="file"
@@ -311,7 +349,7 @@ export function ScanReceiptSheet({
                 />
 
                 {/* OCR status */}
-                {ocrState === "scanning" && (
+                {ocrState === "scanning" && !images[0] && (
                   <div className="glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
                     <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-[#FF9500]" />
                     <div>
@@ -320,6 +358,21 @@ export function ScanReceiptSheet({
                       </p>
                       <p className="text-[12px] text-glass-sub">
                         Reconhecendo texto, valor e categoria
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {ocrState === "done" && (
+                  <div className="glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
+                      <Check className="size-3.5 text-[#17a443]" strokeWidth={3} />
+                    </span>
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-glass-ink">
+                        Leitura concluída
+                      </p>
+                      <p className="text-[12px] text-glass-sub">
+                        Confira os campos abaixo e ajuste se precisar.
                       </p>
                     </div>
                   </div>
@@ -335,7 +388,9 @@ export function ScanReceiptSheet({
                     {images[0] && (
                       <button
                         type="button"
-                        onClick={() => void runOcr(images[0])}
+                        onClick={() =>
+                          void runOcr(sourceFileRef.current ?? images[0])
+                        }
                         className="mt-2.5 flex items-center gap-1.5 text-[12.5px] font-bold text-primary"
                       >
                         <RefreshCw className="size-3.5" /> Tentar de novo
@@ -426,7 +481,10 @@ export function ScanReceiptSheet({
                       <input
                         type="date"
                         value={date}
-                        onChange={(e) => setDate(e.target.value)}
+                        onChange={(e) => {
+                          dateTouchedRef.current = true;
+                          setDate(e.target.value);
+                        }}
                         className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
                       />
                     </label>

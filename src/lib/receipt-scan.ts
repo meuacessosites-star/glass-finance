@@ -1,10 +1,11 @@
 import * as Tesseract from "tesseract.js";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — client-side OCR (Tesseract.js, Portuguese) plus a parser
-// that turns raw receipt text into structured fields: merchant, BRL amount,
-// category, date and time. All heuristics are safe: if nothing matches, the
-// field stays empty so the user can fill it manually.
+// Escanear Nota — client-side OCR (Tesseract.js, Portuguese, fully offline
+// via the assets shipped in /public/tesseract and /public/tessdata) plus a
+// parser that turns raw receipt text into structured fields: merchant, BRL
+// amount, category, date and time. All heuristics are safe: if nothing
+// matches, the field stays empty so the user can fill it manually.
 // ---------------------------------------------------------------------------
 
 export type ScanCategory = {
@@ -29,6 +30,8 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     keywords: [
       "restaurante",
       "ifood",
+      "uber eats",
+      "rappi",
       "lanchonete",
       "pizzaria",
       "pizza",
@@ -47,17 +50,22 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     icon: "alimentacao",
     keywords: [
       "supermercado",
+      "hipermercado",
       "mercado",
+      "emporio",
+      "sacolao",
       "padaria",
       "pao de acucar",
       "pão de açúcar",
       "carrefour",
       "assai",
       "atacadao",
+      "atacadista",
       "hortifruti",
-      "feira",
+      "frutaria",
       "acougue",
       "sadia",
+      "pereciveis",
     ],
   },
   {
@@ -74,16 +82,18 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     icon: "transporte",
     keywords: [
       "uber",
-      "taxi",
       "99pop",
+      "taxi",
       "posto",
       "shell",
-      "gasolina",
+      "ipiranga",
+      "petrobras",
       "combustivel",
       "combustível",
       "estacionamento",
       "metro",
       "onibus",
+      "pedagio",
     ],
   },
   {
@@ -97,12 +107,16 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
       "condomínio",
       "energisa",
       "enel",
-      "energia",
-      "agua",
-      "água",
+      "copel",
+      "ceea",
       "conta de luz",
+      "conta de agua",
+      "fatura de agua",
+      "agua e esgoto",
+      "conta de energia",
       "telefonia",
       "internet fibra",
+      "saneamento",
     ],
   },
   {
@@ -118,6 +132,7 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
       "manutencao",
       "manutenção",
       "auto pecas",
+      "auto peças",
       "borracharia",
     ],
   },
@@ -158,7 +173,7 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     label: "Viagem",
     color: "#32ADE6",
     icon: "viagem",
-    keywords: ["hotel", "airbnb", "voo", "passagem", "hostel"],
+    keywords: ["hotel", "airbnb", "voo", "passagem", "hostel", "turismo"],
   },
   {
     id: "pets",
@@ -184,6 +199,7 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
       "zara",
       "shein",
       "shopee",
+      "mercadolivre",
     ],
   },
   {
@@ -205,7 +221,8 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
       "mensalidade",
       "apple",
       "google play",
-      "prime",
+      "prime video",
+      "disney plus",
     ],
   },
   {
@@ -256,22 +273,48 @@ export function parseBrl(input: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Picks the best amount: a "total/pago/valor" line first, then the last R$ value. */
+/**
+ * Picks the best amount: an explicit "total/valor/pago" line first (ignoring
+ * "total itens"), then the last R$ value on the receipt.
+ */
 function findAmount(text: string): number {
   const totalLine = text.match(
-    /^(?:total|valor(?: total)?|pago|valido|valor a pagar)\b[^0-9]*([\d.,]+)/im,
+    /^\s*(?:total(?: a pagar| pago)?|valor(?: total)?|a pagar)\b(?!\s*itens)[^0-9]*([\d.,]+)/im,
   );
   if (totalLine) {
     const n = parseBrl(totalLine[1]);
     if (n > 0) return n;
   }
-  const values = [...text.matchAll(/r\$\s*([\d.,]+)/gi)].map((m) => parseBrl(m[1]));
+  const totalAnywhere = text.match(
+    /\btotal(?: a pagar| pago)?\b(?!\s*itens)[^0-9]*([\d.,]+)/i,
+  );
+  if (totalAnywhere) {
+    const n = parseBrl(totalAnywhere[1]);
+    if (n > 0) return n;
+  }
+  const values = [...text.matchAll(/r\$\s*([\d.,]+)/gi)].map((m) =>
+    parseBrl(m[1]),
+  );
   const last = values[values.length - 1];
   if (last && last > 0) return last;
   return 0;
 }
 
-const BAD_TITLE_LINE = /cnpj|cpf|cupom|nfc-e|nf-e|emitido|data:|hora:|total|troco|desconto|pagamento|numero|nr\.|telefone|endereco|endereço|www|\.com\.br/i;
+/** Removes CNPJ / IE / phone / URL / long number runs from a title line. */
+function stripNoise(line: string): string {
+  return line
+    .replace(/\bcnpj\b[:\s]*[\d./-]{8,}/gi, "")
+    .replace(/\bie\b[:\s]*[\d./-]{4,}/gi, "")
+    .replace(/\b(?:fone|telefone|tel)\b[:\s]*[+\d\s()-]{5,}/gi, "")
+    .replace(/\b(?:www\.)?[\w-]+\.com\.br\b/gi, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[0-9]{4,}/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const BAD_TITLE_LINE =
+  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|nfc|sat|protocolo/i;
 
 function findTitle(text: string): string {
   const lines = text
@@ -279,45 +322,167 @@ function findTitle(text: string): string {
     .map((l) => l.trim())
     .filter(Boolean);
   for (const line of lines) {
-    if (!/[a-zà-ú]{3,}/i.test(line)) continue;
-    if (BAD_TITLE_LINE.test(line)) continue;
-    return line.slice(0, 40);
+    const cleaned = stripNoise(line);
+    if (!/[a-zà-ú]{3,}/i.test(cleaned)) continue; // needs real words
+    if (BAD_TITLE_LINE.test(cleaned)) continue; // header boilerplate
+    if (/^\d/.test(cleaned)) continue; // item / code line
+    if (/\d+[,.]\d{2}\s*$/.test(cleaned)) continue; // ends with a price → item line
+    return cleaned.slice(0, 40);
+  }
+  return "";
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Word-boundary `includes` on normalized text (accent-proof). */
+const wordBoundaryIncludes = (haystack: string, keyword: string) =>
+  new RegExp(`(^|[^a-z0-9])${escapeRe(keyword)}([^a-z0-9]|$)`).test(haystack);
+
+/**
+ * Keywords that would false-positive on item lines (e.g. "agua" in
+ * "AGUA MINERAL" on a supermarket receipt). They only ever match the store
+ * name (title) or a line that also contains a billing word like "conta".
+ */
+const CONTEXT_KEYWORDS: Record<string, string[]> = {
+  agua: [
+    "conta",
+    "fatura",
+    "consumo",
+    "leitura",
+    "esgoto",
+    "saneamento",
+    "abastecimento",
+    "mensal",
+  ],
+  energia: [
+    "conta",
+    "fatura",
+    "consumo",
+    "leitura",
+    "fornecimento",
+    "distribuicao",
+    "cfe",
+    "mensal",
+  ],
+  cafe: ["cafeteria", "cafe expresso", "espresso"],
+};
+
+/** Short generic words that only match in the store title, not item text. */
+const TITLE_ONLY_KEYWORDS = new Set(["cafe", "agua", "energia"]);
+
+/** Matches every category's keywords against one normalized haystack scope. */
+function matchInCategory(haystack: string, isTitle: boolean): string {
+  for (const cat of SCAN_CATEGORIES) {
+    if (cat.id === "outros") continue;
+    for (const kw of cat.keywords) {
+      const k = norm(kw);
+      if (!k) continue;
+      const contextual = CONTEXT_KEYWORDS[k];
+      if (contextual) {
+        if (!isTitle && !contextual.some((c) => haystack.includes(norm(c))))
+          continue;
+      } else if (TITLE_ONLY_KEYWORDS.has(k) && !isTitle) {
+        continue;
+      }
+      if (wordBoundaryIncludes(haystack, k)) return cat.id;
+    }
   }
   return "";
 }
 
 /** Matches a text against the scan/voice category keywords. */
-export function findCategoryId(text: string): string {
-  const t = norm(text);
-  for (const cat of SCAN_CATEGORIES) {
-    if (cat.id === "outros") continue;
-    if (cat.keywords.some((k) => t.includes(norm(k)))) return cat.id;
+export function findCategoryId(text: string, title = ""): string {
+  // 1) The store name is the strongest signal.
+  const titleNorm = norm(title);
+  if (titleNorm) {
+    const byTitle = matchInCategory(titleNorm, true);
+    if (byTitle) return byTitle;
   }
-  return "outros";
+  // 2) Header region: first lines before the item list (may contain hints
+  //    like "FARMACIA", "PADARIA" or "CONTA DE AGUA").
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  for (const line of lines) {
+    const id = matchInCategory(norm(line), false);
+    if (id) return id;
+  }
+  // 3) Full text, strong keywords only.
+  return matchInCategory(norm(text), false) || "outros";
+}
+
+function findTime(line: string): string {
+  const m = line.match(/([01]\d|2[0-3]):([0-5]\d)/);
+  return m ? `${m[1]}:${m[2]}` : "";
 }
 
 function findDate(text: string): { date: string; time: string } {
-  const dm = text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  const date = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : "";
-  const tm = text.match(/(\d{2}):(\d{2})/);
-  const time = tm ? `${tm[1]}:${tm[2]}` : "";
-  return { date, time };
+  const lines = text.split("\n");
+  let best: { date: string; line: string } | null = null;
+  const dmyRe = /(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})/;
+  const isoRe = /(\d{4})-(\d{2})-(\d{2})/;
+  for (const line of lines) {
+    const dm = line.match(dmyRe);
+    if (dm) {
+      const d = parseInt(dm[1], 10);
+      const mo = parseInt(dm[2], 10);
+      const y = parseInt(dm[3], 10);
+      if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2000 && y <= 2100) {
+        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        // The emission date usually sits on a "DATA/EMISSÃO/SAÍDA" line.
+        if (/emiss|data|saida|sai|emit|venda|compra/.test(norm(line))) {
+          return { date, time: findTime(line) };
+        }
+        if (!best) best = { date, line };
+      }
+    }
+    const im = line.match(isoRe);
+    if (im) {
+      const mo = parseInt(im[2], 10);
+      const d = parseInt(im[3], 10);
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && !best) {
+        best = { date: im[0], line };
+      }
+    }
+  }
+  return { date: best?.date ?? "", time: findTime(best ? best.line : text) };
 }
 
 export function parseReceiptText(text: string): ScanResult {
   const { date, time } = findDate(text);
+  const title = findTitle(text);
   return {
-    title: findTitle(text),
+    title,
     amount: findAmount(text),
-    categoryId: findCategoryId(text),
+    categoryId: findCategoryId(text, title),
     date,
     time,
   };
 }
 
 // ---------------------------------------------------------------------------
-// OCR
+// Images
 // ---------------------------------------------------------------------------
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read-failed"));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("decode-failed"));
+    img.src = src;
+  });
+}
 
 /** Downscale + re-encode an image file into a compact JPEG data URL. */
 export function imageToDataUrl(
@@ -325,40 +490,85 @@ export function imageToDataUrl(
   maxSize = 1000,
   quality = 0.82,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("read-failed"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("decode-failed"));
-      img.onload = () => {
-        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("no-canvas"));
-          return;
-        }
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+  return (async () => {
+    const img = await loadImage(await fileToDataUrl(file));
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no-canvas");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", quality);
+  })();
 }
 
-/** OCR an image (data URL) with Tesseract.js — Portuguese, LSTM-only. */
-export async function scanReceiptText(image: string): Promise<string> {
-  const worker = await Tesseract.createWorker("por");
+/**
+ * Prepares an image (original File or data URL) for OCR: upscales small
+ * thermal-receipt photos to ~1800px on the long edge, converts to grayscale
+ * and stretches the contrast so tiny print is readable by Tesseract.
+ */
+export async function prepareForOcr(input: File | string): Promise<string> {
+  const url = typeof input === "string" ? input : await fileToDataUrl(input);
+  const img = await loadImage(url);
+  const maxDim = Math.max(img.width, img.height);
+  const scale = Math.min(2.5, Math.max(1200 / maxDim, 1800 / maxDim));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no-canvas");
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const px = imageData.data;
+  let lo = 255;
+  let hi = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    if (g < lo) lo = g;
+    if (g > hi) hi = g;
+  }
+  const range = Math.max(1, hi - lo);
+  const gain = 255 / range;
+  for (let i = 0; i < px.length; i += 4) {
+    const g = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] - lo) * gain;
+    const v = g < 0 ? 0 : g > 255 ? 255 : Math.round(g);
+    px[i] = v;
+    px[i + 1] = v;
+    px[i + 2] = v;
+    px[i + 3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+// ---------------------------------------------------------------------------
+// OCR — fully local: worker, core and Portuguese traineddata ship in
+// /public so scanning works even when the preview sandbox blocks CDNs.
+// ---------------------------------------------------------------------------
+
+const BASE = import.meta.env.BASE_URL || "/";
+
+/** OCR an image (original File or data URL) with Tesseract.js — local assets. */
+export async function scanReceiptText(input: File | string): Promise<string> {
+  const prepared = await prepareForOcr(input);
+  const worker = await Tesseract.createWorker("por", Tesseract.OEM.LSTM_ONLY, {
+    workerPath: `${BASE}tesseract/worker.min.js`,
+    corePath: `${BASE}tesseract`,
+    langPath: `${BASE}tessdata`,
+    gzip: true,
+  });
   try {
-    const { data } = await worker.recognize(image);
+    const { data } = await worker.recognize(prepared);
     return data.text ?? "";
   } finally {
     await worker.terminate();
@@ -366,11 +576,11 @@ export async function scanReceiptText(image: string): Promise<string> {
 }
 
 export async function scanReceiptWithTimeout(
-  image: string,
-  ms = 60_000,
+  input: File | string,
+  ms = 90_000,
 ): Promise<string> {
   return Promise.race([
-    scanReceiptText(image),
+    scanReceiptText(input),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("ocr-timeout")), ms),
     ),
