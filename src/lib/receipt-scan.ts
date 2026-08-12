@@ -256,12 +256,15 @@ const norm = (s: string) =>
 
 /**
  * A digit position in OCR text — thermal print confuses 0/O, 5/S, 1/l/I,
- * 2/Z, 8/B and 4/A, so these letters are accepted where a digit is expected.
+ * 2/Z, 8/B, 4/A, 6/G and 7/T, so these letters are accepted where a digit
+ * is expected.
  */
-const D = "[0-9OoIiLlSZB4Aa]";
+/** Character-class BODY (no brackets) — reused inside the AMOUNT lookahead. */
+const D_BODY = "0-9OoIiLlSZB4AaGgTt";
+const D = `[${D_BODY}]`;
 
 /** Maps OCR letter confusions back to digits ("9O" → "90", "l4" → "14",
- * "1A" → "14"). */
+ * "1A" → "14", "3G" → "36", "2T" → "27"). */
 function ocrDigits(token: string): string {
   return token
     .replace(/[Oo]/g, "0")
@@ -269,7 +272,9 @@ function ocrDigits(token: string): string {
     .replace(/[IiLl]/g, "1")
     .replace(/[Zz]/g, "2")
     .replace(/[Bb]/g, "8")
-    .replace(/[Aa]/g, "4");
+    .replace(/[Aa]/g, "4")
+    .replace(/[Gg]/g, "6")
+    .replace(/[Tt]/g, "7");
 }
 
 /** norm() plus the same letter→digit mapping, applied to BOTH the receipt
@@ -303,35 +308,111 @@ export function parseBrl(input: string): number {
 }
 
 /**
- * Picks the best amount: an explicit "total/valor/pago" line first (ignoring
- * "total itens"), then the last R$ value on the receipt. Amounts go through
- * fuzzy parsing so cents survive OCR noise ("28,9O", "28 90", "T0TAL").
+ * Picks the best amount, most-reliable source first:
+ *   1. an explicit "total/valor/a pagar" line — keyword and number must share
+ *      the same line (a newline is a different field, never the total);
+ *   2. any "R$" value (the symbol may OCR as "RS"/"R5"), from the bottom;
+ *   3. any remaining number token, from the bottom, skipping change/ID/address
+ *      lines. Amounts survive OCR noise: "28,9O", "3G,50", "28 90", "R$ 28"
+ *      and "T0TAL" all resolve.
  */
+/** A BRL amount token. The lookahead requires at least one REAL digit so a
+ * fuzzy letter class never lets "TOTAL"'s own letters be read as a number
+ * (e.g. the trailing "L" of "VALOR TOTAL" becoming 1). */
+const AMOUNT_RE = `((?=[${D_BODY}]*[0-9])${D}+(?:[.,]${D}{3})*(?:[., ]+${D}{1,2})?)`;
+
+/** Letter → OCR confusion set, used to build fuzzy keywords. */
+const L: Record<string, string> = {
+  t: "[t17]",
+  o: "[0o4]",
+  a: "[a4]",
+  l: "[l1]",
+  p: "[p]",
+  g: "[g]",
+  r: "[r]",
+  v: "[v]",
+};
+const fuzzy = (w: string) => w.split("").map((c) => L[c] ?? c).join("");
+
+/** "total" / "valor" / "a pagar" tolerating the T→1/7, O→0/4, A→4, L→1 swaps. */
+const TOTAL_KINDS =
+  `${fuzzy("total")}(?: ${fuzzy("a")} ${fuzzy("pagar")}| ${fuzzy("pago")})?` +
+  `|${fuzzy("valor")}(?: ${fuzzy("total")})?` +
+  `|${fuzzy("a")} ${fuzzy("pagar")}`;
+
+/** Lines that carry values different from the total (change, IDs, addresses). */
+const BAD_AMOUNT_LINE =
+  /troco|dinheiro|cnpj|cpf\b|inscricao|\bie\b|telefone|fone|\btel\b|endereco|rua\b|avenida|\bav\.|qtd|quantidade|unid|caixa|operador|consumidor|protocolo|validade|venc|leitura|sequencial/i;
+
+/** Masks valid dates and times so they never read as BRL amounts (day/month
+ * are validated so amounts like "1.234,56" and "12.50" stay unmasked). */
+const maskDatesTimes = (line: string) =>
+  line
+    .replace(
+      /(?:0[1-9]|[12]\d|3[01])[\/.\-](?:0[1-9]|1[0-2])(?:[\/.\-]\d{2,4})?/g,
+      " ",
+    )
+    .replace(/\d{1,2}:\d{2}(:\d{2})?/g, " ");
+
+/** Strict-digit BRL tokens on one line (dates/times masked first). */
+function amountTokens(line: string): string[] {
+  const out: string[] = [];
+  for (const m of maskDatesTimes(line).matchAll(
+    /([0-9]+(?:[.,][0-9]{3})*(?:[., ]+[0-9]{1,2})?)/g,
+  )) {
+    const t = m[1].trim();
+    if (t.length >= 2) out.push(t);
+  }
+  return out;
+}
+
 function findAmount(text: string): number {
-  const amount = new RegExp(
-    `(${D}+(?:[.,]${D}{3})*(?:[.,\\s]+${D}{1,2}))`,
-  );
-  const totalKinds =
-    "t[0o]tal(?: a p[0o]gar| p[0o]g[0o])?|v[0o]l[0o]r(?: t[0o]tal)?|a p[0o]gar";
+  // 1) Explicit total/valor line (keyword and number on the same line).
   const totalLine = text.match(
-    new RegExp(`^\\s*(?:${totalKinds})\\b(?!\\s*itens)[^0-9]*${amount.source}`, "im"),
+    new RegExp(
+      `^\\s*(?:${TOTAL_KINDS})\\b(?!\\s*(?:de\\s+)?itens)[^\\n0-9]*${AMOUNT_RE}`,
+      "im",
+    ),
   );
   if (totalLine) {
     const n = parseAmountToken(totalLine[1]);
     if (n > 0) return n;
   }
   const totalAnywhere = text.match(
-    new RegExp(`\\b(?:${totalKinds})\\b(?!\\s*itens)[^0-9]*${amount.source}`, "i"),
+    new RegExp(
+      `\\b(?:${TOTAL_KINDS})\\b(?!\\s*(?:de\\s+)?itens)[^\\n0-9]*${AMOUNT_RE}`,
+      "i",
+    ),
   );
   if (totalAnywhere) {
     const n = parseAmountToken(totalAnywhere[1]);
     if (n > 0) return n;
   }
-  const values = [
-    ...text.matchAll(new RegExp(`\\br[$5]\\s*${amount.source}`, "gi")),
-  ].map((m) => parseAmountToken(m[1]));
-  const last = values[values.length - 1];
-  if (last && last > 0) return last;
+
+  // 2) Lines with an explicit "R$" (or "RS"/"R5"), from the bottom.
+  const lines = text.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (BAD_AMOUNT_LINE.test(norm(line))) continue;
+    const m = maskDatesTimes(line).match(
+      new RegExp(`(?:r[$5s]\\s*)(${AMOUNT_RE})`, "i"),
+    );
+    if (m) {
+      const n = parseAmountToken(m[1]);
+      if (n > 0) return n;
+    }
+  }
+
+  // 3) Any remaining number token, bottom-up, skipping change/ID lines.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (BAD_AMOUNT_LINE.test(norm(line))) continue;
+    const tokens = amountTokens(line);
+    if (tokens.length) {
+      const n = parseAmountToken(tokens[tokens.length - 1]);
+      if (n > 0) return n;
+    }
+  }
   return 0;
 }
 

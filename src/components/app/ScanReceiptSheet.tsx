@@ -59,6 +59,9 @@ export function ScanReceiptSheet({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
+  // Raw OCR text — shown collapsed so the user can see what was read (and
+  // why a field came back empty).
+  const [rawText, setRawText] = useState("");
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
@@ -84,6 +87,7 @@ export function ScanReceiptSheet({
     setDate(new Date().toISOString().slice(0, 10));
     setTime("");
     setNote("");
+    setRawText("");
     sourceFileRef.current = null;
     dateTouchedRef.current = false;
   }, [open]);
@@ -101,6 +105,7 @@ export function ScanReceiptSheet({
       const text = await scanReceiptWithTimeout(input);
       if (runId !== runIdRef.current) return; // form was reset meanwhile
       const parsed = parseReceiptText(text);
+      setRawText(text);
       if (!parsed.title && parsed.amount <= 0) {
         setOcrState("empty");
         return;
@@ -398,6 +403,21 @@ export function ScanReceiptSheet({
                     )}
                   </div>
                 )}
+
+                {/* Raw OCR text (collapsed) */}
+                {rawText &&
+                  (ocrState === "done" ||
+                    ocrState === "empty" ||
+                    ocrState === "failed") && (
+                    <details className="glass mt-3 rounded-2xl px-4 py-3">
+                      <summary className="cursor-pointer select-none text-[12.5px] font-bold text-glass-sub">
+                        Ver o que a leitura encontrou
+                      </summary>
+                      <pre className="no-scrollbar mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-white/40 p-2.5 text-[11px] leading-relaxed text-glass-sub">
+                        {rawText}
+                      </pre>
+                    </details>
+                  )}
 
                 {/* Amount */}
                 <div className="mt-6 text-center">
