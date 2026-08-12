@@ -72,7 +72,7 @@ const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /** Regra 1 — Descrição: 3+ itens → categoria geral; 1–2 itens → quantidade e
- * nome do produto; sem itens → o fallback (nome da loja / título). */
+ * nome do PRIMEIRO produto; sem itens → o fallback (nome da loja / título). */
 export function describePurchase(
   items: PurchaseItem[],
   storeName = "",
@@ -80,11 +80,9 @@ export function describePurchase(
 ): string {
   if (items.length === 0) return fallback || storeName;
   if (items.length >= 3) return classifyPurchase(items, storeName).label;
-  const parts = items.slice(0, 2).map((it) => {
-    const q = normalizeQtyLabel(it.qty);
-    return `${q ? q + " " : ""}${it.name}`.trim();
-  });
-  return parts.join(" + ").slice(0, 60);
+  const it = items[0];
+  const q = normalizeQtyLabel(it.qty);
+  return `${q ? q + " " : ""}${it.name}`.trim().slice(0, 60);
 }
 
 /** Regra 2 — Rascunho: "Estabelecimento: {nome}" no topo e abaixo a lista

@@ -27,12 +27,6 @@ import {
 } from "@/lib/purchase-format";
 import type { NfceScrapeResult } from "@/convex/nfceParser";
 import type { AiReceiptResult } from "@/convex/aiVision";
-import type { LlmReceiptResult } from "@/convex/llmReceipt";
-import {
-  ocrReceipt,
-  parseReceiptText,
-  type OcrReceiptResult,
-} from "@/lib/ocr-scan";
 import {
   decodeQrPayload,
   findCategoryId,
@@ -53,20 +47,20 @@ import {
 } from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — fluxo híbrido em camadas (QR → scraping → visão → OCR +
-// LLM → parser local), sempre terminando na tela de APROVAÇÃO:
+// Escanear Nota — SOLUÇÃO DEFINITIVA, sempre terminando na tela de APROVAÇÃO:
 //   1. O usuário escolhe foto ou usa a câmera → tela de SCANNER dedicada,
 //      com a imagem em destaque e o progresso da leitura.
 //   2. O QR é decodificado (jsQR). Se for URL de NFC-e (SEFAZ), o backend
 //      (action Convex + cheerio) raspa os dados exatos da nota: loja, valor,
 //      data, hora e itens. Se for PIX "copia e cola", valor e recebedor vêm
 //      direto do código.
-//   3. Sem QR (ou scrape falhou) → fallback automático e invisível: visão por
-//      IA no backend (Gemini) e, em seguida, OCR local (Tesseract). O texto
-//      bruto do OCR é então refinado por um LLM (gpt-4o-mini) com System
-//      Prompt rigoroso antes de preencher os campos — ele ignora cabeçalhos
-//      genéricos e aplica as regras de Descrição/Rascunho. Só se QR, LLM E
-//      OCR falharem é que a tela de erro com preenchimento manual aparece.
+//   3. Sem QR (ou scrape falhou) → a imagem vai DIRETAMENTE para um modelo
+//      Vision LLM (gateway VLY e/ou Gemini) com System Prompt estrito que
+//      devolve APENAS o JSON { estabelecimento, valor_total, data, itens }.
+//      O cliente aplica as regras condicionais: 3+ itens → Descrição com
+//      categoria inteligente; 1–2 itens → qtd + primeiro produto; Rascunho →
+//      estabelecimento + lista limpa dos itens. Só se a visão falhar é que a
+//      tela de erro com preenchimento manual aparece.
 // ---------------------------------------------------------------------------
 
 type Step = "source" | "camera" | "scan" | "edit" | "approve";
@@ -100,7 +94,6 @@ export function ScanReceiptSheet({
   const applySuggestedCategory = useSuggestedCategory();
   const scrapeNfce = useAction(api.nfce.scrapeNfce);
   const extractReceipt = useAction(api.aiVision.extractReceipt);
-  const refineReceiptText = useAction(api.llmReceipt.refineReceiptText);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -273,7 +266,7 @@ export function ScanReceiptSheet({
     }, 450);
   };
 
-  /** Valida e converte uma forma de pagamento vinda de IA/OCR para o id do
+  /** Valida e converte uma forma de pagamento vinda do modelo para o id do
    * seletor ("" quando o texto não diz nada confiável). */
   const asPaymentMethod = (
     m: string | undefined,
@@ -283,10 +276,10 @@ export function ScanReceiptSheet({
       ? (m as PaymentMethodId)
       : "";
 
-  /** Melhor imagem disponível para o fallback de OCR/visão: o arquivo original
+  /** Melhor imagem disponível para a leitura por visão: o arquivo original
    * em até 1600px (texto miúdo de cupom precisa de resolução), senão a imagem
    * já exibida. Nunca lança. */
-  const bestImageForOcr = async (): Promise<string | null> => {
+  const bestImageForVision = async (): Promise<string | null> => {
     if (sourceFileRef.current) {
       try {
         return await imageToDataUrl(sourceFileRef.current, 1600);
@@ -297,9 +290,9 @@ export function ScanReceiptSheet({
     return images[0] ?? null;
   };
 
-  /** Aplica um resultado vindo do fallback de visão (Gemini) — mesmo fluxo
-   * do scrape, mas com tipo (receita/despesa) e forma de pagamento do modelo
-   * e a Descrição de Pix para comprovantes. */
+  /** Aplica um resultado vindo do modelo Vision — mesmo fluxo do scrape,
+   * com as regras condicionais de Descrição/Rascunho (via applyScraped) e,
+   * quando o modelo informa, tipo (receita/despesa) e forma de pagamento. */
   const applyAiResult = (res: AiReceiptResult) => {
     applyScraped(res, null);
     if (res.type === "income") {
@@ -321,79 +314,18 @@ export function ScanReceiptSheet({
     );
   };
 
-  /** Aplica um resultado do refinamento por LLM do texto do OCR — o modelo já
-   * montou Descrição/Rascunho aplicando as regras condicionais (1–2 itens →
-   * qtd + nome do produto; 3+ → categoria; Pix → "recebido de"/"enviado para"),
-   * então usamos o que ele devolveu em vez de recompor no cliente. */
-  const applyLlmResult = (res: LlmReceiptResult) => {
-    applyScraped(res, null);
-    const desc = res.description?.trim();
-    if (desc) setTitle(desc.slice(0, 40));
-    const draft = res.draft?.trim();
-    if (draft) setNote(draft.slice(0, 300));
-    const method = res.paymentMethod;
-    if (method === "credito" || method === "debito") {
-      setPaymentMethod("cartao");
-      setCardMode(method);
-    } else {
-      setPaymentMethod(asPaymentMethod(method));
-    }
-    if (res.type === "income") {
-      setType("income");
-      if (!method) setPaymentMethod("pix");
-    } else if (res.type === "expense") {
-      setType("expense");
-    }
-    if (!categoryId) setCategoryId(defaultCategoryId());
-    setScanResultInfo(
-      `Texto interpretado por IA · ${res.store || "cupom"} · revisado antes de salvar`,
-    );
-  };
-
-  /** Aplica um resultado do OCR local — Descrição/Rascunho seguem as mesmas
-   * regras universais (3+ itens → categoria geral; 1–2 → "1x Produto"). */
-  const applyOcrResult = (res: OcrReceiptResult) => {
-    applyScraped(
-      {
-        ok: true,
-        store: res.store,
-        date: res.date,
-        time: res.time,
-        total: res.total,
-        items: res.items,
-      },
-      null,
-    );
-    if (res.kind === "income") {
-      setType("income");
-      if (!res.paymentMethod) setPaymentMethod("pix");
-      // Comprovante de depósito/Pix recebido: descrição fala em "Pix recebido".
-      if (!res.items.length) {
-        setTitle(res.store ? `Pix recebido de ${res.store}` : "Pix recebido");
-      }
-    } else if (res.kind === "expense") {
-      setType("expense");
-    }
-    setPaymentMethod(asPaymentMethod(res.paymentMethod));
-    if (!categoryId) setCategoryId(defaultCategoryId());
-    setScanResultInfo(
-      `Leitura por OCR · ${res.store || "cupom"} · texto lido da imagem`,
-    );
-  };
 
   /**
    * Fallback AUTOMÁTICO do Leitor de Notas: o QR falhou (não decodificou,
-   * não é nota ou a SEFAZ não respondeu) → tenta extrair os dados da imagem
-   * por visão (IA no backend) e depois por OCR local — tudo na mesma tela,
-   * sem interromper o usuário. O texto bruto do OCR é refinado por um LLM
-   * (gpt-4o-mini) com System Prompt rigoroso ANTES de preencher os campos:
-   * o modelo ignora cabeçalhos genéricos, acha o nome fantasia e os
-   * produtos reais e aplica as regras condicionais de Descrição/Rascunho.
-   * Só quando QR, LLM E OCR falham é que a tela de erro com preenchimento
-   * manual aparece.
+   * não é nota ou a SEFAZ não respondeu) → a imagem vai DIRETAMENTE para um
+   * modelo Vision LLM (gateway VLY e/ou Gemini, no backend) com System Prompt
+   * estrito que devolve APENAS o JSON { estabelecimento, valor_total, data,
+   * itens } — sem OCR de texto, sem parser burro. O cliente aplica as regras
+   * condicionais de Descrição/Rascunho na tela de aprovação. Só se a visão
+   * falhar é que a tela de erro com preenchimento manual aparece.
    */
   const runFallback = async (runId: number, reason: string) => {
-    const img = await bestImageForOcr();
+    const img = await bestImageForVision();
     if (runId !== runIdRef.current) return;
     if (!img) {
       setScanPhase("failed");
@@ -401,10 +333,11 @@ export function ScanReceiptSheet({
       return;
     }
     setScanPhase("vision");
-    setScanStatus("QR não encontrado — lendo a nota por visão…");
+    setScanStatus("QR não encontrado — lendo a nota com visão por IA…");
 
-    // 1) Visão por IA (Gemini) no backend (usa GOOGLE_API_KEY; sem chave
-    //    retorna imediatamente e o fluxo segue para o OCR local).
+    // Chamada DIRETA ao modelo Vision: a imagem inteira vai para o modelo com
+    // o System Prompt estrito (JSON exato). Sem chave o retorno é imediato
+    // ({ ok: false, error: "no-*-key" }) e a tela de erro aparece em seguida.
     let aiRes: AiReceiptResult | null = null;
     try {
       aiRes = await extractReceipt({ image: img });
@@ -418,60 +351,21 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // 2) OCR local (Tesseract) no navegador — devolve só o texto BRUTO; nada
-    //    é preenchido ainda (o texto cru nunca vai direto para os campos).
-    setScanStatus("Lendo o texto do cupom…");
-    const rawText = await ocrReceipt(img, (label) => {
-      if (runId === runIdRef.current) setScanStatus(label);
-    });
-    if (runId !== runIdRef.current) return;
-
-    // 3) O texto bruto do OCR passa por um LLM (gpt-4o-mini, no backend) com
-    //    System Prompt rigoroso ANTES de preencher os campos: ignora cabeçalhos
-    //    genéricos ("NOTA FISCAL DE CONSUMIDOR ELETRÔNICA", CNPJ, chaves de
-    //    acesso), acha o nome fantasia e os produtos reais e já devolve
-    //    Descrição/Rascunho com as regras condicionais. Se o LLM não estiver
-    //    disponível (sem chave/rede) ou rejeitar o texto, cai no parser local.
-    setScanStatus("Interpretando o texto da nota…");
-    let llm: LlmReceiptResult | null = null;
-    try {
-      llm = await refineReceiptText({ text: rawText });
-    } catch {
-      llm = null;
-    }
-    if (runId !== runIdRef.current) return;
-    if (
-      llm?.ok &&
-      (llm.total || llm.store || llm.items.length || llm.description)
-    ) {
-      applyLlmResult(llm);
-      finishScan(runId);
-      return;
-    }
-
-    // 4) Último elo: parser local conservador (Regra de Ouro — só o que está
-    //    claro, sem inventar números).
-    const ocr = parseReceiptText(rawText);
-    if (ocr.ok && (ocr.total || ocr.store || ocr.items.length)) {
-      applyOcrResult(ocr);
-      finishScan(runId);
-      return;
-    }
-
-    // 5) QR, LLM E OCR falharam — só agora mostra a tela de erro.
+    // A visão falhou (sem chave, rede, imagem ilegível) — só agora a tela de
+    // erro com opções de nova tentativa / colar código / preenchimento manual.
     setScanPhase("failed");
     setScanStatus(
-      "Não foi possível ler o QR nem o texto da imagem. Tente outra foto, cole o código ou preencha manualmente.",
+      "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto, cole o código ou preencha manualmente.",
     );
   };
 
   /** Roteia um QR já decodificado: NFC-e → scrape na SEFAZ; Pix BR Code →
-   * campos exatos do código; qualquer falha → fallback automático de
-   * OCR/visão (a tela de erro só aparece se QR E OCR falharem). */
+   * campos exatos do código; qualquer falha → fallback automático de visão
+   * por IA (a tela de erro só aparece se a visão também falhar). */
   const handleParsedQr = async (qr: QrResult | null) => {
     const runId = runIdRef.current;
     if (!qr) {
-      // Nenhum QR na imagem → extração automática por visão/OCR.
+      // Nenhum QR na imagem → extração automática por visão por IA.
       await runFallback(
         runId,
         "Nenhum QR code encontrado na imagem. Tente outra foto, cole o código ou preencha manualmente.",
@@ -479,8 +373,8 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — o OCR/visão
-    // ainda pode ler a foto.
+    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — a visão por
+    // IA ainda pode ler a foto.
     if (qr.url && qr.isNfce === false) {
       await runFallback(
         runId,
@@ -506,7 +400,7 @@ export function ScanReceiptSheet({
         return;
       }
       // Scrape falhou → o QR da nota já carrega o CNPJ/nome; mesmo assim
-      // tentamos a leitura da imagem por visão/OCR antes de desistir.
+      // tentamos a leitura da imagem por visão por IA antes de desistir.
       if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
       await runFallback(
         runId,
