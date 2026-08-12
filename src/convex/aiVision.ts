@@ -7,10 +7,14 @@ import { v } from "convex/values";
 // Leitor de Comprovantes — 100% Google Gemini (SEM QR Code, SEM OCR local).
 //
 // O frontend envia QUALQUER imagem (nota fiscal com/sem QR, recibo comum)
-// como data URL; esta action manda o base64 direto para o modelo de visão
-// gemini-1.5-flash com o System Prompt estrito abaixo, que devolve APENAS o
-// JSON { estabelecimento, valor_total, data, itens: [{ qtd, produto, valor }] }.
-// O resultado é normalizado para a forma que a tela de aprovação consome.
+// como data URL; esta action envia o base64 direto para o endpoint
+// generateContent com o System Prompt estrito, que devolve APENAS o JSON
+// { estabelecimento, valor_total, data, itens: [{ qtd, produto, valor }] }.
+//
+// Robustez do modelo: nem todo nome de modelo está habilitado em todas as
+// chaves/projetos (erro 404 "models/... is not found"). Tentamos os nomes
+// em ordem — gemini-1.5-pro → gemini-1.5-flash-latest → gemini-1.5-flash —
+// até um responder com sucesso.
 // ---------------------------------------------------------------------------
 
 export type ReceiptItem = { name: string; qty: string; price: number };
@@ -34,8 +38,12 @@ const SYSTEM_PROMPT =
   '"valor_total": 0.00, "data": "DD/MM/AAAA", "itens": [ { "qtd": 1, ' +
   '"produto": "Nome real do produto", "valor": 0.00 } ] }';
 
-const MODEL = "gemini-1.5-flash";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+/** Nomes de modelo tentados em ordem (404 → tenta o próximo). */
+const MODEL_CANDIDATES = [
+  "gemini-1.5-pro",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash",
+];
 
 type GeminiItem = { qtd?: number | string; produto?: string; valor?: number | string };
 type GeminiReceipt = {
@@ -116,9 +124,72 @@ function normalizeGemini(text: string): ReceiptResult {
 }
 
 /**
- * Lê QUALQUER imagem de comprovante com o Gemini (gemini-1.5-flash):
- * recebe o base64 do frontend, envia para a API com o System Prompt estrito
- * e devolve o JSON normalizado. Nunca lança — falha vira { ok: false }.
+ * Chama o generateContent com payload multimodal: o System Prompt como part
+ * de texto e a imagem base64 em inline_data (mime_type + data), no MESMO
+ * array de parts. Tenta os modelos candidatos em ordem; 404 de modelo pula
+ * para o próximo nome. Nunca lança.
+ */
+async function callGemini(
+  apiKey: string,
+  mimeType: string,
+  b64: string,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  let lastError = "";
+  for (const model of MODEL_CANDIDATES) {
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}` +
+      `:generateContent?key=${encodeURIComponent(apiKey)}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: SYSTEM_PROMPT },
+                { inline_data: { mime_type: mimeType, data: b64 } },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        lastError = `gemini http ${res.status}${
+          body ? `: ${body.slice(0, 160)}` : ""
+        }`;
+        // 404 = modelo não encontrado/habilitado → tenta o próximo nome.
+        if (res.status === 404) continue;
+        return { ok: false, error: lastError };
+      }
+      const data = (await res.json()) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+      };
+      const text =
+        data.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text ?? "")
+          .join("") ?? "";
+      if (!text.trim()) {
+        lastError = "resposta-vazia";
+        continue;
+      }
+      return { ok: true, text };
+    } catch (e) {
+      lastError = (e as Error).message ?? "gemini-falhou";
+      continue;
+    }
+  }
+  return { ok: false, error: lastError || "gemini-falhou" };
+}
+
+/**
+ * Lê QUALQUER imagem de comprovante com o Gemini: recebe o base64 do
+ * frontend, tenta os modelos em ordem e devolve o JSON normalizado.
+ * Nunca lança — falha vira { ok: false }.
  */
 export const extractReceipt = action({
   args: { image: v.string() },
@@ -131,49 +202,12 @@ export const extractReceipt = action({
     if (!m) {
       return { ok: false, items: [], error: "imagem-invalida" };
     }
-    const mimeType = m[1] as "image/jpeg";
+    const mimeType = m[1] as string;
     const b64 = m[2];
-    try {
-      const res = await fetch(`${API_URL}?key=${encodeURIComponent(apiKey)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [
-            {
-              role: "user",
-              parts: [{ inline_data: { mime_type: mimeType, data: b64 } }],
-            },
-          ],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        return {
-          ok: false,
-          items: [],
-          error: `gemini http ${res.status}${body ? `: ${body.slice(0, 160)}` : ""}`,
-        };
-      }
-      const data = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
-      const text =
-        data.candidates?.[0]?.content?.parts
-          ?.map((p) => p.text ?? "")
-          .join("") ?? "";
-      if (!text.trim()) {
-        return { ok: false, items: [], error: "resposta-vazia" };
-      }
-      return normalizeGemini(text);
-    } catch (e) {
-      return {
-        ok: false,
-        items: [],
-        error: (e as Error).message ?? "gemini-falhou",
-      };
+    const res = await callGemini(apiKey, mimeType, b64);
+    if (!res.ok) {
+      return { ok: false, items: [], error: res.error };
     }
+    return normalizeGemini(res.text);
   },
 });
