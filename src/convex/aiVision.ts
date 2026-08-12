@@ -14,8 +14,9 @@
 //
 // Provedores tentados em ordem, com prazo único (~30s):
 //   1) Gateway VLY (OpenAI-compatível, VLY_INTEGRATION_KEY automática do
-//      ambiente — funciona sem nenhuma chave extra do usuário);
-//   2) Google Gemini (GOOGLE_API_KEY).
+//      ambiente);
+//   2) Google Gemini (GOOGLE_API_KEY — tier gratuito, recomendado);
+//   3) OpenAI direto (OPENAI_API_KEY — chave própria do usuário).
 // ---------------------------------------------------------------------------
 import { action } from "./_generated/server";
 import { v } from "convex/values";
@@ -217,6 +218,48 @@ async function tryVly(
   return { ok: false, error: lastError };
 }
 
+/** Provedor 3 — OpenAI direto (OPENAI_API_KEY), alternativa quando o gateway
+ * VLY está indisponível e o usuário tem chave própria. */
+async function tryOpenAI(
+  image: string,
+  key: string,
+  deadline: number,
+): Promise<{ ok: true; result: AiReceiptResult } | { ok: false; error: string }> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { ok: false, error: "timeout" };
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 1500,
+        messages: [
+          { role: "system", content: PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extraia os dados desta nota fiscal." },
+              { type: "image_url", image_url: { url: image } },
+            ],
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(Math.min(18_000, remaining)),
+    });
+    if (!res.ok) return { ok: false, error: `openai http ${res.status}` };
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    return finalizeAi(data.choices?.[0]?.message?.content ?? "", "openai");
+  } catch (e) {
+    return { ok: false, error: (e as Error).message ?? "openai-failed" };
+  }
+}
+
 /** Provedor 2 — Google Gemini (GOOGLE_API_KEY). */
 async function tryGemini(
   image: string,
@@ -275,7 +318,7 @@ export const extractReceipt = action({
       errors.push("no-vly-key");
     }
 
-    // 2) Google Gemini (modelo de visão que sempre funcionou).
+    // 2) Google Gemini (modelo de visão com tier gratuito).
     const geminiKey = process.env.GOOGLE_API_KEY;
     if (geminiKey) {
       const attempt = await tryGemini(image, geminiKey, deadline);
@@ -283,6 +326,16 @@ export const extractReceipt = action({
       errors.push(attempt.error);
     } else {
       errors.push("no-gemini-key");
+    }
+
+    // 3) OpenAI direto (chave própria do usuário).
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+      const attempt = await tryOpenAI(image, openaiKey, deadline);
+      if (attempt.ok) return attempt.result;
+      errors.push(attempt.error);
+    } else {
+      errors.push("no-openai-key");
     }
 
     return { ok: false, items: [], error: errors.join("; ") || "no-provider" };

@@ -358,6 +358,25 @@ export function ScanReceiptSheet({
     setScanError(aiRes?.error ?? "resposta-vazia");
   };
 
+  /** Traduz o código técnico de erro da IA numa orientação clara: problema
+   * de configuração (chave) vs. imagem ilegível vs. timeout. */
+  const orientacaoErroIA = (raw: string): string => {
+    if (
+      /no-vly-key|no-gemini-key|no-openai-key|vly http 401|invalid token/i.test(
+        raw,
+      )
+    ) {
+      return "A leitura por IA não está configurada: nenhuma chave válida de provedor foi encontrada. Adicione GOOGLE_API_KEY (ou OPENAI_API_KEY) na aba Keys do projeto e tente novamente.";
+    }
+    if (/timeout/i.test(raw)) {
+      return "A leitura demorou demais para responder. Tente novamente.";
+    }
+    if (/http 4|http 5|rejected|empty|failed/i.test(raw)) {
+      return "O serviço de IA recusou a leitura. Tente outra foto mais nítida ou preencha manualmente.";
+    }
+    return "A IA não conseguiu identificar uma nota legível na imagem. Tente uma foto mais nítida e com boa iluminação.";
+  };
+
 
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -605,9 +624,14 @@ export function ScanReceiptSheet({
                       </div>
 
                       {scanError && (
-                        <p className="px-1 text-center text-[11px] font-medium text-glass-faint">
-                          Detalhe técnico: {scanError}
-                        </p>
+                        <div className="space-y-1.5">
+                          <p className="rounded-xl bg-white/40 px-3 py-2 text-[12px] font-semibold leading-snug text-glass-ink">
+                            {orientacaoErroIA(scanError)}
+                          </p>
+                          <p className="px-1 text-center text-[10.5px] font-medium text-glass-faint">
+                            Detalhe técnico: {scanError}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
