@@ -18,18 +18,24 @@ import {
 import { toast } from "sonner";
 import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { useAppStore } from "@/lib/app-store";
+import { api } from "@/convex/_generated/api";
+import {
+  classifyPurchase,
+  describePurchase,
+  draftPurchase,
+} from "@/lib/purchase-format";
 import {
   buildBankReceiptTitle,
   decodeQrPayload,
   extractItems,
   findCategoryId,
-  formatItemsText,
   imageToDataUrl,
   parseQrFromPayload,
   parseReceiptText,
   scanReceiptWithTimeout,
   SCAN_CATEGORIES,
 } from "@/lib/receipt-scan";
+import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
 import { CameraQrScanner } from "./CameraQrScanner";
 import { CategoryIcon } from "./CategoryIcon";
@@ -75,6 +81,10 @@ export function ScanReceiptSheet({
 }) {
   const { categories, cards, addTransaction } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
+  // Prioridade 1 do Leitor de Notas: raspagem da NFC-e no backend (action
+  // Convex + cheerio). Falha → extração por IA (Prioridade 2) → OCR local.
+  const scrapeNfce = useAction(api.nfce.scrapeNfce);
+  const extractReceipt = useAction(api.aiVision.extractReceipt);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -178,6 +188,7 @@ export function ScanReceiptSheet({
       const qrDescription = qr?.description;
       const qrNfceStore = qr?.nfceStore;
       const qrNfceDate = qr?.nfceEmissionDate;
+      const qrUrl = qr?.url;
       if (qrAmount && qrAmount > 0) parsed.amount = qrAmount;
       if (!parsed.title && qrName) parsed.title = qrName;
       if (!parsed.title && qrNfceStore) parsed.title = qrNfceStore;
@@ -195,26 +206,110 @@ export function ScanReceiptSheet({
       // OCR text had no counterparty. Store receipts are left untouched.
       const bankTitle = buildBankReceiptTitle(text, qrName ?? "");
       if (bankTitle) parsed.title = bankTitle;
+
+      // Prioridade 1 — o QR é uma URL de consulta de NFC-e (SEFAZ): tenta
+      // raspar os dados exatos no backend (action Convex + cheerio). Se a
+      // consulta falhar, cai automaticamente no fallback de OCR (Prioridade 2).
+      let scraped: Awaited<ReturnType<typeof scrapeNfce>> | null = null;
+      let scrapeStatus: "none" | "ok" | "failed" = "none";
+      if (qrUrl) {
+        setQrInfo("QR NFC-e · consultando a SEFAZ…");
+        try {
+          const res = await scrapeNfce({ url: qrUrl });
+          if (runId !== runIdRef.current) return;
+          if (res && res.ok) {
+            scraped = res;
+            scrapeStatus = "ok";
+            // Dados exatos da nota vencem o OCR (valor, data, hora, loja).
+            if (res.total && res.total > 0) parsed.amount = res.total;
+            if (res.date) parsed.date = res.date;
+            if (res.time && !parsed.time) parsed.time = res.time;
+            if (res.store) parsed.title = res.store;
+          } else {
+            scrapeStatus = "failed";
+          }
+        } catch {
+          if (runId !== runIdRef.current) return;
+          scrapeStatus = "failed";
+        }
+      }
+
+      // Prioridade 2 — sem QR ou raspagem falhou: extração por IA (Gemini,
+      // action no backend). Sem chave configurada o retorno é imediato e o
+      // OCR local (já rodado em paralelo) cobre o caso.
+      let ai: Awaited<ReturnType<typeof extractReceipt>> | null = null;
+      if (scrapeStatus !== "ok") {
+        try {
+          const imageData =
+            typeof input === "string" ? input : await imageToDataUrl(input);
+          const res = await extractReceipt({ image: imageData, hint: text });
+          if (runId !== runIdRef.current) return;
+          if (res && res.ok) {
+            ai = res;
+            if (res.total && res.total > 0) parsed.amount = res.total;
+            if (res.date) parsed.date = res.date;
+            if (res.time && !parsed.time) parsed.time = res.time;
+            if (res.store) parsed.title = res.store;
+            if (res.type) parsed.type = res.type;
+            if (res.paymentMethod) parsed.paymentMethod = res.paymentMethod;
+          }
+        } catch {
+          if (runId !== runIdRef.current) return;
+        }
+      }
+
       setRawText(text);
       if (!parsed.title && parsed.amount <= 0) {
         setOcrState("empty");
         return;
       }
       setOcrState("done");
-      // Prefill the draft with the item list (name + qty + price) when the
-      // note is still empty, and fall back to the first item as the
-      // description when no store name was recognized.
-      const items = extractItems(text);
+
+      // Itens da compra: scrape da SEFAZ → IA → OCR local (as regras
+      // universais de preenchimento valem para os três caminhos).
+      const items =
+        scraped && scraped.items.length
+          ? scraped.items
+          : ai && ai.items.length
+            ? ai.items
+            : extractItems(text);
+      const storeName = parsed.title || scraped?.store || ai?.store || "";
+      let categoryAppliedByClassify = false;
+
+      // Regra 1 (Descrição): 3+ itens → categoria geral (Mercado/Farmácia/
+      // Restaurante); 1–2 itens → "1x Pimenta CH". Regra 2 (Rascunho):
+      // "Estabelecimento: {loja}" no topo + lista "1x Item - R$ Valor".
       if (items.length > 0) {
-        setNote((prev) => (prev.trim() ? prev : formatItemsText(items)));
-        if (!parsed.title) {
-          setTitle((prev) => (prev.trim() ? prev : items[0]?.name ?? ""));
+        setTitle((prev) =>
+          prev.trim()
+            ? prev
+            : describePurchase(items, storeName, parsed.title),
+        );
+        setNote((prev) =>
+          prev.trim() ? prev : draftPurchase(storeName, items),
+        );
+        const detected = classifyPurchase(items, storeName).categoryId;
+        if (!categoryTouched && detected) {
+          categoryAppliedByClassify = true;
+          const suggested = SCAN_CATEGORIES.find((c) => c.id === detected);
+          if (suggested) {
+            const { id, created } = applySuggestedCategory(suggested);
+            setCategoryId(id);
+            if (created) {
+              toast(`Categoria "${suggested.label}" criada`, {
+                description:
+                  "Você pode renomeá-la em Categorias a qualquer momento.",
+              });
+            }
+          }
         }
+      } else {
+        // Sem itens (comprovante bancário, PIX…): mantém o título da leitura.
+        setTitle((prev) => (prev.trim() ? prev : parsed.title));
       }
       // Fill only the fields the user hasn't touched yet. The date starts
       // as "today" only as a placeholder — the OCR date overrides it unless
       // the user picked a date manually.
-      setTitle((prev) => (prev.trim() ? prev : parsed.title));
       setCents((prev) => (prev > 0 ? prev : Math.round(parsed.amount * 100)));
       setDate((prev) =>
         dateTouchedRef.current ? prev : parsed.date || prev,
@@ -229,17 +324,25 @@ export function ScanReceiptSheet({
         if (method === "cartao" && mode) setCardMode(mode);
       }
       setQrInfo(
-        qr
-          ? qr.amount
-            ? `QR detectado · valor ${qr.amount
-                .toFixed(2)
-                .replace(".", ",")} reais`
-            : qr.nfceStore
-              ? `QR NFC-e detectado · ${qr.nfceStore}`
-              : "QR detectado · sem valor no código"
-          : "QR não detectado",
+        scrapeStatus === "ok"
+          ? `QR NFC-e · dados da SEFAZ (${
+              scraped && scraped.items.length
+                ? `${scraped.items.length} itens`
+                : "ok"
+            })`
+          : scrapeStatus === "failed"
+            ? "QR NFC-e · consulta falhou, usando OCR"
+            : qr
+              ? qr.amount
+                ? `QR detectado · valor ${qr.amount
+                    .toFixed(2)
+                    .replace(".", ",")} reais`
+                : qr.nfceStore
+                  ? `QR NFC-e detectado · ${qr.nfceStore}`
+                  : "QR detectado · sem valor no código"
+              : "QR não detectado",
       );
-      if (!categoryTouched && parsed.categoryId) {
+      if (!categoryTouched && parsed.categoryId && !categoryAppliedByClassify) {
         const suggested = SCAN_CATEGORIES.find(
           (c) => c.id === parsed.categoryId,
         );

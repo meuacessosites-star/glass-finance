@@ -1138,6 +1138,9 @@ export type QrResult = {
   amount?: number;
   name?: string;
   description?: string;
+  /** The http(s) URL when the payload is a web link (e.g. a SEFAZ NFC-e
+   * consult URL) — the client sends it to the scrape action (Priority 1). */
+  url?: string;
   /** NFC-e access-key metadata (from a SEFAZ "consultar" URL). */
   nfceStore?: string;
   nfceEmissionDate?: string; // yyyy-mm-dd from the AAMM inside the key
@@ -1195,6 +1198,7 @@ export function parseNfceQrUrl(payload: string): QrResult | null {
   const store = NFC_E_CNPJ_NAMES[cnpj] ?? `Estabelecimento ${formatCnpj(cnpj)}`;
   return {
     payload,
+    url: payload,
     nfceStore: store,
     nfceEmissionDate: `${year}-${String(mm).padStart(2, "0")}-01`,
   };
@@ -1208,6 +1212,11 @@ export function parseNfceQrUrl(payload: string): QrResult | null {
 export function parseQrFromPayload(payload: string): QrResult {
   const nfce = parseNfceQrUrl(payload);
   if (nfce) return nfce;
+  // Any other web URL (non NFC-e) still gets exposed so the client can try
+  // the scrape action — it validates the host server-side.
+  if (/^https?:\/\//i.test(payload)) {
+    return { payload, url: payload, ...parseBrCode(payload) };
+  }
   return { payload, ...parseBrCode(payload) };
 }
 
