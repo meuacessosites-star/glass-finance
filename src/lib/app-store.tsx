@@ -177,6 +177,22 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(t.date)
           ? t.date.slice(0, 10)
           : "2026-08-01",
+      time:
+        typeof t.time === "string" && /^\d{2}:\d{2}/.test(t.time)
+          ? t.time.slice(0, 5)
+          : undefined,
+      note:
+        typeof t.note === "string" && t.note.trim()
+          ? t.note.trim().slice(0, 300)
+          : undefined,
+      attachments: Array.isArray(t.attachments)
+        ? t.attachments
+            .filter(
+              (a): a is string =>
+                typeof a === "string" && a.startsWith("data:image"),
+            )
+            .slice(0, 6)
+        : undefined,
     }))
     .filter((t) => t.amount !== 0);
   return list.length > 0 ? list : seedTransactions.map((t) => ({ ...t }));
@@ -307,7 +323,8 @@ type AppStoreValue = {
   transactions: Transaction[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
-  addCategory: (data: { label: string; color: string; icon: string }) => void;
+  /** Creates a category on the active profile and returns its id. */
+  addCategory: (data: { label: string; color: string; icon: string }) => string;
   updateCategory: (id: string, patch: Partial<AppCategory>) => void;
   deleteCategory: (id: string) => void;
   addCard: (data: { name: string; last4: string; color: string }) => void;
@@ -317,6 +334,9 @@ type AppStoreValue = {
     categoryId: string;
     amount: number;
     date: string;
+    time?: string;
+    note?: string;
+    attachments?: string[];
   }) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
   updateProfile: (
@@ -379,11 +399,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       transactions: activeData.transactions,
       pin: activeData.pin,
       categoryById,
-      addCategory: (data) =>
+      addCategory: (data) => {
+        const id = uid("cat");
         patchActiveData((d) => ({
           ...d,
-          categories: [...d.categories, { id: uid("cat"), ...data }],
-        })),
+          categories: [...d.categories, { id, ...data }],
+        }));
+        return id;
+      },
       updateCategory: (id, patch) =>
         patchActiveData((d) => ({
           ...d,

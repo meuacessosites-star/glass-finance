@@ -53,11 +53,14 @@ export function AddMenu({
   open,
   onClose,
   onManual,
+  onScan,
 }: {
   open: boolean;
   onClose: () => void;
   /** Called when “Adicionar Manual” is chosen — opens the add screen. */
   onManual?: () => void;
+  /** Called when “Escanear Nota” is chosen — opens the receipt scanner. */
+  onScan?: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -70,6 +73,10 @@ export function AddMenu({
     onClose();
     if (option.id === "manual") {
       onManual?.();
+      return;
+    }
+    if (option.id === "scan") {
+      onScan?.();
       return;
     }
     toast(`${option.label} chega em breve`, {

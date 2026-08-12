@@ -33,6 +33,9 @@ export type Transaction = {
   categoryId: string;
   amount: number; // positive = income, negative = expense
   date: string; // ISO yyyy-mm-dd
+  time?: string; // HH:MM — set when scanned from a receipt
+  note?: string; // free text (draft / observations)
+  attachments?: string[]; // receipt photos (data URLs)
 };
 
 export const transactions: Transaction[] = [
