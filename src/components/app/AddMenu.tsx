@@ -54,6 +54,7 @@ export function AddMenu({
   onClose,
   onManual,
   onScan,
+  onVoice,
 }: {
   open: boolean;
   onClose: () => void;
@@ -61,6 +62,8 @@ export function AddMenu({
   onManual?: () => void;
   /** Called when “Escanear Nota” is chosen — opens the receipt scanner. */
   onScan?: () => void;
+  /** Called when “Comando de Voz” is chosen — opens the voice command screen. */
+  onVoice?: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -77,6 +80,10 @@ export function AddMenu({
     }
     if (option.id === "scan") {
       onScan?.();
+      return;
+    }
+    if (option.id === "voice") {
+      onVoice?.();
       return;
     }
     toast(`${option.label} chega em breve`, {

@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
 import { AddTransactionSheet } from "@/components/app/AddTransactionSheet";
 import { ScanReceiptSheet } from "@/components/app/ScanReceiptSheet";
+import { VoiceCommandSheet } from "@/components/app/VoiceCommandSheet";
 import { PinLock } from "@/components/app/PinLock";
 import { Sidebar, SidebarProvider } from "@/components/app/Sidebar";
 import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
@@ -18,6 +19,7 @@ function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const { activeProfile, pinUsage } = useAppStore();
 
   // Lock on app open only when the active profile has a PIN AND the "Uso do
@@ -53,6 +55,7 @@ function DashboardShell() {
             onClose={() => setAddOpen(false)}
             onManual={() => setManualOpen(true)}
             onScan={() => setScanOpen(true)}
+            onVoice={() => setVoiceOpen(true)}
           />
           <AddTransactionSheet
             open={manualOpen}
@@ -61,6 +64,10 @@ function DashboardShell() {
           <ScanReceiptSheet
             open={scanOpen}
             onClose={() => setScanOpen(false)}
+          />
+          <VoiceCommandSheet
+            open={voiceOpen}
+            onClose={() => setVoiceOpen(false)}
           />
 
           {/* Sidebar + PIN lock (on top of everything) */}

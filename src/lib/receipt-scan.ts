@@ -286,7 +286,8 @@ function findTitle(text: string): string {
   return "";
 }
 
-function findCategory(text: string): string {
+/** Matches a text against the scan/voice category keywords. */
+export function findCategoryId(text: string): string {
   const t = norm(text);
   for (const cat of SCAN_CATEGORIES) {
     if (cat.id === "outros") continue;
@@ -308,7 +309,7 @@ export function parseReceiptText(text: string): ScanResult {
   return {
     title: findTitle(text),
     amount: findAmount(text),
-    categoryId: findCategory(text),
+    categoryId: findCategoryId(text),
     date,
     time,
   };

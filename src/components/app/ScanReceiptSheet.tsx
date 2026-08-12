@@ -12,13 +12,13 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { useAppStore } from "@/lib/app-store";
 import {
   imageToDataUrl,
   parseReceiptText,
   scanReceiptWithTimeout,
   SCAN_CATEGORIES,
-  type ScanCategory,
 } from "@/lib/receipt-scan";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +44,8 @@ export function ScanReceiptSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, addCategory, addTransaction } = useAppStore();
+  const { categories, addTransaction } = useAppStore();
+  const applySuggestedCategory = useSuggestedCategory();
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -108,27 +109,20 @@ export function ScanReceiptSheet({
         const suggested = SCAN_CATEGORIES.find(
           (c) => c.id === parsed.categoryId,
         );
-        if (suggested) applySuggestedCategory(suggested);
+        if (suggested) {
+          const { id, created } = applySuggestedCategory(suggested);
+          setCategoryId(id);
+          if (created) {
+            toast(`Categoria "${suggested.label}" criada`, {
+              description:
+                "Você pode renomeá-la em Categorias a qualquer momento.",
+            });
+          }
+        }
       }
     } catch {
       setOcrState("failed");
     }
-  };
-
-  const applySuggestedCategory = (cat: ScanCategory) => {
-    const existing = categories.find(
-      (c) => c.id === cat.id || c.label.toLowerCase() === cat.label.toLowerCase(),
-    );
-    if (existing) {
-      setCategoryId(existing.id);
-      return;
-    }
-    // Category doesn't exist on this profile — create it automatically.
-    const id = addCategory({ label: cat.label, color: cat.color, icon: cat.icon });
-    setCategoryId(id);
-    toast(`Categoria "${cat.label}" criada`, {
-      description: "Você pode renomeá-la em Categorias a qualquer momento.",
-    });
   };
 
   const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
