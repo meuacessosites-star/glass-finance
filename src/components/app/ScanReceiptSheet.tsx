@@ -27,6 +27,7 @@ import {
 } from "@/lib/purchase-format";
 import type { NfceScrapeResult } from "@/convex/nfceParser";
 import type { AiReceiptResult } from "@/convex/aiVision";
+import type { LlmReceiptResult } from "@/convex/llmReceipt";
 import {
   ocrReceipt,
   parseReceiptText,
@@ -52,16 +53,20 @@ import {
 } from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — fluxo 100% baseado em QR code (sem OCR, que alucina
-// números em cupom térmico):
+// Escanear Nota — fluxo híbrido em camadas (QR → scraping → visão → OCR +
+// LLM → parser local), sempre terminando na tela de APROVAÇÃO:
 //   1. O usuário escolhe foto ou usa a câmera → tela de SCANNER dedicada,
 //      com a imagem em destaque e o progresso da leitura.
 //   2. O QR é decodificado (jsQR). Se for URL de NFC-e (SEFAZ), o backend
 //      (action Convex + cheerio) raspa os dados exatos da nota: loja, valor,
 //      data, hora e itens. Se for PIX "copia e cola", valor e recebedor vêm
 //      direto do código.
-//   3. Só com as informações em mãos o app leva à tela de APROVAÇÃO. Sem QR
-//      ou consulta falha → mensagem clara + opção de preencher manualmente.
+//   3. Sem QR (ou scrape falhou) → fallback automático e invisível: visão por
+//      IA no backend (Gemini) e, em seguida, OCR local (Tesseract). O texto
+//      bruto do OCR é então refinado por um LLM (gpt-4o-mini) com System
+//      Prompt rigoroso antes de preencher os campos — ele ignora cabeçalhos
+//      genéricos e aplica as regras de Descrição/Rascunho. Só se QR, LLM E
+//      OCR falharem é que a tela de erro com preenchimento manual aparece.
 // ---------------------------------------------------------------------------
 
 type Step = "source" | "camera" | "scan" | "edit" | "approve";
@@ -95,6 +100,7 @@ export function ScanReceiptSheet({
   const applySuggestedCategory = useSuggestedCategory();
   const scrapeNfce = useAction(api.nfce.scrapeNfce);
   const extractReceipt = useAction(api.aiVision.extractReceipt);
+  const refineReceiptText = useAction(api.llmReceipt.refineReceiptText);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -315,6 +321,35 @@ export function ScanReceiptSheet({
     );
   };
 
+  /** Aplica um resultado do refinamento por LLM do texto do OCR — o modelo já
+   * montou Descrição/Rascunho aplicando as regras condicionais (1–2 itens →
+   * qtd + nome do produto; 3+ → categoria; Pix → "recebido de"/"enviado para"),
+   * então usamos o que ele devolveu em vez de recompor no cliente. */
+  const applyLlmResult = (res: LlmReceiptResult) => {
+    applyScraped(res, null);
+    const desc = res.description?.trim();
+    if (desc) setTitle(desc.slice(0, 40));
+    const draft = res.draft?.trim();
+    if (draft) setNote(draft.slice(0, 300));
+    const method = res.paymentMethod;
+    if (method === "credito" || method === "debito") {
+      setPaymentMethod("cartao");
+      setCardMode(method);
+    } else {
+      setPaymentMethod(asPaymentMethod(method));
+    }
+    if (res.type === "income") {
+      setType("income");
+      if (!method) setPaymentMethod("pix");
+    } else if (res.type === "expense") {
+      setType("expense");
+    }
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setScanResultInfo(
+      `Texto interpretado por IA · ${res.store || "cupom"} · revisado antes de salvar`,
+    );
+  };
+
   /** Aplica um resultado do OCR local — Descrição/Rascunho seguem as mesmas
    * regras universais (3+ itens → categoria geral; 1–2 → "1x Produto"). */
   const applyOcrResult = (res: OcrReceiptResult) => {
@@ -350,8 +385,12 @@ export function ScanReceiptSheet({
    * Fallback AUTOMÁTICO do Leitor de Notas: o QR falhou (não decodificou,
    * não é nota ou a SEFAZ não respondeu) → tenta extrair os dados da imagem
    * por visão (IA no backend) e depois por OCR local — tudo na mesma tela,
-   * sem interromper o usuário. Só quando TAMBÉM o OCR falha é que a tela de
-   * erro com preenchimento manual aparece.
+   * sem interromper o usuário. O texto bruto do OCR é refinado por um LLM
+   * (gpt-4o-mini) com System Prompt rigoroso ANTES de preencher os campos:
+   * o modelo ignora cabeçalhos genéricos, acha o nome fantasia e os
+   * produtos reais e aplica as regras condicionais de Descrição/Rascunho.
+   * Só quando QR, LLM E OCR falham é que a tela de erro com preenchimento
+   * manual aparece.
    */
   const runFallback = async (runId: number, reason: string) => {
     const img = await bestImageForOcr();
@@ -379,12 +418,39 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // 2) OCR local (Tesseract) no navegador.
+    // 2) OCR local (Tesseract) no navegador — devolve só o texto BRUTO; nada
+    //    é preenchido ainda (o texto cru nunca vai direto para os campos).
     setScanStatus("Lendo o texto do cupom…");
     const rawText = await ocrReceipt(img, (label) => {
       if (runId === runIdRef.current) setScanStatus(label);
     });
     if (runId !== runIdRef.current) return;
+
+    // 3) O texto bruto do OCR passa por um LLM (gpt-4o-mini, no backend) com
+    //    System Prompt rigoroso ANTES de preencher os campos: ignora cabeçalhos
+    //    genéricos ("NOTA FISCAL DE CONSUMIDOR ELETRÔNICA", CNPJ, chaves de
+    //    acesso), acha o nome fantasia e os produtos reais e já devolve
+    //    Descrição/Rascunho com as regras condicionais. Se o LLM não estiver
+    //    disponível (sem chave/rede) ou rejeitar o texto, cai no parser local.
+    setScanStatus("Interpretando o texto da nota…");
+    let llm: LlmReceiptResult | null = null;
+    try {
+      llm = await refineReceiptText({ text: rawText });
+    } catch {
+      llm = null;
+    }
+    if (runId !== runIdRef.current) return;
+    if (
+      llm?.ok &&
+      (llm.total || llm.store || llm.items.length || llm.description)
+    ) {
+      applyLlmResult(llm);
+      finishScan(runId);
+      return;
+    }
+
+    // 4) Último elo: parser local conservador (Regra de Ouro — só o que está
+    //    claro, sem inventar números).
     const ocr = parseReceiptText(rawText);
     if (ocr.ok && (ocr.total || ocr.store || ocr.items.length)) {
       applyOcrResult(ocr);
@@ -392,7 +458,7 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // 3) QR E OCR falharam — só agora mostra a tela de erro.
+    // 5) QR, LLM E OCR falharam — só agora mostra a tela de erro.
     setScanPhase("failed");
     setScanStatus(
       "Não foi possível ler o QR nem o texto da imagem. Tente outra foto, cole o código ou preencha manualmente.",
@@ -665,8 +731,9 @@ export function ScanReceiptSheet({
               </div>
               <p className="mt-5 max-w-[280px] text-[14px] leading-relaxed text-glass-sub">
                 O QR code da nota fiscal (NFC-e) ou do Pix carrega os dados
-                exatos: valor, estabelecimento, data e itens. Sem OCR, sem
-                invenção de números.
+                exatos: valor, estabelecimento, data e itens. Sem QR na foto,
+                a imagem é lida automaticamente e tudo passa pela sua revisão
+                antes de salvar.
               </p>
 
               <div className="mt-8 w-full space-y-3">

@@ -32,16 +32,17 @@ const SYSTEM_PROMPT = `Você é um processador de texto de notas fiscais brasile
 
 REGRAS OBRIGATÓRIAS:
 1. IGNORE textos genéricos de cabeçalho e rodapé: "Documento Auxiliar", "Nota Fiscal de Consumidor Eletrônica", "NFC-e", "NF-e", "DANFE", "CUPOM FISCAL", "CNPJ", "CPF", endereços, telefones, e-mails, sites, chaves de acesso (44 dígitos), protocolos, "SAC", "Ouvidoria", "Atendimento ao cliente", "Agradecemos a preferência", "Origem e destino", "Instituição de Pagamento". NUNCA use esses textos como nome do estabelecimento.
-2. Nome do estabelecimento: use o NOME FANTASIA real da loja (ex.: "Centro de Jardinagem Junkes", "Pão de Açúcar"). Sem CNPJ, sem endereço, sem razão social se houver nome fantasia.
+2. Nome do estabelecimento: use o NOME FANTASIA real da loja (ex.: "Centro de Jardinagem Junkes", "Pão de Açúcar"). Sem CNPJ, sem endereço, sem razão social se houver nome fantasia. Em comprovante de Pix/depósito, "store" é o nome da OUTRA PARTE (a pessoa/empresa que enviou ou recebeu o dinheiro — campos "Favorecido", "Recebedor", "Pagador", "Origem"/"Destino"), NUNCA a instituição de pagamento ("Mercado Pago", "NUPAGAMENTOS", nome do banco), nunca CNPJ/CPF.
 3. Produtos: liste TODOS os itens legíveis com quantidade, unidade e preço. Não invente nomes, não invente números, não adivinhe caracteres borrados. Ignore códigos numéricos longos, códigos de barras e códigos de produto sem nome.
 4. Comprovante de depósito/Pix recebido → "type": "income"; pagamento/compra → "expense".
 5. Forma de pagamento: "pix", "dinheiro", "cartao", "credito", "debito", "boleto" ou "transferencia" se o texto disser; senão null.
 6. Descrição (aplique a lógica condicional):
    - 1 ou 2 itens → quantidade + nome do produto (ex.: "1x Pimenta CH", "2x Arroz 5kg").
    - 3 ou mais itens → categoria geral inteligente (ex.: "Mercado", "Farmácia", "Restaurante", "Café").
-   - Comprovante de Pix/depósito → "Pix recebido de {pessoa/estabelecimento}" (receita) ou "Pix enviado para {pessoa/estabelecimento}" (despesa).
-7. Rascunho: na primeira linha "Estabelecimento: {nome fantasia}", depois UMA linha por item no formato "Quantidade x Nome - R$ Valor" (ex.: "1x Pimenta CH - R$ 13,20", "2x Arroz 5kg - R$ 24,90").
+   - Comprovante de Pix/depósito → "Pix recebido de {pessoa/estabelecimento}" (receita) ou "Pix enviado para {pessoa/estabelecimento}" (despesa), usando o nome da OUTRA PARTE da regra 2.
+7. Rascunho: na primeira linha "Estabelecimento: {nome fantasia}", depois UMA linha por item no formato "Quantidade x Nome - R$ Valor" (ex.: "1x Pimenta CH - R$ 13,20", "2x Arroz 5kg - R$ 24,90"). Em comprovante bancário, "Estabelecimento:" recebe o nome da outra parte.
 8. Total: só use valores claramente rotulados como TOTAL / VALOR TOTAL / TOTAL A PAGAR. Nunca some itens nem adivinhe valores.
+9. Data e hora: extraia as DUAS quando legíveis — "date" no formato "YYYY-MM-DD" e "time" no formato "HH:MM" (comprovantes bancários trazem ex.: "8/agosto/2026 às 9:44" → "2026-08-08" e "09:44").
 
 Responda SOMENTE com JSON válido, sem markdown, neste formato exato:
 {
@@ -119,12 +120,31 @@ export const refineReceiptText = action({
     if (!key) {
       return { ok: false, items: [], error: "no-key" };
     }
-    try {
-      // Endpoint OpenAI-compatível do gateway VLY (o mesmo usado pelo pacote
-      // @vly-ai/integrations: base + /chat/completions).
-      const res = await fetch(
-        "https://integrations.vly.ai/v1/llm/chat/completions",
-        {
+    // Endpoints OpenAI-compatíveis do gateway: o mesmo usado pelo pacote
+    // @vly-ai/integrations (base + /chat/completions) e, quando existe, o
+    // derivado de VLY_INTEGRATION_BASE_URL. Cada candidato é tentado em
+    // ordem e o primeiro que responder 2xx vence — tudo com prazo único.
+    const base = process.env.VLY_INTEGRATION_BASE_URL
+      ?.trim()
+      .replace(/\/+$/, "");
+    const candidates = [
+      "https://integrations.vly.ai/v1/llm/chat/completions",
+      ...(base
+        ? [
+            base.endsWith("/chat/completions")
+              ? base
+              : `${base}/v1/llm/chat/completions`,
+          ]
+        : []),
+    ].filter((u, i, a) => a.indexOf(u) === i);
+
+    const deadline = Date.now() + 30_000;
+    let lastError = "llm-http-failed";
+    for (const url of candidates) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      try {
+        const res = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -142,31 +162,34 @@ export const refineReceiptText = action({
               },
             ],
           }),
-          signal: AbortSignal.timeout(25000),
-        },
-      );
-      if (!res.ok) {
-        return { ok: false, items: [], error: `llm http ${res.status}` };
+          signal: AbortSignal.timeout(Math.min(20_000, remaining)),
+        });
+        if (!res.ok) {
+          lastError = `llm http ${res.status}`;
+          continue;
+        }
+        const data = (await res.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
+        const raw = data.choices?.[0]?.message?.content ?? "";
+        const obj = parseGeminiJson(raw);
+        if (!obj || obj.ok === false) {
+          return { ok: false, items: [], error: "llm-rejected" };
+        }
+        const mapped = mapLlmResult(obj);
+        if (
+          !mapped.store &&
+          !mapped.total &&
+          !mapped.items.length &&
+          !mapped.description
+        ) {
+          return { ok: false, items: [], error: "llm-empty" };
+        }
+        return mapped;
+      } catch (e) {
+        lastError = (e as Error).message ?? "llm-failed";
       }
-      const data = (await res.json()) as {
-        choices?: { message?: { content?: string } }[];
-      };
-      const raw = data.choices?.[0]?.message?.content ?? "";
-      const obj = parseGeminiJson(raw);
-      if (!obj || obj.ok === false) {
-        return { ok: false, items: [], error: "llm-rejected" };
-      }
-      const mapped = mapLlmResult(obj);
-      if (!mapped.store && !mapped.total && !mapped.items.length) {
-        return { ok: false, items: [], error: "llm-empty" };
-      }
-      return mapped;
-    } catch (e) {
-      return {
-        ok: false,
-        items: [],
-        error: (e as Error).message ?? "llm-failed",
-      };
     }
+    return { ok: false, items: [], error: lastError };
   },
 });
