@@ -324,23 +324,46 @@ export function ScanReceiptSheet({
    * condicionais de Descrição/Rascunho na tela de aprovação. Só se a visão
    * falhar é que a tela de erro com preenchimento manual aparece.
    */
-  const runFallback = async (runId: number, reason: string) => {
+  /** Aguarda `ms` milissegundos — garante que o estado "Analisando a
+   * imagem…" nunca seja um flash (sem chave de IA o retorno do modelo é
+   * instantâneo). */
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+  /**
+   * PLANO B — leitura do texto da imagem por Visão LLM. Sempre encadeado
+   * quando o Plano A (QR code / scrape da SEFAZ) não entrega dados. A falha
+   * do QR NUNCA ativa o estado de erro: a UI entra em "Analisando a
+   * imagem…" ANTES de preparar a imagem e permanece nele durante toda a
+   * requisição à IA. A tela de erro só aparece se a requisição FINAL à IA de
+   * Visão falhar ou voltar vazia (sem chave, rede, imagem ilegível).
+   */
+  const runFallback = async (runId: number) => {
+    // Feedback imediato da transição Plano A (QR) → Plano B (Texto via LLM).
+    setScanPhase("vision");
+    setScanStatus("Analisando a imagem…");
+
     const img = await bestImageForVision();
     if (runId !== runIdRef.current) return;
     if (!img) {
+      // Sem imagem não há como tentar a visão — erro real, última alternativa.
       setScanPhase("failed");
-      setScanStatus(reason);
+      setScanStatus(
+        "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto, cole o código ou preencha manualmente.",
+      );
       return;
     }
-    setScanPhase("vision");
-    setScanStatus("QR não encontrado — lendo a nota com visão por IA…");
 
     // Chamada DIRETA ao modelo Vision: a imagem inteira vai para o modelo com
-    // o System Prompt estrito (JSON exato). Sem chave o retorno é imediato
-    // ({ ok: false, error: "no-*-key" }) e a tela de erro aparece em seguida.
+    // o System Prompt estrito (JSON exato). O estado "Analisando a imagem…"
+    // fica visível por no mínimo ~1,4s para a transição ser percebida mesmo
+    // quando a resposta da IA é instantânea.
     let aiRes: AiReceiptResult | null = null;
     try {
-      aiRes = await extractReceipt({ image: img });
+      [aiRes] = await Promise.all([
+        extractReceipt({ image: img }),
+        sleep(1400),
+      ]);
     } catch {
       aiRes = null;
     }
@@ -351,8 +374,8 @@ export function ScanReceiptSheet({
       return;
     }
 
-    // A visão falhou (sem chave, rede, imagem ilegível) — só agora a tela de
-    // erro com opções de nova tentativa / colar código / preenchimento manual.
+    // ÚNICO ponto de erro real da interface: a requisição final à IA de
+    // Visão falhou ou voltou vazia (sem chave, rede, imagem ilegível).
     setScanPhase("failed");
     setScanStatus(
       "Não foi possível ler a nota pela imagem. Verifique se a foto está nítida, tente outra foto, cole o código ou preencha manualmente.",
@@ -365,21 +388,16 @@ export function ScanReceiptSheet({
   const handleParsedQr = async (qr: QrResult | null) => {
     const runId = runIdRef.current;
     if (!qr) {
-      // Nenhum QR na imagem → extração automática por visão por IA.
-      await runFallback(
-        runId,
-        "Nenhum QR code encontrado na imagem. Tente outra foto, cole o código ou preencha manualmente.",
-      );
+      // Nenhum QR na imagem → Plano B imediato: leitura do texto por visão
+      // por IA. O estado de erro NÃO é ativado aqui.
+      await runFallback(runId);
       return;
     }
 
     // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — a visão por
     // IA ainda pode ler a foto.
     if (qr.url && qr.isNfce === false) {
-      await runFallback(
-        runId,
-        "Esse QR contém um link, mas não é de uma nota fiscal (NFC-e). Use o QR da nota ou cole o código Pix/URL manualmente.",
-      );
+      await runFallback(runId);
       return;
     }
 
@@ -402,12 +420,7 @@ export function ScanReceiptSheet({
       // Scrape falhou → o QR da nota já carrega o CNPJ/nome; mesmo assim
       // tentamos a leitura da imagem por visão por IA antes de desistir.
       if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
-      await runFallback(
-        runId,
-        res?.error
-          ? `Não deu para consultar a nota na SEFAZ (${res.error}). A loja já foi preenchida — digite o valor e ajuste o que precisar.`
-          : "Não deu para consultar a nota na SEFAZ. A loja já foi preenchida — digite o valor e ajuste o que precisar.",
-      );
+      await runFallback(runId);
       return;
     }
 
@@ -418,10 +431,7 @@ export function ScanReceiptSheet({
       return;
     }
 
-    await runFallback(
-      runId,
-      "Código lido, mas sem valor nem link de nota. Cole o código Pix completo ou preencha manualmente.",
-    );
+    await runFallback(runId);
   };
 
   /**
@@ -587,7 +597,7 @@ export function ScanReceiptSheet({
       : scanPhase === "scraping"
         ? "Consultando a SEFAZ…"
         : scanPhase === "vision"
-          ? "Lendo a imagem…"
+          ? "Analisando a imagem…"
           : scanPhase === "success"
             ? "Dados encontrados"
             : "Não conseguimos ler";
