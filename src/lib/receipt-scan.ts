@@ -1,11 +1,11 @@
 import jsQR from "jsqr";
-import * as Tesseract from "tesseract.js";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — client-side OCR (Tesseract.js, Portuguese) plus a parser
-// that turns raw receipt text into structured fields: merchant, BRL amount,
-// category, date and time. All heuristics are safe: if nothing matches, the
-// field stays empty so the user can fill it manually.
+// Leitor de Notas — decodificação de QR codes + classificação de categorias.
+// O fluxo é 100% baseado em QR code: a URL de consulta da NFC-e (SEFAZ) vai
+// para o backend (action Convex + cheerio, que raspa os dados exatos da nota)
+// e o PIX "copia e cola" entrega valor e nome do recebedor direto do código.
+// Sem OCR: texto de cupom térmico é imprevisível e o OCR "alucina" números.
 // ---------------------------------------------------------------------------
 
 export type ScanCategory = {
@@ -262,46 +262,13 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
   },
 ];
 
-export type ScanResult = {
-  title: string;
-  amount: number; // positive BRL value
-  categoryId: string;
-  date: string; // yyyy-mm-dd ("" when not found)
-  time: string; // HH:MM ("" when not found)
-  type: "income" | "expense"; // receita/despesa
-  paymentMethod: string; // pix | dinheiro | cartao | credito | debito | boleto | transferencia | ""
-};
-
 const norm = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-/**
- * A digit position in OCR text — thermal print confuses 0/O, 5/S, 1/l/I,
- * 2/Z, 8/B, 4/A, 6/G and 7/T, so these letters are accepted where a digit
- * is expected.
- */
-/** Character-class BODY (no brackets) — reused inside the AMOUNT lookahead. */
-const D_BODY = "0-9OoIiLlSZB4AaGgTt";
-const D = `[${D_BODY}]`;
-
-/** Maps OCR letter confusions back to digits ("9O" → "90", "l4" → "14",
- * "1A" → "14", "3G" → "36", "2T" → "27"). */
-function ocrDigits(token: string): string {
-  return token
-    .replace(/[Oo]/g, "0")
-    .replace(/[Ss]/g, "5")
-    .replace(/[IiLl]/g, "1")
-    .replace(/[Zz]/g, "2")
-    .replace(/[Bb]/g, "8")
-    .replace(/[Aa]/g, "4")
-    .replace(/[Gg]/g, "6")
-    .replace(/[Tt]/g, "7");
-}
-
-/** norm() plus the same letter→digit mapping, applied to BOTH the receipt
+/** norm() plus the letter→digit mapping OCR confuses, applied to BOTH the
  * text and the category keywords so "5UPERMERCADO" still matches
  * "supermercado" — and clean text keeps matching too. */
 const ocrNorm = (s: string) =>
@@ -329,223 +296,6 @@ export function parseBrl(input: string): number {
   }
   const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
-}
-
-/**
- * Picks the best amount, most-reliable source first:
- *   1. an explicit "total/valor/a pagar" line — keyword and number must share
- *      the same line (a newline is a different field, never the total);
- *   2. any "R$" value (the symbol may OCR as "RS"/"R5"), from the bottom;
- *   3. any remaining number token, from the bottom, skipping change/ID/address
- *      lines. Amounts survive OCR noise: "28,9O", "3G,50", "28 90", "R$ 28"
- *      and "T0TAL" all resolve.
- */
-/** A BRL amount token. The lookahead requires at least one REAL digit so a
- * fuzzy letter class never lets "TOTAL"'s own letters be read as a number
- * (e.g. the trailing "L" of "VALOR TOTAL" becoming 1). */
-const AMOUNT_RE = `((?=[${D_BODY}]*[0-9])${D}+(?:[.,]${D}{3})*(?:[.,;”"'’ ]+${D}{1,2})?)`;
-
-/** Letter → OCR confusion set, used to build fuzzy keywords. */
-const L: Record<string, string> = {
-  t: "[t17]",
-  o: "[0o4]",
-  a: "[a4]",
-  l: "[l1]",
-  p: "[p]",
-  g: "[g]",
-  r: "[r]",
-  v: "[v]",
-};
-const fuzzy = (w: string) => w.split("").map((c) => L[c] ?? c).join("");
-
-/** "total" / "valor" / "a pagar" tolerating the T→1/7, O→0/4, A→4, L→1 swaps. */
-const TOTAL_KINDS =
-  `${fuzzy("total")}(?: ${fuzzy("a")} ${fuzzy("pagar")}| ${fuzzy("pago")})?` +
-  `|${fuzzy("valor")}(?: ${fuzzy("total")})?` +
-  `|${fuzzy("a")} ${fuzzy("pagar")}`;
-
-/** Lines that carry values different from the total (change, IDs, addresses). */
-const BAD_AMOUNT_LINE =
-  /troco|dinheiro|cnpj|cpf\b|inscricao|\bie\b|telefone|fone|\btel\b|endereco|rua\b|avenida|\bav\.|qtd|quantidade|unid|caixa|operador|consumidor|protocolo|validade|venc|leitura|sequencial/i;
-
-/** Masks valid dates and times so they never read as BRL amounts (day/month
- * are validated so amounts like "1.234,56" and "12.50" stay unmasked). */
-const maskDatesTimes = (line: string) =>
-  line
-    .replace(
-      /(?:0[1-9]|[12]\d|3[01])[\/.\-](?:0[1-9]|1[0-2])(?:[\/.\-]\d{2,4})?/g,
-      " ",
-    )
-    .replace(/\d{1,2}:\d{2}(:\d{2})?/g, " ");
-
-/** Strict-digit BRL tokens on one line (dates/times masked first). */
-function amountTokens(line: string): string[] {
-  const out: string[] = [];
-  for (const m of maskDatesTimes(line).matchAll(
-    /([0-9]+(?:[.,][0-9]{3})*(?:[., ]+[0-9]{1,2})?)/g,
-  )) {
-    const t = m[1].trim();
-    if (t.length >= 2) out.push(t);
-  }
-  return out;
-}
-
-function findAmount(text: string): number {
-  // 1) Explicit total/valor line (keyword and number on the same line).
-  const totalLine = text.match(
-    new RegExp(
-      `^\\s*(?:${TOTAL_KINDS})\\b(?!\\s*(?:de\\s+)?itens)[^\\n0-9]*${AMOUNT_RE}`,
-      "im",
-    ),
-  );
-  if (totalLine) {
-    const n = parseAmountToken(totalLine[1]);
-    if (n > 0) return n;
-  }
-  const totalAnywhere = text.match(
-    new RegExp(
-      `\\b(?:${TOTAL_KINDS})\\b(?!\\s*(?:de\\s+)?itens)[^\\n0-9]*${AMOUNT_RE}`,
-      "i",
-    ),
-  );
-  if (totalAnywhere) {
-    const n = parseAmountToken(totalAnywhere[1]);
-    if (n > 0) return n;
-  }
-
-  // 2) Lines with an explicit "R$" (or "RS"/"R5"), from the bottom.
-  const lines = text.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (BAD_AMOUNT_LINE.test(norm(line))) continue;
-    const m = maskDatesTimes(line).match(
-      new RegExp(`(?:r[$5s]\\s*)(${AMOUNT_RE})`, "i"),
-    );
-    if (m) {
-      const n = parseAmountToken(m[1]);
-      if (n > 0) return n;
-    }
-  }
-
-  // 3) Any remaining number token, bottom-up, skipping change/ID lines.
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (BAD_AMOUNT_LINE.test(norm(line))) continue;
-    const tokens = amountTokens(line);
-    if (tokens.length) {
-      const n = parseAmountToken(tokens[tokens.length - 1]);
-      if (n > 0) return n;
-    }
-  }
-  return 0;
-}
-
-/**
- * Parses a possibly-fuzzy BRL amount token, recovering cents lost to OCR:
- * "28,9O" → 28.9, "28 90" → 28.9, "1.234,56" → 1234.56.
- */
-function parseAmountToken(token: string): number {
-  let t = ocrDigits(token).replace(/[”"'’;]/g, ","); // blurred ",90" → quote glyph
-  // "28 90" / "28, 90" → "28,90" (the comma blurred into a space on thermal
-  // print, or a space inserted after it).
-  t = t.replace(/^(\d+(?:[.,]\d{3})*)[.,\s]+(\d{1,2})$/, "$1,$2");
-  t = t.replace(/[^\d.,]/g, "");
-  if (!t) return 0;
-  const hasComma = t.includes(",");
-  const hasDot = t.includes(".");
-  if (hasComma && hasDot) {
-    t = t.replace(/\./g, "").replace(",", ".");
-  } else if (hasComma) {
-    t = t.replace(",", ".");
-  } else if (hasDot) {
-    const after = t.split(".")[1] ?? "";
-    if (after.length === 3) t = t.replace(".", "");
-  }
-  // Receipts always print two decimals — a lone decimal digit is one the OCR
-  // dropped (usually a 0 read as O, recovered above; pad the rest).
-  if (t.includes(".") && t.split(".")[1].length === 1) t += "0";
-  const n = parseFloat(t);
-  return Number.isFinite(n) ? n : 0;
-}
-
-/** Removes CNPJ / IE / phone / URL / long number runs from a title line. */
-function stripNoise(line: string): string {
-  return line
-    .replace(/\bcnpj\b[:\s]*[\d./-]{8,}/gi, "")
-    .replace(/\bie\b[:\s]*[\d./-]{4,}/gi, "")
-    .replace(/\b(?:fone|telefone|tel)\b[:\s]*[+\d\s()-]{5,}/gi, "")
-    .replace(/\b(?:www\.)?[\w-]+\.com\.br\b/gi, "")
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/[0-9]{4,}/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const BAD_TITLE_LINE =
-  /cnpj|cpf|ie\s*:|inscricao|cupom|nfc-e|nf-e|\bnfce\b|\bnfc\b|\bnf\b|emitido|emissao|data|hora|total|subtotal|troco|desconto|pagamento|numero|nr\.|telefone|fone|endereco|endereço|www|\.com|caixa|operador|consumidor|qtd|quantidade|dinheiro|cartao|pix|sat|protocolo|\brua\b|\bavenida\b|\bav\.\b|\bcentro\b|\bbairro\b|\bcomplemento\b|\binstituicao\b|\bagencia\b|\bconta\b|\boperacao\b|\batendimento\b|\bouvidoria\b|\bfavorecido\b|\brecebedor\b|\borigem\b|\bdestino\b|\bcomprovante\b|\bdeposito\b|\btransferencia\b|\bdepositar\b/i;
-
-/**
- * A line that survived cleanup is a plausible store name: mostly letters,
- * no digits glued to letters (barcodes / access keys OCR as digit-letter
- * gibberish like "WVOB8o0oH-CEE"), and no separator runs or 4+ repeated
- * chars.
- */
-function looksLikeStoreName(line: string): boolean {
-  if ((line.match(/[a-zA-ZÀ-ÿ]/g) ?? []).length < 4) return false;
-  // Several digits embedded mid-word (letter-digit-letter) = barcode / access
-  // key gibberish ("WVOB8o0oH-CEE"); a single one ("CARREF0UR", "H0TEL")
-  // is plain OCR noise on a real name and still passes. Lookahead so
-  // overlapping hits count ("o0o" next to "B8o" in the same word).
-  if ((line.match(/[a-zA-ZÀ-ÿ](?=\d[a-zA-ZÀ-ÿ])/g) ?? []).length >= 2) return false;
-  if (/[-_=+*•|.,/]{4,}/.test(line)) return false;
-  if (/([a-zA-ZÀ-ÿ])\1{3,}/.test(line)) return false;
-  return true;
-}
-
-function findTitle(text: string): string {
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  // 1) An explicit "comprovante/recibo de …" label is the best title on a
-  //    bank receipt (there is no store name).
-  for (const line of lines) {
-    const cleaned = stripNoise(line);
-    const m = cleaned.match(
-      /^(?:comprovante|recibo|extrato)\s+de\s+([a-zà-ú0-9&. ]{3,})$/i,
-    );
-    // OCR drops accents ("transferência" → "transferencia"): normalize both.
-    if (m || (norm(cleaned).match(/^(?:comprovante|recibo|extrato)\s+de\s+[a-z0-9&. ]{3,}$/) ?? []).length) {
-      return cleaned.slice(0, 40);
-    }
-  }
-
-  // 2) On bank receipts, the recipient ("FAVORECIDO / RECEBEDOR") is a
-  //    meaningful title — "Comprovante de depósito · Geovana".
-  for (let i = 0; i < lines.length; i++) {
-    if (/favorecido|recebedor/i.test(norm(lines[i]))) {
-      const name = stripNoise(lines[i + 1] ?? "");
-      if (name && !BAD_TITLE_LINE.test(name) && looksLikeStoreName(name)) {
-        return `Comprovante de depósito · ${name.slice(0, 20)}`.slice(0, 40);
-      }
-    }
-  }
-
-  // 3) Otherwise the store name (same heuristics as before).
-  for (const line of lines) {
-    const cleaned = stripNoise(line);
-    if (!/[a-zà-ú]{3,}/i.test(cleaned)) continue; // needs real words
-    if (BAD_TITLE_LINE.test(cleaned)) continue; // header boilerplate
-    if (/^[0-9]+(?:\s|$)/.test(cleaned)) continue; // item / code line (a lone leading
-    // confusion digit like "5UPERMERCADO" is OCR noise on a real name, not a code)
-    // "28/ -72 CENTRO" — a house number / address fragment, never a store name.
-    if (/^\d+[\/\-–—]\s*\d*/.test(cleaned)) continue;
-    if (/\d+[,.]\d{2}\s*$/.test(cleaned)) continue; // ends with a price → item line
-    if (!looksLikeStoreName(cleaned)) continue; // barcode / OCR gibberish
-    return cleaned.slice(0, 40);
-  }
-  return "";
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -644,402 +394,8 @@ export function findCategoryId(text: string, title = ""): string {
   return "outros";
 }
 
-/** First valid HH:MM (also accepts "HH:MM:SS" and "HHhMM", and single-digit
- * hours like "9:44") inside a line, with OCR-tolerant digits
- * ("l4:3Z" → "14:32"). */
-function findTimeInLine(line: string): string {
-  const m = line.match(
-    new RegExp(`((?:[01lIiL]?${D})|2[0-3OoIiLlSZB])[:h]([0-5OoIiLlSZB]${D})`, "i"),
-  );
-  if (!m) return "";
-  const hh = parseInt(ocrDigits(m[1]), 10);
-  const mm = parseInt(ocrDigits(m[2]), 10);
-  if (hh > 23 || mm > 59) return "";
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-/** Emission-context words (data/hora/emissão/saída/venda/compra). */
-const EMISSION_CTX = /(^|[^a-z])(data|hora)|emiss|saida|emit|venda|compra/i;
-/** Expiry / due-date words — never the purchase date ("DATA DE VALIDADE"). */
-const VALIDITY_CTX = /(^|[^a-z])(val|validade|venc|vencimento|expir)/i;
-
-/** PT-BR month abbreviations → number ("ago" → 8), for "10/ago" dates. */
-const MONTHS: Record<string, number> = {
-  jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
-  jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
-};
-
-/** Year for dates without one: the current year — or the previous one if that
- * would land in the future (receipts are never dated ahead). */
-function inferYear(mo: number, d: number): number {
-  const now = new Date();
-  const y = now.getFullYear();
-  if (new Date(y, mo - 1, d) > new Date(y, now.getMonth(), now.getDate() + 1)) {
-    return y - 1;
-  }
-  return y;
-}
-
-function findDate(text: string): { date: string; time: string } {
-  const lines = text.split("\n");
-  let best: { date: string; line: string; score: number; end: number } | null = null;
-  // dd/mm/yyyy, dd/mm (year inferred), yyyy-mm-dd and month-name dates like
-  // "10/ago - 23:30". The no-year variants use a lookbehind so "…/0001-12"
-  // (CNPJ branch digits) is never read as a date.
-  const dmyRe = new RegExp(
-    `(?<![0-9])(${D}{2})[\\/.\\-](${D}{2})(?:[\\/.\\-](${D}{4}))?`,
-  );
-  const monRe = new RegExp(
-    `(?<![0-9])(0?[1-9]|[12]\\d|3[01])[\\/.\\-]\\s*(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zà-ú]*`,
-    "i",
-  );
-  const isoRe = new RegExp(`(${D}{4})-(${D}{2})-(${D}{2})`);
-
-  for (const line of lines) {
-    const ctx = norm(line);
-    if (VALIDITY_CTX.test(ctx)) continue; // "VAL 30/08/2026" etc. — not the purchase date
-
-    const dm = line.match(dmyRe);
-    if (dm) {
-      const d = parseInt(ocrDigits(dm[1]), 10);
-      const mo = parseInt(ocrDigits(dm[2]), 10);
-      const y = dm[3] ? parseInt(ocrDigits(dm[3]), 10) : inferYear(mo, d);
-      if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2000 && y <= 2100) {
-        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
-        if (!best || score > best.score) {
-          best = {
-            date,
-            line,
-            score,
-            end: (dm.index ?? 0) + dm[0].length,
-          };
-        }
-      }
-    }
-
-    const mon = line.match(monRe);
-    if (mon) {
-      const d = parseInt(mon[1], 10);
-      const mo = MONTHS[mon[2].toLowerCase()];
-      if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12) {
-        const y = inferYear(mo, d);
-        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
-        if (!best || score > best.score) {
-          best = {
-            date,
-            line,
-            score,
-            end: (mon.index ?? 0) + mon[0].length,
-          };
-        }
-      }
-    }
-
-    const im = line.match(isoRe);
-    if (im) {
-      const y = parseInt(ocrDigits(im[1]), 10);
-      const mo = parseInt(ocrDigits(im[2]), 10);
-      const d = parseInt(ocrDigits(im[3]), 10);
-      if (y >= 2000 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-        const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const score = EMISSION_CTX.test(ctx) ? 2 : 1;
-        if (!best || score > best.score) {
-          best = {
-            date,
-            line,
-            score,
-            end: (im.index ?? 0) + im[0].length,
-          };
-        }
-      }
-    }
-  }
-
-  let time = "";
-  if (best) {
-    // Prefer the time right after the date token ("DATA 05/08/2026 14:32:05"
-    // or "10/ago - 23:30"), then any valid time on the emission line itself.
-    time = findTimeInLine(best.line.slice(best.end)) || findTimeInLine(best.line);
-  }
-  if (!time) {
-    // The date line had no time — look only at lines that mention
-    // HORA/emissão/leitura/às (never scan item lines: prices like "12:50" can
-    // be OCR'd with a colon).
-    for (const line of lines) {
-      if (/\bhora\b|emiss|saida|leitura|às|\bas\b|operacao|origem|destino/.test(norm(line))) {
-        time = findTimeInLine(line);
-        if (time) break;
-      }
-    }
-  }
-  return { date: best?.date ?? "", time };
-}
-
-/** Income signals — "PIX RECEBIDO", "SALÁRIO", "DEVOLUÇÃO", "depósito" are
- * money IN. Note: "favorecido/recebedor" is NOT one — the beneficiary appears
- * on sent transfers too ("Pix enviado … Favorecido: João"). */
-const INCOME_HINTS =
-  /\brecebid|recebimento|dep[o0]sito|est[o0]rno|reemb[o0]lso|devoluca|cr[ée]dito em c[o0]nta|sal[áa]rio|holerite|receitas|rendimento/i;
-
-/** Expense signals — payments, purchases, bills, subscriptions, sent PIX. */
-const EXPENSE_HINTS =
-  /pagamento|compra|cupom|nota fiscal|fatura|boleto|d[ée]bito|saque|pix enviado|envio pix|transfer[êe]ncia enviada|despesa|assinatura|mensalidade|conta de|cart[ãa]o/i;
-
-/** Determines whether the scanned receipt is money IN (receita) or money OUT
- * (despesa). Income signals win ("PIX RECEBIDO"); otherwise payment signals
- * mark an expense; neutral store receipts default to expense. */
-export function detectType(text: string): "income" | "expense" {
-  const t = norm(text);
-  if (INCOME_HINTS.test(t)) return "income";
-  if (EXPENSE_HINTS.test(t)) return "expense";
-  return "expense";
-}
-
-const PAYMENT_METHODS: Array<{ id: string; label: string; re: RegExp }> = [
-  { id: "pix", label: "Pix", re: /\bpix\b|bcb\.pix/i },
-  { id: "dinheiro", label: "Dinheiro", re: /\bdinheiro\b/i },
-  // Crédito/débito before cartão so "CARTAO DE CREDITO" reads as crédito.
-  { id: "credito", label: "Crédito", re: /\bcr[ée]dito\b/i },
-  { id: "debito", label: "Débito", re: /\bd[ée]bito\b/i },
-  { id: "cartao", label: "Cartão", re: /\bcart[ãa]o\b/i },
-  { id: "boleto", label: "Boleto", re: /\bboleto\b/i },
-  { id: "transferencia", label: "Transferência", re: /transfer[êe]ncia/i },
-];
-
-/** First payment method mentioned in the receipt text ("" when none). */
-export function findPaymentMethod(text: string): string {
-  const t = norm(text);
-  for (const m of PAYMENT_METHODS) {
-    if (m.re.test(t)) return m.id;
-  }
-  return "";
-}
-
-/** Natural-language description templates per payment method (income money
- * IN / expense money OUT). Card payments never read as income. */
-const BANK_PHRASES: Record<
-  string,
-  { income?: (n: string) => string; expense: (n: string) => string }
-> = {
-  pix: {
-    income: (n) => `Pix recebido${n ? ` de ${n}` : ""}`,
-    expense: (n) => `Pix enviado${n ? ` para ${n}` : ""}`,
-  },
-  transferencia: {
-    income: (n) => `Transferência recebida${n ? ` de ${n}` : ""}`,
-    expense: (n) => `Transferência enviada${n ? ` para ${n}` : ""}`,
-  },
-  dinheiro: {
-    income: (n) => `Dinheiro recebido${n ? ` de ${n}` : ""}`,
-    expense: (n) => `Dinheiro pago${n ? ` a ${n}` : ""}`,
-  },
-  boleto: {
-    income: (n) => `Boleto recebido${n ? ` de ${n}` : ""}`,
-    expense: (n) => `Boleto pago${n ? ` a ${n}` : ""}`,
-  },
-  cartao: {
-    expense: (n) => `Pagamento no cartão${n ? ` em ${n}` : ""}`,
-  },
-  credito: {
-    expense: (n) => `Pagamento no cartão de crédito${n ? ` em ${n}` : ""}`,
-  },
-  debito: {
-    expense: (n) => `Pagamento no cartão de débito${n ? ` em ${n}` : ""}`,
-  },
-};
-
-/** Payment-institution names that are never a counterparty person/store. */
-const BANK_NAME_NOISE =
-  /mercado pago|nupagamentos|instituicao|de pagamento|s\.a\.?\b/i;
-
-/** Counterparty name on a bank receipt: the FAVORECIDO/RECEBEDOR label first,
- * then the first person-name inside the "Origem/Destino" block (money IN →
- * the payer in Origem; money OUT → the receiver in Destino). */
-function findCounterpartyName(text: string, income: boolean): string {
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const good = (raw: string) => {
-    const n = stripNoise(raw);
-    if (!n || n.length < 4) return "";
-    if (BAD_TITLE_LINE.test(n) || BANK_NAME_NOISE.test(n)) return "";
-    if (!looksLikeStoreName(n)) return "";
-    return titleCase(n)
-      .replace(/\b(de|da|do|das|dos|e)\b/gi, (w) => w.toLowerCase())
-      .slice(0, 40);
-  };
-  // 1) Explicit FAVORECIDO / RECEBEDOR / BENEFICIARIO / ESTABELECIMENTO label.
-  for (let i = 0; i < lines.length; i++) {
-    if (/favorecido|recebedor|beneficiario|estabelecimento/i.test(norm(lines[i]))) {
-      const n = good(lines[i + 1] ?? "");
-      if (n) return n;
-    }
-  }
-  // 2) "Origem e destino" block. Account-number lines ("51.007.564 MARIA…")
-  //    get the leading digits stripped before validation.
-  let inOrigem = false;
-  let inDestino = false;
-  for (let i = 0; i < lines.length; i++) {
-    const ln = norm(lines[i]);
-    if (/^origem\b/.test(ln)) {
-      inOrigem = true;
-      inDestino = false;
-      continue;
-    }
-    if (/^destino\b/.test(ln)) {
-      inOrigem = false;
-      inDestino = true;
-      continue;
-    }
-    if (!(income ? inOrigem : inDestino)) continue;
-    const cleaned = lines[i].replace(/^[\d.*\s]+(?=[A-ZÀ-Ú])/, "").trim();
-    const n = good(cleaned);
-    if (n) return n;
-  }
-  return "";
-}
-
-/** Natural-language description for bank receipts: "Pix recebido de Maria",
- * "Pix enviado para João", "Transferência recebida de …", "Boleto pago a …",
- * "Pagamento no cartão em …". Returns "" when the text is not a bank receipt
- * or a rewrite would be speculative (a store receipt that merely mentions
- * "agência"/"conta" keeps its store name). `nameOverride` lets callers plug
- * the QR receiver name when the OCR text had no counterparty. */
-export function buildBankReceiptTitle(
-  text: string,
-  nameOverride = "",
-): string {
-  if (!BANKING_CTX.test(norm(text))) return "";
-  const method = findPaymentMethod(text);
-  const income = detectType(text) === "income";
-  const name = (nameOverride || findCounterpartyName(text, income)).trim();
-  const phrase = BANK_PHRASES[method];
-  if (phrase) {
-    if (income) return phrase.income ? phrase.income(name) : "";
-    return phrase.expense(name);
-  }
-  // No method detected — only rewrite with generic wording when there's an
-  // explicit comprovante/recibo label or a counterparty name.
-  if (name || /comprovante|recibo|extrato/i.test(norm(text))) {
-    return income
-      ? name
-        ? `Depósito recebido de ${name}`
-        : "Depósito recebido"
-      : name
-        ? `Pagamento para ${name}`
-        : "Pagamento";
-  }
-  return "";
-}
-
-export function parseReceiptText(text: string): ScanResult {
-  const { date, time } = findDate(text);
-  const type = detectType(text);
-  const paymentMethod = findPaymentMethod(text);
-  const title = buildBankReceiptTitle(text) || findTitle(text);
-  return {
-    title,
-    amount: findAmount(text),
-    categoryId: findCategoryId(text, title),
-    date,
-    time,
-    type,
-    paymentMethod,
-  };
-}
-
 // ---------------------------------------------------------------------------
-// Item list — extracts the "what was bought" from the receipt so the draft
-// can be prefilled with an organized list of name + quantity + price.
-// ---------------------------------------------------------------------------
-
-export type ReceiptItem = {
-  name: string;
-  qty: string; // "1 un", "5 kg", "2x"… "" when the receipt has no quantity
-  price: number; // positive BRL value
-};
-
-/** Lines that are never items (totals, payment, headers, dates, metadata). */
-const ITEM_SKIP =
-  /total|subtotal|troco|dinheiro|pagamento|cartao|credito|debito|desconto|taxa|juros|multa|acrescimo|frete|fiscal|cnpj|cpf|inscricao|endereco|telefone|fone|data|hora|emitid|protocolo|cupom|nfc-e|nf-e|chave|pix|referencia|entrega|pedido|consumidor|operador|caixa|validade|venc|leitura|sequencial|parcela|autorizacao|quantidade|nr\.|numero/i;
-
-const QTY_UNITS = "UN|UNIDADE|UNID|UND|QTD|QTDE|CX|PCT|PAC|PACOTE|X|KG|G|ML|L|GR";
-
-/** Cleans an item-name fragment: item codes, bare numbers and junk chars. */
-function stripNameNoise(name: string): string {
-  return name
-    .replace(/^\d{3,}\s*/, "") // item codes ("001 ")
-    .replace(/^\s*[.:;,•|=\-]+/, "") // leading separators
-    .replace(/\s*\d+(?:[.,]\d+)?\s*$/, "") // trailing bare numbers
-    .replace(/\s{2,}/g, " ")
-    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
-    .trim();
-}
-
-const titleCase = (s: string) =>
-  s.replace(
-    /\p{L}+/gu,
-    (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
-  );
-
-/**
- * Parses the item list from a receipt: lines with a name, optional quantity
- * and a trailing price ("PIPOCA 1 UN 5,00"). Headers, totals and payment
- * lines are ignored. Returns at most 10 items.
- */
-export function extractItems(text: string): ReceiptItem[] {
-  const items: ReceiptItem[] = [];
-  for (const rawLine of text.split("\n")) {
-    const line = maskDatesTimes(rawLine.trim());
-    if (!line || ITEM_SKIP.test(norm(line))) continue;
-    const pm = line.match(
-      new RegExp(`(?:r?\\$?\\s*)?${AMOUNT_RE}\\s*$`, "i"),
-    );
-    if (!pm) continue;
-    const price = parseAmountToken(pm[1]);
-    if (!(price > 0)) continue;
-    let namePart = line.slice(0, pm.index ?? 0).trim();
-    if (namePart.length < 3) continue;
-
-    // Quantity: "1 UN", "5KG", "2X", "1,5KG"… anywhere in the name.
-    let qty = "";
-    const qm = namePart.match(
-      new RegExp(`(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s*(${QTY_UNITS})\\b(?=\\s|$)`, "i"),
-    );
-    if (qm) {
-      qty = `${qm[1]} ${qm[2].toLowerCase()}`;
-      namePart = namePart.replace(qm[0], " ").trim();
-    }
-
-    const name = titleCase(stripNameNoise(namePart));
-    if (name.length < 2) continue;
-    if (items.length >= 10) break;
-    items.push({ name, qty, price });
-  }
-  return items;
-}
-
-/** "• Pipoca 1 un · R$ 5,00" — the organized list used to prefill the draft. */
-export function formatItemsText(items: ReceiptItem[]): string {
-  if (!items.length) return "";
-  const lines = items.map((it) => {
-    const qty = it.qty ? ` ${it.qty}` : "";
-    const price = it.price.toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-    return `• ${it.name}${qty} · ${price}`;
-  });
-  let out = `Itens da nota:\n${lines.join("\n")}`;
-  if (out.length > 290) out = out.slice(0, 287) + "…";
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// Images
+// Imagens — downscale e re-encode de um arquivo em data URL compacta.
 // ---------------------------------------------------------------------------
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -1083,54 +439,10 @@ export function imageToDataUrl(
   })();
 }
 
-/**
- * Prepares an image (original File or data URL) for OCR: upscales small
- * thermal-receipt photos to ~1800px on the long edge, converts to grayscale
- * and stretches the contrast so tiny print is readable by Tesseract.
- */
-export async function prepareForOcr(input: File | string): Promise<string> {
-  const url = typeof input === "string" ? input : await fileToDataUrl(input);
-  const img = await loadImage(url);
-  const maxDim = Math.max(img.width, img.height);
-  const scale = Math.min(2.5, Math.max(1200 / maxDim, 1800 / maxDim));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("no-canvas");
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(img, 0, 0, w, h);
-
-  const imageData = ctx.getImageData(0, 0, w, h);
-  const px = imageData.data;
-  let lo = 255;
-  let hi = 0;
-  for (let i = 0; i < px.length; i += 4) {
-    const g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-    if (g < lo) lo = g;
-    if (g > hi) hi = g;
-  }
-  const range = Math.max(1, hi - lo);
-  const gain = 255 / range;
-  for (let i = 0; i < px.length; i += 4) {
-    const g = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2] - lo) * gain;
-    const v = g < 0 ? 0 : g > 255 ? 255 : Math.round(g);
-    px[i] = v;
-    px[i + 1] = v;
-    px[i + 2] = v;
-    px[i + 3] = 255;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
 // ---------------------------------------------------------------------------
-// QR codes — decode PIX "copia e cola" (BR Code) payloads from the photo:
-// field 54 is the amount, 59 the merchant name and 62 the description/txid.
-// A payment-screen QR is often MORE reliable than OCR for the exact value.
+// QR codes — decodifica PIX "copia e cola" (BR Code: campo 54 valor, 59 nome
+// do recebedor, 62 descrição/txid) e URLs de consulta de NFC-e (SEFAZ). A
+// URL da nota vai para a action do backend, que raspa os dados exatos.
 // ---------------------------------------------------------------------------
 
 export type QrResult = {
@@ -1139,7 +451,7 @@ export type QrResult = {
   name?: string;
   description?: string;
   /** The http(s) URL when the payload is a web link (e.g. a SEFAZ NFC-e
-   * consult URL) — the client sends it to the scrape action (Priority 1). */
+   * consult URL) — the client sends it to the scrape action. */
   url?: string;
   /** NFC-e access-key metadata (from a SEFAZ "consultar" URL). */
   nfceStore?: string;
@@ -1177,7 +489,7 @@ function formatCnpj(cnpj: string): string {
  * `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=352607…`): extracts the
  * 44-digit access key, the emission date (AAMM) and the merchant CNPJ, and
  * resolves the CNPJ to a store name when known. The key never carries the
- * total — that still comes from OCR (or the user).
+ * total — that comes from the backend scrape of the URL.
  */
 export function parseNfceQrUrl(payload: string): QrResult | null {
   const digits = payload.replace(/\D/g, "");
@@ -1207,7 +519,7 @@ export function parseNfceQrUrl(payload: string): QrResult | null {
 /**
  * Classifies any QR payload: PIX "copia e cola" → its structured fields;
  * NFC-e consult URL → the access-key metadata; otherwise a minimal result
- * with the raw payload (useful for the camera scanner's preview).
+ * with the raw payload.
  */
 export function parseQrFromPayload(payload: string): QrResult {
   const nfce = parseNfceQrUrl(payload);
@@ -1258,9 +570,9 @@ export function parseBrCode(
   return out;
 }
 
-/** Decodes a QR code in an image (original File or data URL) and, when it is
- * a PIX "copia e cola" payload, returns its structured data. Returns null on
- * no QR / decode failure — never throws. */
+/** Decodes a QR code in an image (original File or data URL) and returns the
+ * classified payload (NFC-e URL, PIX BR Code, …). Returns null on no QR /
+ * decode failure — never throws. */
 export async function decodeQrPayload(
   input: File | string,
 ): Promise<QrResult | null> {
@@ -1301,46 +613,10 @@ export async function decodeQrPayload(
     for (const data of attempts) {
       const code = jsQR(data, w, h);
       if (!code?.data) continue;
-      const parsed = parseBrCode(code.data);
-      return { payload: code.data, ...parsed };
+      return parseQrFromPayload(code.data);
     }
     return null;
   } catch {
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// OCR — Tesseract.js loading the worker, core and Portuguese traineddata
-// from its default jsDelivr CDN (the /public copies aren't served by the
-// preview proxy, which returns 502 for static files).
-// ---------------------------------------------------------------------------
-
-/**
- * OCR an image (original File or data URL) with Tesseract.js. The worker,
- * core and Portuguese traineddata load from the default jsDelivr CDN — the
- * copies under /public are unreachable in the preview proxy (it returns 502
- * for static files), while the CDN is verified reachable from the sandbox.
- */
-export async function scanReceiptText(input: File | string): Promise<string> {
-  const prepared = await prepareForOcr(input);
-  const worker = await Tesseract.createWorker("por", Tesseract.OEM.LSTM_ONLY);
-  try {
-    const { data } = await worker.recognize(prepared);
-    return data.text ?? "";
-  } finally {
-    await worker.terminate();
-  }
-}
-
-export async function scanReceiptWithTimeout(
-  input: File | string,
-  ms = 90_000,
-): Promise<string> {
-  return Promise.race([
-    scanReceiptText(input),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("ocr-timeout")), ms),
-    ),
-  ]);
 }

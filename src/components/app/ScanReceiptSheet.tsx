@@ -24,16 +24,14 @@ import {
   describePurchase,
   draftPurchase,
 } from "@/lib/purchase-format";
+import type { NfceScrapeResult } from "@/convex/nfceParser";
 import {
-  buildBankReceiptTitle,
   decodeQrPayload,
-  extractItems,
   findCategoryId,
   imageToDataUrl,
   parseQrFromPayload,
-  parseReceiptText,
-  scanReceiptWithTimeout,
   SCAN_CATEGORIES,
+  type QrResult,
 } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
@@ -41,21 +39,26 @@ import { CameraQrScanner } from "./CameraQrScanner";
 import { CategoryIcon } from "./CategoryIcon";
 import {
   CARD_MODE_LABELS,
-  normalizePaymentMethod,
   PaymentMethodSelector,
   type CardMode,
   type PaymentMethodId,
 } from "./PaymentMethodSelector";
 
 // ---------------------------------------------------------------------------
-// Escanear Nota — pick a photo (camera or gallery), OCR it in the browser,
-// review the extracted fields (auto-creating categories that don't exist),
-// attach one or more receipt photos, add a draft note and approve before
-// saving. The photos become attachments shown in the transaction details.
+// Escanear Nota — fluxo 100% baseado em QR code (sem OCR, que alucina
+// números em cupom térmico):
+//   1. O usuário escolhe foto ou usa a câmera → tela de SCANNER dedicada,
+//      com a imagem em destaque e o progresso da leitura.
+//   2. O QR é decodificado (jsQR). Se for URL de NFC-e (SEFAZ), o backend
+//      (action Convex + cheerio) raspa os dados exatos da nota: loja, valor,
+//      data, hora e itens. Se for PIX "copia e cola", valor e recebedor vêm
+//      direto do código.
+//   3. Só com as informações em mãos o app leva à tela de APROVAÇÃO. Sem QR
+//      ou consulta falha → mensagem clara + opção de preencher manualmente.
 // ---------------------------------------------------------------------------
 
-type Step = "source" | "camera" | "edit" | "approve";
-type OcrState = "idle" | "scanning" | "done" | "empty" | "failed";
+type Step = "source" | "camera" | "scan" | "edit" | "approve";
+type ScanPhase = "detecting" | "scraping" | "success" | "failed";
 
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
@@ -72,6 +75,8 @@ const PAYMENT_LABELS: Record<string, string> = {
   transferencia: "Transferência",
 };
 
+type ScrapeResult = NfceScrapeResult;
+
 export function ScanReceiptSheet({
   open,
   onClose,
@@ -81,20 +86,18 @@ export function ScanReceiptSheet({
 }) {
   const { categories, cards, addTransaction } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
-  // Prioridade 1 do Leitor de Notas: raspagem da NFC-e no backend (action
-  // Convex + cheerio). Falha → extração por IA (Prioridade 2) → OCR local.
   const scrapeNfce = useAction(api.nfce.scrapeNfce);
-  const extractReceipt = useAction(api.aiVision.extractReceipt);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
-  const [ocrState, setOcrState] = useState<OcrState>("idle");
+  const [scanPhase, setScanPhase] = useState<ScanPhase>("detecting");
+  const [scanStatus, setScanStatus] = useState("");
+  const [scanResultInfo, setScanResultInfo] = useState("");
 
-  // Form fields (OCR fills what is still empty)
+  // Form fields (prefilled only with data exata do QR/scrape)
   const [title, setTitle] = useState("");
   const [cents, setCents] = useState(0);
   const [categoryId, setCategoryId] = useState("");
-  const [categoryTouched, setCategoryTouched] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
@@ -102,39 +105,36 @@ export function ScanReceiptSheet({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
-  // Raw OCR text — shown collapsed so the user can see what was read (and
-  // why a field came back empty).
-  const [rawText, setRawText] = useState("");
-  // QR decode status, also shown collapsed ("QR não detectado" / "QR
-  // detectado · valor R$ 9,90" / "… sem valor no código").
-  const [qrInfo, setQrInfo] = useState("");
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const addMoreRef = useRef<HTMLInputElement | null>(null);
-  // Bumped on every open/reset so stale OCR results never fill a fresh form.
+  // Bumped on every open/reset so stale scan results never fill a fresh form.
   const runIdRef = useRef(0);
-  // Original picked File, kept so "Tentar de novo" re-OCRs at full quality.
+  // Original picked File, kept so "Tentar novamente" re-scans at full quality.
   const sourceFileRef = useRef<File | null>(null);
-  // True once the user picks the date manually — the OCR date never overrides it.
+  // True once the user picks the date manually — scan data never overrides it.
   const dateTouchedRef = useRef(false);
-  // True once the user picks Despesa/Receita manually — the OCR never overrides it.
+  // True once the user picks Despesa/Receita manually — scan data never overrides it.
   const typeTouchedRef = useRef(false);
-  // Category chip refs, so the selected chip can be scrolled into view (the
-  // row is horizontally scrollable and the match may be off-screen).
+  // Timer that advances "success" → "approve", cleared on reset/unmount.
+  const successTimerRef = useRef<number | null>(null);
+  // Category chip refs, so the selected chip can be scrolled into view.
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Fresh state every time the sheet opens.
   useEffect(() => {
     if (!open) return;
     runIdRef.current += 1;
+    if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
     setStep("source");
     setImages([]);
-    setOcrState("idle");
+    setScanPhase("detecting");
+    setScanStatus("");
+    setScanResultInfo("");
     setTitle("");
     setCents(0);
     setCategoryId("");
-    setCategoryTouched(false);
     setDate(new Date().toISOString().slice(0, 10));
     setTime("");
     setNote("");
@@ -142,12 +142,17 @@ export function ScanReceiptSheet({
     setPaymentMethod("");
     setCardMode("");
     setCardId(null);
-    setRawText("");
-    setQrInfo("");
     sourceFileRef.current = null;
     dateTouchedRef.current = false;
     typeTouchedRef.current = false;
   }, [open]);
+
+  // Clear the success timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   // Keep the selected category chip visible in the scrollable chips row.
   useEffect(() => {
@@ -159,206 +164,141 @@ export function ScanReceiptSheet({
     });
   }, [categoryId]);
 
-  /** Default expense category (used before OCR answers). */
+  /** Default expense category (used until the scan answers). */
   const defaultCategoryId = () => {
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     return fallback?.id ?? categories[0]?.id ?? "outros";
   };
 
-  const runOcr = async (input: File | string, knownPayload?: string) => {
+  /** Resolves a scan category, auto-creating it when it doesn't exist. */
+  const applyCategory = (id: string) => {
+    const suggested = SCAN_CATEGORIES.find((c) => c.id === id);
+    if (!suggested) return;
+    const { id: resolved, created } = applySuggestedCategory(suggested);
+    setCategoryId(resolved);
+    if (created) {
+      toast(`Categoria "${suggested.label}" criada`, {
+        description: "Você pode renomeá-la em Categorias a qualquer momento.",
+      });
+    }
+  };
+
+  /**
+   * Preenche o formulário com os dados EXATOS da nota (scrape da SEFAZ),
+   * aplicando as regras universais: 3+ itens → Descrição com categoria geral
+   * (Mercado/Farmácia/Restaurante); 1–2 itens → "1x Produto"; Rascunho com
+   * "Estabelecimento: {loja}" + lista formatada dos itens.
+   */
+  const applyScraped = (
+    res: ScrapeResult,
+    qr: QrResult | null,
+  ) => {
+    const store = res.store || qr?.nfceStore || "";
+    const items = res.items;
+    const total =
+      (res.total && res.total > 0
+        ? res.total
+        : items.reduce((sum, it) => sum + (it.price || 0), 0)) || 0;
+    if (total > 0) setCents(Math.round(total * 100));
+    if (res.date) setDate(res.date);
+    if (res.time) setTime(res.time);
+    if (items.length > 0) {
+      setTitle(describePurchase(items, store, res.store ?? ""));
+      setNote(draftPurchase(store, items));
+      const detected = classifyPurchase(items, store).categoryId;
+      if (detected && detected !== "outros") applyCategory(detected);
+    } else {
+      setTitle((prev) => (prev.trim() ? prev : store || "Nota fiscal"));
+    }
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setScanResultInfo(
+      `QR NFC-e · ${store || "SEFAZ"} · ${items.length} ${
+        items.length === 1 ? "item" : "itens"
+      } · dados oficiais da nota`,
+    );
+  };
+
+  /** Preenche a partir de um QR PIX "copia e cola" — valor e recebedor vêm
+   * exatos do código (o campo 59 é o nome do recebedor/estabelecimento). */
+  const applyPixQr = (qr: QrResult) => {
+    if (qr.amount && qr.amount > 0) setCents(Math.round(qr.amount * 100));
+    const name = qr.name?.trim() || "Pix";
+    setTitle(name);
+    if (!typeTouchedRef.current) setType("expense");
+    setPaymentMethod("pix");
+    if (qr.description) {
+      const id = findCategoryId(qr.description, name);
+      if (id && id !== "outros") applyCategory(id);
+    }
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setScanResultInfo(`QR PIX · ${name} · valor exato do código`);
+  };
+
+  /** Termina uma leitura bem-sucedida e leva à tela de aprovação. */
+  const finishScan = (runId: number) => {
+    setScanPhase("success");
+    setScanStatus("Dados encontrados — abrindo a revisão…");
+    if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+    successTimerRef.current = window.setTimeout(() => {
+      if (runId === runIdRef.current) setStep("approve");
+    }, 450);
+  };
+
+  /**
+   * Pipeline do scanner: 1) decodifica o QR; 2) URL de NFC-e → scrape no
+   * backend (cheerio); 3) PIX BR Code → campos direto do código; 4) nada →
+   * estado "failed" com opções de retry / preenchimento manual.
+   */
+  const runScan = async (input: File | string, knownPayload?: string) => {
     const runId = runIdRef.current;
-    setOcrState("scanning");
+    setScanPhase("detecting");
+    setScanStatus("Detectando QR code na imagem…");
     try {
-      // OCR and QR decoding run in parallel. A payment-screen QR (PIX
-      // "copia e cola") carries the EXACT value, which OCR often mangles
-      // ("R$ 9”" → 9,00), so its amount wins; its merchant name is a title
-      // fallback and its description feeds category detection.
-      const [text, qr] = await Promise.all([
-        scanReceiptWithTimeout(input),
-        knownPayload
-          ? Promise.resolve(parseQrFromPayload(knownPayload))
-          : decodeQrPayload(input),
-      ]);
-      if (runId !== runIdRef.current) return; // form was reset meanwhile
-      const parsed = parseReceiptText(text);
-      // Extract the QR facts into plain locals (avoids TS narrowing through
-      // the awaited value below).
-      const qrAmount = qr?.amount;
-      const qrName = qr?.name;
-      const qrDescription = qr?.description;
-      const qrNfceStore = qr?.nfceStore;
-      const qrNfceDate = qr?.nfceEmissionDate;
-      const qrUrl = qr?.url;
-      if (qrAmount && qrAmount > 0) parsed.amount = qrAmount;
-      if (!parsed.title && qrName) parsed.title = qrName;
-      if (!parsed.title && qrNfceStore) parsed.title = qrNfceStore;
-      // An NFC-e access key carries the emission date (AAMM) — it is more
-      // reliable than the OCR date, but the user's manual pick still wins.
-      if (qrNfceDate && !dateTouchedRef.current) parsed.date = qrNfceDate;
-      if (qrDescription) {
-        const qrCat = findCategoryId(qrDescription, qrName ?? "");
-        if (qrCat && qrCat !== "outros" && parsed.categoryId === "outros") {
-          parsed.categoryId = qrCat;
-        }
-      }
-      // Bank receipts read better as natural language — "Pix recebido de …" /
-      // "Pix enviado para …" — with the QR receiver name filling in when the
-      // OCR text had no counterparty. Store receipts are left untouched.
-      const bankTitle = buildBankReceiptTitle(text, qrName ?? "");
-      if (bankTitle) parsed.title = bankTitle;
+      const qr = knownPayload
+        ? parseQrFromPayload(knownPayload)
+        : await decodeQrPayload(input);
+      if (runId !== runIdRef.current) return;
 
-      // Prioridade 1 — o QR é uma URL de consulta de NFC-e (SEFAZ): tenta
-      // raspar os dados exatos no backend (action Convex + cheerio). Se a
-      // consulta falhar, cai automaticamente no fallback de OCR (Prioridade 2).
-      let scraped: Awaited<ReturnType<typeof scrapeNfce>> | null = null;
-      let scrapeStatus: "none" | "ok" | "failed" = "none";
-      if (qrUrl) {
-        setQrInfo("QR NFC-e · consultando a SEFAZ…");
+      // NFC-e (URL da SEFAZ) → web scraping no backend.
+      if (qr?.url) {
+        setScanPhase("scraping");
+        setScanStatus("Consultando os dados da nota na SEFAZ…");
+        let res: ScrapeResult | null = null;
         try {
-          const res = await scrapeNfce({ url: qrUrl });
-          if (runId !== runIdRef.current) return;
-          if (res && res.ok) {
-            scraped = res;
-            scrapeStatus = "ok";
-            // Dados exatos da nota vencem o OCR (valor, data, hora, loja).
-            if (res.total && res.total > 0) parsed.amount = res.total;
-            if (res.date) parsed.date = res.date;
-            if (res.time && !parsed.time) parsed.time = res.time;
-            if (res.store) parsed.title = res.store;
-          } else {
-            scrapeStatus = "failed";
-          }
+          res = await scrapeNfce({ url: qr.url });
         } catch {
-          if (runId !== runIdRef.current) return;
-          scrapeStatus = "failed";
+          res = null;
         }
-      }
-
-      // Prioridade 2 — sem QR ou raspagem falhou: extração por IA (Gemini,
-      // action no backend). Sem chave configurada o retorno é imediato e o
-      // OCR local (já rodado em paralelo) cobre o caso.
-      let ai: Awaited<ReturnType<typeof extractReceipt>> | null = null;
-      if (scrapeStatus !== "ok") {
-        try {
-          const imageData =
-            typeof input === "string" ? input : await imageToDataUrl(input);
-          const res = await extractReceipt({ image: imageData, hint: text });
-          if (runId !== runIdRef.current) return;
-          if (res && res.ok) {
-            ai = res;
-            if (res.total && res.total > 0) parsed.amount = res.total;
-            if (res.date) parsed.date = res.date;
-            if (res.time && !parsed.time) parsed.time = res.time;
-            if (res.store) parsed.title = res.store;
-            if (res.type) parsed.type = res.type;
-            if (res.paymentMethod) parsed.paymentMethod = res.paymentMethod;
-          }
-        } catch {
-          if (runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current) return;
+        if (res?.ok && (res.total || res.store || res.items.length)) {
+          applyScraped(res, qr);
+          finishScan(runId);
+          return;
         }
-      }
-
-      setRawText(text);
-      if (!parsed.title && parsed.amount <= 0) {
-        setOcrState("empty");
+        setScanPhase("failed");
+        setScanStatus(
+          res?.error
+            ? `Não foi possível consultar a nota na SEFAZ (${res.error}).`
+            : "Não foi possível consultar a nota na SEFAZ.",
+        );
         return;
       }
-      setOcrState("done");
 
-      // Itens da compra: scrape da SEFAZ → IA → OCR local (as regras
-      // universais de preenchimento valem para os três caminhos).
-      const items =
-        scraped && scraped.items.length
-          ? scraped.items
-          : ai && ai.items.length
-            ? ai.items
-            : extractItems(text);
-      const storeName = parsed.title || scraped?.store || ai?.store || "";
-      let categoryAppliedByClassify = false;
+      // PIX "copia e cola": valor e recebedor exatos do próprio QR.
+      if (qr?.amount && qr.amount > 0) {
+        applyPixQr(qr);
+        finishScan(runId);
+        return;
+      }
 
-      // Regra 1 (Descrição): 3+ itens → categoria geral (Mercado/Farmácia/
-      // Restaurante); 1–2 itens → "1x Pimenta CH". Regra 2 (Rascunho):
-      // "Estabelecimento: {loja}" no topo + lista "1x Item - R$ Valor".
-      if (items.length > 0) {
-        setTitle((prev) =>
-          prev.trim()
-            ? prev
-            : describePurchase(items, storeName, parsed.title),
-        );
-        setNote((prev) =>
-          prev.trim() ? prev : draftPurchase(storeName, items),
-        );
-        const detected = classifyPurchase(items, storeName).categoryId;
-        if (!categoryTouched && detected) {
-          categoryAppliedByClassify = true;
-          const suggested = SCAN_CATEGORIES.find((c) => c.id === detected);
-          if (suggested) {
-            const { id, created } = applySuggestedCategory(suggested);
-            setCategoryId(id);
-            if (created) {
-              toast(`Categoria "${suggested.label}" criada`, {
-                description:
-                  "Você pode renomeá-la em Categorias a qualquer momento.",
-              });
-            }
-          }
-        }
-      } else {
-        // Sem itens (comprovante bancário, PIX…): mantém o título da leitura.
-        setTitle((prev) => (prev.trim() ? prev : parsed.title));
-      }
-      // Fill only the fields the user hasn't touched yet. The date starts
-      // as "today" only as a placeholder — the OCR date overrides it unless
-      // the user picked a date manually.
-      setCents((prev) => (prev > 0 ? prev : Math.round(parsed.amount * 100)));
-      setDate((prev) =>
-        dateTouchedRef.current ? prev : parsed.date || prev,
+      setScanPhase("failed");
+      setScanStatus(
+        "Nenhum QR code encontrado na imagem. Tente outra foto ou preencha manualmente.",
       );
-      setTime((prev) => (prev ? prev : parsed.time));
-      if (!typeTouchedRef.current) setType(parsed.type);
-      {
-        const { method, cardMode: mode } = normalizePaymentMethod(
-          parsed.paymentMethod,
-        );
-        setPaymentMethod(method);
-        if (method === "cartao" && mode) setCardMode(mode);
-      }
-      setQrInfo(
-        scrapeStatus === "ok"
-          ? `QR NFC-e · dados da SEFAZ (${
-              scraped && scraped.items.length
-                ? `${scraped.items.length} itens`
-                : "ok"
-            })`
-          : scrapeStatus === "failed"
-            ? "QR NFC-e · consulta falhou, usando OCR"
-            : qr
-              ? qr.amount
-                ? `QR detectado · valor ${qr.amount
-                    .toFixed(2)
-                    .replace(".", ",")} reais`
-                : qr.nfceStore
-                  ? `QR NFC-e detectado · ${qr.nfceStore}`
-                  : "QR detectado · sem valor no código"
-              : "QR não detectado",
-      );
-      if (!categoryTouched && parsed.categoryId && !categoryAppliedByClassify) {
-        const suggested = SCAN_CATEGORIES.find(
-          (c) => c.id === parsed.categoryId,
-        );
-        if (suggested) {
-          const { id, created } = applySuggestedCategory(suggested);
-          setCategoryId(id);
-          if (created) {
-            toast(`Categoria "${suggested.label}" criada`, {
-              description:
-                "Você pode renomeá-la em Categorias a qualquer momento.",
-            });
-          }
-        }
-      }
     } catch {
-      setOcrState("failed");
+      if (runId !== runIdRef.current) return;
+      setScanPhase("failed");
+      setScanStatus("Não foi possível ler essa imagem. Tente novamente.");
     }
   };
 
@@ -369,23 +309,37 @@ export function ScanReceiptSheet({
     try {
       const url = await imageToDataUrl(file, 1000);
       setImages([url]);
-      setCategoryId(defaultCategoryId());
-      setStep("edit");
       sourceFileRef.current = file;
-      void runOcr(file);
+      setStep("scan");
+      setScanPhase("detecting");
+      setScanStatus("Detectando QR code na imagem…");
+      void runScan(file);
     } catch {
-      toast("Não foi possível abrir essa imagem", { description: "Tente outra foto." });
+      toast("Não foi possível abrir essa imagem", {
+        description: "Tente outra foto.",
+      });
     }
   };
 
   /** Live-camera path: a QR was detected on screen — capture that frame and
-   * run the exact same OCR + QR merge as a photo, so the user gets the same
-   * review flow. */
+   * run the same QR → scrape pipeline as a photo. */
   const handleCameraResult = async (payload: string, frame: string) => {
-    setStep("edit");
     setImages([frame]);
-    setCategoryId(defaultCategoryId());
-    void runOcr(frame, payload);
+    setStep("scan");
+    setScanPhase("detecting");
+    setScanStatus("Lendo o QR code…");
+    void runScan(frame, payload);
+  };
+
+  const handleRetry = () => {
+    const input = sourceFileRef.current ?? images[0];
+    if (!input) return;
+    void runScan(input);
+  };
+
+  const handleManualFill = () => {
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setStep("edit");
   };
 
   const handleAddMore = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -436,6 +390,15 @@ export function ScanReceiptSheet({
     onClose();
   };
 
+  const scanStatusTitle =
+    scanPhase === "detecting"
+      ? "Detectando QR code…"
+      : scanPhase === "scraping"
+        ? "Consultando a SEFAZ…"
+        : scanPhase === "success"
+          ? "Dados encontrados"
+          : "Não conseguimos ler";
+
   return (
     <AnimatePresence>
       {open && (
@@ -456,7 +419,8 @@ export function ScanReceiptSheet({
               <p className="text-[12.5px] text-glass-sub">
                 {step === "source" && "Fotografe o cupom ou escolha uma imagem"}
                 {step === "camera" && "Aponte para o QR code da nota fiscal"}
-                {step === "edit" && "Confira o que a leitura encontrou"}
+                {step === "scan" && "Analisando a imagem…"}
+                {step === "edit" && "Confira e ajuste os campos"}
                 {step === "approve" && "Tudo certo antes de salvar?"}
               </p>
             </div>
@@ -477,8 +441,9 @@ export function ScanReceiptSheet({
                 <ScanLine className="size-9 text-[#17a443]" strokeWidth={2.2} />
               </div>
               <p className="mt-5 max-w-[280px] text-[14px] leading-relaxed text-glass-sub">
-                A câmera lê o cupom fiscal e preenche valor, categoria e data
-                para você. Também dá para anexar mais de uma foto.
+                O QR code da nota fiscal (NFC-e) ou do Pix carrega os dados
+                exatos: valor, estabelecimento, data e itens. Sem OCR, sem
+                invenção de números.
               </p>
 
               <div className="mt-8 w-full space-y-3">
@@ -536,69 +501,124 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          {/* ---------------- EDIT ---------------- */}
-          {step === "edit" && (
-            <>
-              <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
-                {/* Scan animation while the OCR runs */}
-                {ocrState === "scanning" && images[0] && (
-                  <div className="mx-auto mt-3 w-full max-w-[250px]">
-                    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
-                      <img
-                        src={images[0]}
-                        alt="Nota sendo lida"
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
+          {/* ---------------- SCAN (scanner-first screen) ---------------- */}
+          {step === "scan" && (
+            <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
+              <div className="mx-auto mt-3 w-full max-w-[250px]">
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
+                  {images[0] ? (
+                    <img
+                      src={images[0]}
+                      alt="Nota sendo lida"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#0b1630]">
+                      <QrCode className="size-10 text-white/50" />
+                    </div>
+                  )}
+                  {scanPhase !== "failed" && (
+                    <>
                       <div className="pointer-events-none absolute inset-0 bg-[#0b1630]/10" />
                       <span className="pointer-events-none absolute left-3 top-3 h-5 w-5 rounded-tl-xl border-l-[3px] border-t-[3px] border-white/90" />
                       <span className="pointer-events-none absolute right-3 top-3 h-5 w-5 rounded-tr-xl border-r-[3px] border-t-[3px] border-white/90" />
                       <span className="pointer-events-none absolute bottom-3 left-3 h-5 w-5 rounded-bl-xl border-b-[3px] border-l-[3px] border-white/90" />
                       <span className="pointer-events-none absolute bottom-3 right-3 h-5 w-5 rounded-br-xl border-b-[3px] border-r-[3px] border-white/90" />
                       <div className="scan-line" aria-hidden="true" />
-                    </div>
-                    <div className="glass mt-3 flex items-center justify-center gap-2 rounded-full px-4 py-2.5">
-                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#FF9500]" />
-                      <p className="text-[12.5px] font-semibold text-glass-ink">
-                        Lendo a nota…
+                    </>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div className="glass mt-3 rounded-2xl px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    {scanPhase === "success" ? (
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
+                        <Check
+                          className="size-3.5 text-[#17a443]"
+                          strokeWidth={3}
+                        />
+                      </span>
+                    ) : (
+                      <span
+                        className={cn(
+                          "size-2.5 shrink-0 animate-pulse rounded-full",
+                          scanPhase === "failed"
+                            ? "bg-[#FF3B30]"
+                            : "bg-[#FF9500]",
+                        )}
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-semibold text-glass-ink">
+                        {scanStatusTitle}
+                      </p>
+                      <p className="text-[12px] text-glass-sub">
+                        {scanStatus}
                       </p>
                     </div>
                   </div>
-                )}
 
-                {/* Attachments strip (hidden while the scan animation shows) */}
-                {ocrState !== "scanning" && (
-                  <div className="no-scrollbar -mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-0.5">
-                    {images.map((img, i) => (
-                      <div key={i} className="relative shrink-0">
-                        <img
-                          src={img}
-                          alt={`Nota ${i + 1}`}
-                          className="h-24 w-24 rounded-2xl object-cover shadow-[0_8px_20px_-8px_rgba(15,40,90,0.4)]"
-                        />
-                        <button
-                          type="button"
-                          aria-label="Remover foto"
-                          onClick={() => removeImage(i)}
-                          className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-[#FF3B30] text-white shadow-md transition-transform active:scale-90"
-                        >
-                          <X className="size-3.5" strokeWidth={3} />
-                        </button>
-                      </div>
-                    ))}
-                    {images.length < 6 && (
+                  {scanPhase === "failed" && (
+                    <div className="mt-3 grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
-                        onClick={() => addMoreRef.current?.click()}
-                        className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-glass-faint/60 text-glass-sub transition-colors hover:bg-white/40"
+                        onClick={handleRetry}
+                        className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
                       >
-                        <ImagePlus className="size-5" />
-                        <span className="text-[11px] font-semibold">
-                          Adicionar
-                        </span>
+                        <RefreshCw className="size-3.5" />
+                        Tentar novamente
                       </button>
-                    )}
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={handleManualFill}
+                        className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
+                      >
+                        Preencher manualmente
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ---------------- EDIT ---------------- */}
+          {step === "edit" && (
+            <>
+              <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
+                {/* Attachments strip */}
+                <div className="no-scrollbar -mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-0.5">
+                  {images.map((img, i) => (
+                    <div key={i} className="relative shrink-0">
+                      <img
+                        src={img}
+                        alt={`Nota ${i + 1}`}
+                        className="h-24 w-24 rounded-2xl object-cover shadow-[0_8px_20px_-8px_rgba(15,40,90,0.4)]"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Remover foto"
+                        onClick={() => removeImage(i)}
+                        className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-[#FF3B30] text-white shadow-md transition-transform active:scale-90"
+                      >
+                        <X className="size-3.5" strokeWidth={3} />
+                      </button>
+                    </div>
+                  ))}
+                  {images.length < 6 && (
+                    <button
+                      type="button"
+                      onClick={() => addMoreRef.current?.click()}
+                      className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-glass-faint/60 text-glass-sub transition-colors hover:bg-white/40"
+                    >
+                      <ImagePlus className="size-5" />
+                      <span className="text-[11px] font-semibold">
+                        Adicionar
+                      </span>
+                    </button>
+                  )}
+                </div>
                 <input
                   ref={addMoreRef}
                   type="file"
@@ -607,99 +627,19 @@ export function ScanReceiptSheet({
                   onChange={handleAddMore}
                 />
 
-                {/* OCR status */}
-                {ocrState === "scanning" && !images[0] && (
-                  <div className="glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
-                    <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-[#FF9500]" />
-                    <div>
-                      <p className="text-[13.5px] font-semibold text-glass-ink">
-                        Lendo a nota…
-                      </p>
-                      <p className="text-[12px] text-glass-sub">
-                        Reconhecendo texto, valor e categoria
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {ocrState === "done" && (
-                  <div className="glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
+                {scanResultInfo && (
+                  <div className="glass mt-3 flex items-center gap-3 rounded-2xl px-4 py-3">
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
-                      <Check className="size-3.5 text-[#17a443]" strokeWidth={3} />
+                      <Check
+                        className="size-3.5 text-[#17a443]"
+                        strokeWidth={3}
+                      />
                     </span>
-                    <div>
-                      <p className="text-[13.5px] font-semibold text-glass-ink">
-                        Leitura concluída
-                      </p>
-                      <p className="text-[12px] text-glass-sub">
-                        Confira os campos abaixo e ajuste se precisar.
-                      </p>
-                    </div>
+                    <p className="text-[12.5px] font-semibold leading-snug text-glass-ink">
+                      {scanResultInfo}
+                    </p>
                   </div>
                 )}
-                {(ocrState === "empty" || ocrState === "failed") && (
-                  <div className="glass mt-4 rounded-2xl px-4 py-3">
-                    <p className="text-[13px] font-semibold text-[#FF9500]">
-                      Não conseguimos ler a nota automaticamente.
-                    </p>
-                    <p className="mt-0.5 text-[12px] text-glass-sub">
-                      Preencha os campos abaixo ou tente outra foto.
-                    </p>
-                    {images[0] && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void runOcr(sourceFileRef.current ?? images[0])
-                        }
-                        className="mt-2.5 flex items-center gap-1.5 text-[12.5px] font-bold text-primary"
-                      >
-                        <RefreshCw className="size-3.5" /> Tentar de novo
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Raw OCR text (collapsed) */}
-                {rawText &&
-                  (ocrState === "done" ||
-                    ocrState === "empty" ||
-                    ocrState === "failed") && (
-                    <details className="glass mt-3 rounded-2xl px-4 py-3">
-                      <summary className="cursor-pointer select-none text-[12.5px] font-bold text-glass-sub">
-                        Ver o que a leitura encontrou
-                      </summary>
-                      <div className="mt-2 space-y-1 text-[12px] text-glass-sub">
-                        <p>
-                          Tipo:{" "}
-                          <span className="font-bold text-glass-ink">
-                            {type === "income" ? "Receita" : "Despesa"}
-                          </span>
-                          {paymentMethod && (
-                            <>
-                              {" "}
-                              · Pagamento:{" "}
-                              <span className="font-bold text-glass-ink">
-                                {PAYMENT_LABELS[paymentMethod] ??
-                                  paymentMethod}
-                              </span>
-                            </>
-                          )}
-                        </p>
-                        {categoryId && (
-                          <p>
-                            Categoria:{" "}
-                            <span className="font-bold text-glass-ink">
-                              {categories.find((c) => c.id === categoryId)
-                                ?.label ?? "Outros"}
-                            </span>
-                          </p>
-                        )}
-                        <p>{qrInfo}</p>
-                      </div>
-                      <pre className="no-scrollbar mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-white/40 p-2.5 text-[11px] leading-relaxed text-glass-sub">
-                        {rawText}
-                      </pre>
-                    </details>
-                  )}
 
                 {/* Type: despesa / receita */}
                 <div className="mt-6 flex items-center justify-center gap-2">
@@ -785,10 +725,7 @@ export function ScanReceiptSheet({
                             chipRefs.current[c.id] = el;
                           }}
                           type="button"
-                          onClick={() => {
-                            setCategoryId(c.id);
-                            setCategoryTouched(true);
-                          }}
+                          onClick={() => setCategoryId(c.id)}
                           className={cn(
                             "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
                             selected
