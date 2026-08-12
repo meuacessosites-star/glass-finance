@@ -26,6 +26,12 @@ import {
   draftPurchase,
 } from "@/lib/purchase-format";
 import type { NfceScrapeResult } from "@/convex/nfceParser";
+import type { AiReceiptResult } from "@/convex/aiVision";
+import {
+  ocrReceipt,
+  parseReceiptText,
+  type OcrReceiptResult,
+} from "@/lib/ocr-scan";
 import {
   decodeQrPayload,
   findCategoryId,
@@ -59,7 +65,7 @@ import {
 // ---------------------------------------------------------------------------
 
 type Step = "source" | "camera" | "scan" | "edit" | "approve";
-type ScanPhase = "detecting" | "scraping" | "success" | "failed";
+type ScanPhase = "detecting" | "scraping" | "vision" | "success" | "failed";
 
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
@@ -88,6 +94,7 @@ export function ScanReceiptSheet({
   const { categories, cards, addTransaction } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
   const scrapeNfce = useAction(api.nfce.scrapeNfce);
+  const extractReceipt = useAction(api.aiVision.extractReceipt);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -260,23 +267,157 @@ export function ScanReceiptSheet({
     }, 450);
   };
 
+  /** Valida e converte uma forma de pagamento vinda de IA/OCR para o id do
+   * seletor ("" quando o texto não diz nada confiável). */
+  const asPaymentMethod = (
+    m: string | undefined,
+  ): PaymentMethodId | "" =>
+    m &&
+    ["pix", "dinheiro", "cartao", "boleto", "transferencia"].includes(m)
+      ? (m as PaymentMethodId)
+      : "";
+
+  /** Melhor imagem disponível para o fallback de OCR/visão: o arquivo original
+   * em até 1600px (texto miúdo de cupom precisa de resolução), senão a imagem
+   * já exibida. Nunca lança. */
+  const bestImageForOcr = async (): Promise<string | null> => {
+    if (sourceFileRef.current) {
+      try {
+        return await imageToDataUrl(sourceFileRef.current, 1600);
+      } catch {
+        // segue com a imagem exibida
+      }
+    }
+    return images[0] ?? null;
+  };
+
+  /** Aplica um resultado vindo do fallback de visão (Gemini) — mesmo fluxo
+   * do scrape, mas com tipo (receita/despesa) e forma de pagamento do modelo
+   * e a Descrição de Pix para comprovantes. */
+  const applyAiResult = (res: AiReceiptResult) => {
+    applyScraped(res, null);
+    if (res.type === "income") {
+      setType("income");
+      setPaymentMethod(res.paymentMethod ? asPaymentMethod(res.paymentMethod) : "pix");
+      // Comprovante de depósito/Pix recebido: descrição fala em "Pix recebido".
+      if (!res.items.length) {
+        setTitle(res.store ? `Pix recebido de ${res.store}` : "Pix recebido");
+      }
+    } else if (res.type === "expense") {
+      setType("expense");
+      setPaymentMethod(asPaymentMethod(res.paymentMethod));
+    } else {
+      setPaymentMethod(asPaymentMethod(res.paymentMethod));
+    }
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setScanResultInfo(
+      `Leitura por visão · ${res.store || "imagem"} · dados extraídos da foto`,
+    );
+  };
+
+  /** Aplica um resultado do OCR local — Descrição/Rascunho seguem as mesmas
+   * regras universais (3+ itens → categoria geral; 1–2 → "1x Produto"). */
+  const applyOcrResult = (res: OcrReceiptResult) => {
+    applyScraped(
+      {
+        ok: true,
+        store: res.store,
+        date: res.date,
+        time: res.time,
+        total: res.total,
+        items: res.items,
+      },
+      null,
+    );
+    if (res.kind === "income") {
+      setType("income");
+      if (!res.paymentMethod) setPaymentMethod("pix");
+      // Comprovante de depósito/Pix recebido: descrição fala em "Pix recebido".
+      if (!res.items.length) {
+        setTitle(res.store ? `Pix recebido de ${res.store}` : "Pix recebido");
+      }
+    } else if (res.kind === "expense") {
+      setType("expense");
+    }
+    setPaymentMethod(asPaymentMethod(res.paymentMethod));
+    if (!categoryId) setCategoryId(defaultCategoryId());
+    setScanResultInfo(
+      `Leitura por OCR · ${res.store || "cupom"} · texto lido da imagem`,
+    );
+  };
+
+  /**
+   * Fallback AUTOMÁTICO do Leitor de Notas: o QR falhou (não decodificou,
+   * não é nota ou a SEFAZ não respondeu) → tenta extrair os dados da imagem
+   * por visão (IA no backend) e depois por OCR local — tudo na mesma tela,
+   * sem interromper o usuário. Só quando TAMBÉM o OCR falha é que a tela de
+   * erro com preenchimento manual aparece.
+   */
+  const runFallback = async (runId: number, reason: string) => {
+    const img = await bestImageForOcr();
+    if (runId !== runIdRef.current) return;
+    if (!img) {
+      setScanPhase("failed");
+      setScanStatus(reason);
+      return;
+    }
+    setScanPhase("vision");
+    setScanStatus("QR não encontrado — lendo a nota por visão…");
+
+    // 1) Visão por IA (Gemini) no backend (usa GOOGLE_API_KEY; sem chave
+    //    retorna imediatamente e o fluxo segue para o OCR local).
+    let aiRes: AiReceiptResult | null = null;
+    try {
+      aiRes = await extractReceipt({ image: img });
+    } catch {
+      aiRes = null;
+    }
+    if (runId !== runIdRef.current) return;
+    if (aiRes?.ok && (aiRes.total || aiRes.store || aiRes.items.length)) {
+      applyAiResult(aiRes);
+      finishScan(runId);
+      return;
+    }
+
+    // 2) OCR local (Tesseract) no navegador.
+    setScanStatus("Lendo o texto do cupom…");
+    const rawText = await ocrReceipt(img, (label) => {
+      if (runId === runIdRef.current) setScanStatus(label);
+    });
+    if (runId !== runIdRef.current) return;
+    const ocr = parseReceiptText(rawText);
+    if (ocr.ok && (ocr.total || ocr.store || ocr.items.length)) {
+      applyOcrResult(ocr);
+      finishScan(runId);
+      return;
+    }
+
+    // 3) QR E OCR falharam — só agora mostra a tela de erro.
+    setScanPhase("failed");
+    setScanStatus(
+      "Não foi possível ler o QR nem o texto da imagem. Tente outra foto, cole o código ou preencha manualmente.",
+    );
+  };
+
   /** Roteia um QR já decodificado: NFC-e → scrape na SEFAZ; Pix BR Code →
-   * campos exatos do código; nada disso → falha com mensagem clara. */
+   * campos exatos do código; qualquer falha → fallback automático de
+   * OCR/visão (a tela de erro só aparece se QR E OCR falharem). */
   const handleParsedQr = async (qr: QrResult | null) => {
     const runId = runIdRef.current;
     if (!qr) {
-      setScanPhase("failed");
-      setScanStatus(
+      // Nenhum QR na imagem → extração automática por visão/OCR.
+      await runFallback(
+        runId,
         "Nenhum QR code encontrado na imagem. Tente outra foto, cole o código ou preencha manualmente.",
       );
       return;
     }
 
-    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — não perde
-    // tempo com o backend e explica direto.
+    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — o OCR/visão
+    // ainda pode ler a foto.
     if (qr.url && qr.isNfce === false) {
-      setScanPhase("failed");
-      setScanStatus(
+      await runFallback(
+        runId,
         "Esse QR contém um link, mas não é de uma nota fiscal (NFC-e). Use o QR da nota ou cole o código Pix/URL manualmente.",
       );
       return;
@@ -298,11 +439,11 @@ export function ScanReceiptSheet({
         finishScan(runId);
         return;
       }
-      // O QR da nota em si já carrega o CNPJ → nome da loja: mesmo sem o
-      // scrape, deixamos o formulário pronto para só digitar o valor.
+      // Scrape falhou → o QR da nota já carrega o CNPJ/nome; mesmo assim
+      // tentamos a leitura da imagem por visão/OCR antes de desistir.
       if (qr.nfceStore && !title.trim()) setTitle(qr.nfceStore);
-      setScanPhase("failed");
-      setScanStatus(
+      await runFallback(
+        runId,
         res?.error
           ? `Não deu para consultar a nota na SEFAZ (${res.error}). A loja já foi preenchida — digite o valor e ajuste o que precisar.`
           : "Não deu para consultar a nota na SEFAZ. A loja já foi preenchida — digite o valor e ajuste o que precisar.",
@@ -317,8 +458,8 @@ export function ScanReceiptSheet({
       return;
     }
 
-    setScanPhase("failed");
-    setScanStatus(
+    await runFallback(
+      runId,
       "Código lido, mas sem valor nem link de nota. Cole o código Pix completo ou preencha manualmente.",
     );
   };
@@ -475,9 +616,11 @@ export function ScanReceiptSheet({
       ? "Detectando QR code…"
       : scanPhase === "scraping"
         ? "Consultando a SEFAZ…"
-        : scanPhase === "success"
-          ? "Dados encontrados"
-          : "Não conseguimos ler";
+        : scanPhase === "vision"
+          ? "Lendo a imagem…"
+          : scanPhase === "success"
+            ? "Dados encontrados"
+            : "Não conseguimos ler";
 
   return (
     <AnimatePresence>
