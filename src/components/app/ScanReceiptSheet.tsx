@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Camera,
   Check,
+  ClipboardPaste,
   Clock,
   CreditCard,
   FileText,
@@ -93,6 +94,9 @@ export function ScanReceiptSheet({
   const [scanPhase, setScanPhase] = useState<ScanPhase>("detecting");
   const [scanStatus, setScanStatus] = useState("");
   const [scanResultInfo, setScanResultInfo] = useState("");
+  // Fallback "colar código": funciona sem câmera nem decodificação de imagem.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pastePayload, setPastePayload] = useState("");
 
   // Form fields (prefilled only with data exata do QR/scrape)
   const [title, setTitle] = useState("");
@@ -135,6 +139,8 @@ export function ScanReceiptSheet({
     setScanPhase("detecting");
     setScanStatus("");
     setScanResultInfo("");
+    setPasteOpen(false);
+    setPastePayload("");
     setTitle("");
     setCents(0);
     setCategoryId("");
@@ -254,10 +260,70 @@ export function ScanReceiptSheet({
     }, 450);
   };
 
+  /** Roteia um QR já decodificado: NFC-e → scrape na SEFAZ; Pix BR Code →
+   * campos exatos do código; nada disso → falha com mensagem clara. */
+  const handleParsedQr = async (qr: QrResult | null) => {
+    const runId = runIdRef.current;
+    if (!qr) {
+      setScanPhase("failed");
+      setScanStatus(
+        "Nenhum QR code encontrado na imagem. Tente outra foto, cole o código ou preencha manualmente.",
+      );
+      return;
+    }
+
+    // Link que não é nota fiscal (ex.: Mercado Pago, checkout) — não perde
+    // tempo com o backend e explica direto.
+    if (qr.url && qr.isNfce === false) {
+      setScanPhase("failed");
+      setScanStatus(
+        "Esse QR contém um link, mas não é de uma nota fiscal (NFC-e). Use o QR da nota ou cole o código Pix/URL manualmente.",
+      );
+      return;
+    }
+
+    // NFC-e (URL da SEFAZ) → web scraping no backend.
+    if (qr.url) {
+      setScanPhase("scraping");
+      setScanStatus("Consultando os dados da nota na SEFAZ…");
+      let res: ScrapeResult | null = null;
+      try {
+        res = await scrapeNfce({ url: qr.url });
+      } catch {
+        res = null;
+      }
+      if (runId !== runIdRef.current) return;
+      if (res?.ok && (res.total || res.store || res.items.length)) {
+        applyScraped(res, qr);
+        finishScan(runId);
+        return;
+      }
+      setScanPhase("failed");
+      setScanStatus(
+        res?.error
+          ? `Não foi possível consultar a nota na SEFAZ (${res.error}). Tente colar a URL novamente ou preencha manualmente.`
+          : "Não foi possível consultar a nota na SEFAZ. Tente novamente ou preencha manualmente.",
+      );
+      return;
+    }
+
+    // PIX "copia e cola": valor e recebedor exatos do próprio QR.
+    if (qr.amount && qr.amount > 0) {
+      applyPixQr(qr);
+      finishScan(runId);
+      return;
+    }
+
+    setScanPhase("failed");
+    setScanStatus(
+      "Código lido, mas sem valor nem link de nota. Cole o código Pix completo ou preencha manualmente.",
+    );
+  };
+
   /**
-   * Pipeline do scanner: 1) decodifica o QR; 2) URL de NFC-e → scrape no
-   * backend (cheerio); 3) PIX BR Code → campos direto do código; 4) nada →
-   * estado "failed" com opções de retry / preenchimento manual.
+   * Pipeline do scanner: 1) decodifica o QR da imagem; 2) roteia o payload
+   * (NFC-e → scrape no backend; PIX BR Code → campos direto do código; nada →
+   * estado "failed" com opções de retry / colar código / preenchimento manual).
    */
   const runScan = async (input: File | string, knownPayload?: string) => {
     const runId = runIdRef.current;
@@ -268,48 +334,24 @@ export function ScanReceiptSheet({
         ? parseQrFromPayload(knownPayload)
         : await decodeQrPayload(input);
       if (runId !== runIdRef.current) return;
-
-      // NFC-e (URL da SEFAZ) → web scraping no backend.
-      if (qr?.url) {
-        setScanPhase("scraping");
-        setScanStatus("Consultando os dados da nota na SEFAZ…");
-        let res: ScrapeResult | null = null;
-        try {
-          res = await scrapeNfce({ url: qr.url });
-        } catch {
-          res = null;
-        }
-        if (runId !== runIdRef.current) return;
-        if (res?.ok && (res.total || res.store || res.items.length)) {
-          applyScraped(res, qr);
-          finishScan(runId);
-          return;
-        }
-        setScanPhase("failed");
-        setScanStatus(
-          res?.error
-            ? `Não foi possível consultar a nota na SEFAZ (${res.error}).`
-            : "Não foi possível consultar a nota na SEFAZ.",
-        );
-        return;
-      }
-
-      // PIX "copia e cola": valor e recebedor exatos do próprio QR.
-      if (qr?.amount && qr.amount > 0) {
-        applyPixQr(qr);
-        finishScan(runId);
-        return;
-      }
-
-      setScanPhase("failed");
-      setScanStatus(
-        "Nenhum QR code encontrado na imagem. Tente outra foto ou preencha manualmente.",
-      );
+      await handleParsedQr(qr);
     } catch {
       if (runId !== runIdRef.current) return;
       setScanPhase("failed");
       setScanStatus("Não foi possível ler essa imagem. Tente novamente.");
     }
+  };
+
+  /** Fallback à prova de falhas: cola o código Pix "copia e cola" ou a URL da
+   * nota direto no app, sem depender da câmera/decodificação de imagem. */
+  const handlePastedPayload = async () => {
+    const raw = pastePayload.trim();
+    if (!raw) return;
+    setPasteOpen(false);
+    setPastePayload("");
+    setScanPhase("detecting");
+    setScanStatus("Lendo o código colado…");
+    await handleParsedQr(parseQrFromPayload(raw));
   };
 
   const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -570,22 +612,63 @@ export function ScanReceiptSheet({
                   </div>
 
                   {scanPhase === "failed" && (
-                    <div className="mt-3 grid grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={handleRetry}
-                        className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
-                      >
-                        <RefreshCw className="size-3.5" />
-                        Tentar novamente
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleManualFill}
-                        className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
-                      >
-                        Preencher manualmente
-                      </button>
+                    <div className="mt-3 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={handleRetry}
+                          className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
+                        >
+                          <RefreshCw className="size-3.5" />
+                          Tentar novamente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleManualFill}
+                          className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
+                        >
+                          Preencher manualmente
+                        </button>
+                      </div>
+
+                      {!pasteOpen ? (
+                        <button
+                          type="button"
+                          onClick={() => setPasteOpen(true)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-glass-faint/70 py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/40 active:scale-[0.98]"
+                        >
+                          <ClipboardPaste className="size-3.5" />
+                          Colar código Pix ou URL da nota
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <textarea
+                            value={pastePayload}
+                            onChange={(e) => setPastePayload(e.target.value)}
+                            placeholder="Cole aqui o código Pix (copia e cola) ou o link da nota fiscal…"
+                            rows={2}
+                            className="glass glass-soft w-full resize-none rounded-xl px-3 py-2.5 text-[12.5px] font-medium text-glass-ink outline-none placeholder:text-glass-faint"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={!pastePayload.trim()}
+                              onClick={handlePastedPayload}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+                            >
+                              <Check className="size-3.5" />
+                              Usar código
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPasteOpen(false)}
+                              className="glass glass-soft rounded-full px-4 py-2.5 text-[13px] font-semibold text-glass-sub"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -453,6 +453,10 @@ export type QrResult = {
   /** The http(s) URL when the payload is a web link (e.g. a SEFAZ NFC-e
    * consult URL) — the client sends it to the scrape action. */
   url?: string;
+  /** true → URL de consulta de NFC-e (SEFAZ) reconhecida pela chave de
+   * acesso; false → link comum que não é nota fiscal. undefined → o payload
+   * não é um link. */
+  isNfce?: boolean;
   /** NFC-e access-key metadata (from a SEFAZ "consultar" URL). */
   nfceStore?: string;
   nfceEmissionDate?: string; // yyyy-mm-dd from the AAMM inside the key
@@ -511,6 +515,7 @@ export function parseNfceQrUrl(payload: string): QrResult | null {
   return {
     payload,
     url: payload,
+    isNfce: true,
     nfceStore: store,
     nfceEmissionDate: `${year}-${String(mm).padStart(2, "0")}-01`,
   };
@@ -524,10 +529,11 @@ export function parseNfceQrUrl(payload: string): QrResult | null {
 export function parseQrFromPayload(payload: string): QrResult {
   const nfce = parseNfceQrUrl(payload);
   if (nfce) return nfce;
-  // Any other web URL (non NFC-e) still gets exposed so the client can try
-  // the scrape action — it validates the host server-side.
+  // Qualquer outro link (ex.: Mercado Pago, checkout) é marcado como
+  // não-NFC-e para o cliente dar uma mensagem clara em vez de "url não
+  // permitida" vinda do backend.
   if (/^https?:\/\//i.test(payload)) {
-    return { payload, url: payload, ...parseBrCode(payload) };
+    return { payload, url: payload, isNfce: false, ...parseBrCode(payload) };
   }
   return { payload, ...parseBrCode(payload) };
 }
@@ -570,47 +576,76 @@ export function parseBrCode(
   return out;
 }
 
+/** Converte um ImageData em versões normalizadas para o jsQR: original,
+ * cinza, invertido (QR claro-em-fundo-escuro) e limiar (preto/branco puro,
+ * para fotos com ruído/sombra). */
+function qrPasses(base: Uint8ClampedArray): Uint8ClampedArray[] {
+  const gray = new Uint8ClampedArray(base);
+  const inv = new Uint8ClampedArray(base);
+  const thr = new Uint8ClampedArray(base);
+  for (let i = 0; i < base.length; i += 4) {
+    const g = 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
+    gray[i] = g;
+    gray[i + 1] = g;
+    gray[i + 2] = g;
+    gray[i + 3] = 255;
+    inv[i] = 255 - base[i];
+    inv[i + 1] = 255 - base[i + 1];
+    inv[i + 2] = 255 - base[i + 2];
+    inv[i + 3] = 255;
+    const t = g > 128 ? 255 : 0;
+    thr[i] = t;
+    thr[i + 1] = t;
+    thr[i + 2] = t;
+    thr[i + 3] = 255;
+  }
+  return [base, gray, inv, thr];
+}
+
 /** Decodes a QR code in an image (original File or data URL) and returns the
  * classified payload (NFC-e URL, PIX BR Code, …). Returns null on no QR /
- * decode failure — never throws. */
+ * decode failure — never throws. Tries several render sizes (upscaling small
+ * screenshots and reading larger photos at higher resolution so small QRs
+ * keep enough pixels per module) and, for each size, the original, grayscale,
+ * inverted and thresholded passes. */
 export async function decodeQrPayload(
   input: File | string,
 ): Promise<QrResult | null> {
   try {
     const src = typeof input === "string" ? input : await fileToDataUrl(input);
     const img = await loadImage(src);
-    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return null;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    const base = ctx.getImageData(0, 0, w, h).data;
+    const w0 = img.width;
+    const h0 = img.height;
+    if (!w0 || !h0) return null;
+    const maxSide = Math.max(w0, h0);
 
-    // Try the photo as-is, then grayscale, then inverted — QR codes on
-    // dark-mode screenshots (white-on-dark) only decode on the inverted pass.
-    const attempts: Uint8ClampedArray[] = [base];
-    const gray = new Uint8ClampedArray(base);
-    const inv = new Uint8ClampedArray(base);
-    for (let i = 0; i < base.length; i += 4) {
-      const g = 0.299 * base[i] + 0.587 * base[i + 1] + 0.114 * base[i + 2];
-      gray[i] = g;
-      gray[i + 1] = g;
-      gray[i + 2] = g;
-      gray[i + 3] = 255;
-      inv[i] = 255 - base[i];
-      inv[i + 1] = 255 - base[i + 1];
-      inv[i + 2] = 255 - base[i + 2];
-      inv[i + 3] = 255;
+    // Sizes to try: fit within 1600 (padrão), 2400 para QR pequenos em fotos
+    // grandes, e upscale para capturas pequenas (jsQR precisa de pixels por
+    // módulo suficientes).
+    const targets = new Set<number>();
+    targets.add(Math.min(1600, maxSide));
+    if (maxSide > 1600) targets.add(Math.min(2400, maxSide));
+    if (maxSide < 700) targets.add(1200);
+
+    const attempts: { w: number; h: number; data: Uint8ClampedArray }[] = [];
+    for (const size of targets) {
+      const w = Math.max(1, Math.round(w0 * (size / maxSide)));
+      const h = Math.max(1, Math.round(h0 * (size / maxSide)));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) continue;
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const base = ctx.getImageData(0, 0, w, h).data;
+      for (const data of qrPasses(base)) {
+        attempts.push({ w, h, data });
+      }
     }
-    attempts.push(gray, inv);
 
-    for (const data of attempts) {
+    for (const { w, h, data } of attempts) {
       const code = jsQR(data, w, h);
       if (!code?.data) continue;
       return parseQrFromPayload(code.data);

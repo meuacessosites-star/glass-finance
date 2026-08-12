@@ -60,45 +60,62 @@ export function CameraQrScanner({
     }
   };
 
+  /** Desenha o frame do vídeo num canvas com a largura dada e tenta decodificar
+   * com jsQR. Devolve o payload ou null — nunca lança (frame ruim/não pronto). */
+  const tryDecode = (
+    video: HTMLVideoElement,
+    canvas: HTMLCanvasElement,
+    width: number,
+  ): string | null => {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    try {
+      canvas.width = width;
+      canvas.height = Math.round((vh / vw) * width);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const code = jsQR(
+        ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+        canvas.width,
+        canvas.height,
+      );
+      return code?.data ?? null;
+    } catch {
+      return null; // frame ruim — continua tentando
+    }
+  };
+
   const tick = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || foundRef.current) return;
     frameCountRef.current += 1;
+    // Tenta a cada 2 frames: primeiro 640px (rápido); se não achar, 1280px
+    // (QR pequenos precisam de mais pixels por módulo). Nenhum erro derruba o
+    // loop — ele volta a agendar o próximo frame sempre.
     if (video.readyState >= 2 && frameCountRef.current % 2 === 0) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (ctx) {
-        canvas.width = SCAN_W;
-        canvas.height = Math.round((video.videoHeight / video.videoWidth) * SCAN_W);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        try {
-          const code = jsQR(
-            ctx.getImageData(0, 0, canvas.width, canvas.height).data,
-            canvas.width,
-            canvas.height,
-          );
-          if (code?.data) {
-            foundRef.current = true;
-            // Capture the current frame at a higher resolution for OCR.
-            const big = document.createElement("canvas");
-            const bigW = 1200;
-            const bigH = Math.round((video.videoHeight / video.videoWidth) * bigW);
-            big.width = bigW;
-            big.height = bigH;
-            const bctx = big.getContext("2d");
-            if (bctx) bctx.drawImage(video, 0, 0, bigW, bigH);
-            setFound({
-              payload: code.data,
-              frame: big.toDataURL("image/jpeg", 0.85),
-            });
-            streamRef.current?.getTracks().forEach((t) => t.stop());
-            streamRef.current = null;
-            cancelAnimationFrame(rafRef.current);
-            return;
-          }
-        } catch {
-          // ignore decode failures on noisy frames
-        }
+      const payload =
+        tryDecode(video, canvas, SCAN_W) ?? tryDecode(video, canvas, SCAN_W * 2);
+      if (payload) {
+        foundRef.current = true;
+        // Captura o frame atual em resolução maior para anexar à transação.
+        const big = document.createElement("canvas");
+        const bigW = 1200;
+        const bigH = Math.round((video.videoHeight / video.videoWidth) * bigW) || bigW;
+        big.width = bigW;
+        big.height = bigH;
+        const bctx = big.getContext("2d");
+        if (bctx) bctx.drawImage(video, 0, 0, bigW, bigH);
+        setFound({
+          payload,
+          frame: big.toDataURL("image/jpeg", 0.85),
+        });
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        cancelAnimationFrame(rafRef.current);
+        return;
       }
     }
     rafRef.current = requestAnimationFrame(tick);
