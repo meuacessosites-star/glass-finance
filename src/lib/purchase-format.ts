@@ -85,14 +85,24 @@ export function describePurchase(
   return `${quantity ? quantity + " " : ""}${firstItem.name}`.trim().slice(0, 60);
 }
 
+type DraftPurchaseOptions = {
+  /** Serviços digitais e cobranças únicas não exibem o prefixo artificial 1x. */
+  omitSingleQuantity?: boolean;
+};
+
 /** Regra 2 — Rascunho: somente a lista limpa "Quantidade x Nome - R$ Valor".
  * Dados do comprovante pertencem aos campos próprios do formulário, não à nota. */
-export function draftPurchase(items: PurchaseItem[]): string {
+export function draftPurchase(
+  items: PurchaseItem[],
+  options: DraftPurchaseOptions = {},
+): string {
   const lines: string[] = [];
   for (const item of items.slice(0, 12)) {
     const quantity = normalizeQtyLabel(item.qty);
+    const visibleQuantity =
+      options.omitSingleQuantity && quantity === "1x" ? "" : quantity;
     lines.push(
-      `${quantity ? quantity + " " : ""}${item.name} - ${brl(item.price)}`.trim(),
+      `${visibleQuantity ? visibleQuantity + " " : ""}${item.name} - ${brl(item.price)}`.trim(),
     );
   }
   if (!lines.length) return "";

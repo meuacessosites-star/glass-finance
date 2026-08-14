@@ -54,7 +54,7 @@ type ScanPhase = "reading" | "success" | "failed";
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
-const INCOME_IDS = new Set(["salario", "freelance"]);
+const INCOME_IDS = new Set(["salario", "freelance", "transferencias"]);
 
 const PAYMENT_LABELS: Record<string, string> = {
   pix: "Pix",
@@ -64,6 +64,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   debito: "Débito",
   boleto: "Boleto",
   transferencia: "Transferência",
+  saldo: "Saldo",
 };
 
 export function ScanReceiptSheet({
@@ -212,18 +213,29 @@ export function ScanReceiptSheet({
           : store || "Comprovante";
     setTitle(res.suggestedTitle || fallbackTitle);
 
-    // Despesas recebem somente os itens comprados. Para receitas, não há itens
-    // adquiridos a registrar no rascunho.
-    setNote(effectiveType === "income" ? "" : draftPurchase(items));
+    // Despesas recebem somente os itens comprados. Serviços digitais e
+    // pagamentos únicos não usam o prefixo artificial "1x"; receitas ficam
+    // sem itens adquiridos a registrar no rascunho.
+    setNote(
+      effectiveType === "income"
+        ? ""
+        : draftPurchase(items, {
+            omitSingleQuantity:
+              res.purchaseContext === "digital" ||
+              res.purchaseContext === "single_payment" ||
+              res.categorySuggestion === "assinaturas" ||
+              /^assinatura\b/i.test(res.suggestedTitle ?? ""),
+          }),
+    );
 
     const fallbackCategory =
       effectiveType === "income"
-        ? "freelance"
+        ? "transferencias"
         : classifyPurchase(items, store).categoryId;
     const suggestedCategory =
       effectiveType === "income"
-        ? INCOME_IDS.has(res.categorySuggestion ?? "")
-          ? res.categorySuggestion
+        ? res.categorySuggestion === "salario"
+          ? "salario"
           : fallbackCategory
         : res.categorySuggestion && res.categorySuggestion !== "outros"
           ? res.categorySuggestion

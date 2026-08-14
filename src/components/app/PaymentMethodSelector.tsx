@@ -1,4 +1,4 @@
-import { Banknote, Barcode, CreditCard, QrCode, Send } from "lucide-react";
+import { Banknote, Barcode, CreditCard, QrCode, Send, Wallet } from "lucide-react";
 import type { AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +9,13 @@ import { cn } from "@/lib/utils";
 // Crédito/Débito toggle plus a row with the user's saved cards.
 // ---------------------------------------------------------------------------
 
-export type PaymentMethodId = "pix" | "dinheiro" | "cartao" | "boleto" | "transferencia";
+export type PaymentMethodId =
+  | "pix"
+  | "dinheiro"
+  | "cartao"
+  | "boleto"
+  | "transferencia"
+  | "saldo";
 export type CardMode = "credito" | "debito";
 
 export const PAYMENT_METHODS: {
@@ -22,6 +28,7 @@ export const PAYMENT_METHODS: {
   { id: "cartao", label: "Cartão", icon: CreditCard },
   { id: "boleto", label: "Boleto", icon: Barcode },
   { id: "transferencia", label: "Transferência", icon: Send },
+  { id: "saldo", label: "Saldo", icon: Wallet },
 ];
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -30,6 +37,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cartao: "Cartão",
   boleto: "Boleto",
   transferencia: "Transferência",
+  saldo: "Saldo",
 };
 
 export const CARD_MODE_LABELS: Record<CardMode, string> = {
@@ -51,6 +59,7 @@ export function normalizePaymentMethod(
   if (r.includes("dinheiro")) return { method: "dinheiro", cardMode: "" };
   if (r.includes("boleto")) return { method: "boleto", cardMode: "" };
   if (r.includes("transfer")) return { method: "transferencia", cardMode: "" };
+  if (r.includes("saldo")) return { method: "saldo", cardMode: "" };
   if (r.includes("credito") || r.includes("crédito"))
     return { method: "cartao", cardMode: "credito" };
   if (r.includes("debito") || r.includes("débito"))

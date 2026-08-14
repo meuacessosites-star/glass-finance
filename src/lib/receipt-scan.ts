@@ -232,6 +232,21 @@ export const SCAN_CATEGORIES: ScanCategory[] = [
     keywords: ["freelance", "freela", "pro labore", "prolabore"],
   },
   {
+    id: "transferencias",
+    label: "Transferências",
+    color: "#0A84FF",
+    icon: "freelance",
+    keywords: [
+      "transferencia",
+      "transferência",
+      "pix recebido",
+      "deposito",
+      "depósito",
+      "credito em conta",
+      "crédito em conta",
+    ],
+  },
+  {
     id: "assinaturas",
     label: "Assinaturas",
     color: "#00C7BE",
@@ -366,7 +381,12 @@ const BANKING_CTX =
   /comprovante|instituicao de pagamento|numero de conta|nr\. de conta|\bagencia\b|\bfavorecido\b|\brecebedor\b|\borigem\b|\bdestino\b|mercado pago|operacao de|id da transacao|deposit|transferencia|\bestorno\b/i;
 
 /** Categories that still make sense on a bank receipt (income signals). */
-const BANKING_ALLOWED = new Set(["salario", "freelance", "assinaturas"]);
+const BANKING_ALLOWED = new Set([
+  "salario",
+  "freelance",
+  "transferencias",
+  "assinaturas",
+]);
 
 /** Matches a text against the scan/voice category keywords. */
 export function findCategoryId(text: string, title = ""): string {
