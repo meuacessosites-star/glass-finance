@@ -210,7 +210,15 @@ export function AddTransactionSheet({
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                 Categoria
               </p>
-              <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5">
+              <div
+                className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5"
+                onWheel={(e) => {
+                  const el = e.currentTarget;
+                  if (el.scrollWidth > el.clientWidth) {
+                    el.scrollLeft += e.deltaY;
+                  }
+                }}
+              >
                 {categories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
@@ -220,12 +228,15 @@ export function AddTransactionSheet({
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
                         "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
-                        selected
-                          ? "text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
-                          : "glass text-glass-sub",
+                        selected ? "text-glass-ink" : "glass text-glass-sub",
                       )}
                       style={
-                        selected ? { backgroundColor: c.color } : undefined
+                        selected
+                          ? {
+                              backgroundColor: `${c.color}1f`,
+                              boxShadow: `0 0 0 2px ${c.color}`,
+                            }
+                          : undefined
                       }
                     >
                       <CategoryIcon
