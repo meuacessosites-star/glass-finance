@@ -154,10 +154,16 @@ function Stepper({
 export function AddTransactionSheet({
   open,
   onClose,
+  onExitComplete,
   initial,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Chamado quando a animação de saída do sheet termina (depois que o nó
+   * realmente saiu do DOM). Permite que uma tela pai feche somente após o
+   * formulário sair — evita o erro de "removeChild" causado por dois
+   * AnimatePresence aninhados desmontando árvores ao mesmo tempo. */
+  onExitComplete?: () => void;
   /** Pré-preenchimento opcional aplicado ao abrir (ex.: leitura da IA). */
   initial?: TransactionFormValues | null;
 }) {
@@ -363,7 +369,7 @@ export function AddTransactionSheet({
   };
 
   return (
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={onExitComplete}>
       {open && (
         <motion.div
           key="add-tx"

@@ -383,10 +383,13 @@ export function ScanReceiptSheet({
     });
   };
 
-  /** Fechou o formulário (salvou ou descartou) → fecha o scanner inteiro. */
+  /** O formulário fechou (salvou ou descartou). Aqui só fechamos o formulário:
+   * o scanner inteiro só é fechado em `onExitComplete` — depois que a
+   * animação de saída do formulário terminou e o nó saiu do DOM. Assim os dois
+   * AnimatePresence (formulário + scanner) nunca desmontam árvores aninhadas
+   * ao mesmo tempo, o que disparava o erro de "removeChild". */
   const handleReviewClose = () => {
     setFormOpen(false);
-    onClose();
   };
 
   return (
@@ -423,7 +426,10 @@ export function ScanReceiptSheet({
 
           {/* ---------------- SOURCE ---------------- */}
           {step === "source" && (
-            <div className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center">
+            <div
+              key="source-view"
+              className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center"
+            >
               <div className="flex size-20 items-center justify-center rounded-[1.6rem] bg-[#1FBF4F]/15 shadow-[0_14px_34px_-14px_rgba(31,191,79,0.6)]">
                 <ScanLine className="size-9 text-[#17a443]" strokeWidth={2.2} />
               </div>
@@ -472,7 +478,10 @@ export function ScanReceiptSheet({
 
           {/* ---------------- SCAN (leitura animada) ---------------- */}
           {step === "scan" && (
-            <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
+            <div
+              key="scan-view"
+              className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3"
+            >
               <div className="mx-auto mt-3 w-full max-w-[250px]">
                 {scanPhase !== "failed" && (
                   <button
@@ -609,8 +618,10 @@ export function ScanReceiptSheet({
               anexos e rascunho). A IA apenas pré-preenche; o botão final é o
               mesmo "Adicionar despesa/receita". */}
           <AddTransactionSheet
+            key="review-form"
             open={formOpen}
             onClose={handleReviewClose}
+            onExitComplete={() => onClose()}
             initial={prefill}
           />
         </motion.div>
