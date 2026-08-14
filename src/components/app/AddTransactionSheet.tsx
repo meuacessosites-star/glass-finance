@@ -230,8 +230,14 @@ export function AddTransactionSheet({
 
   const quickIds = type === "income" ? QUICK_INCOME_IDS : QUICK_EXPENSE_IDS;
   const quickCategories = categories.filter((c) => quickIds.includes(c.id));
-  const pickedFromMenu = categoryId !== "" && !quickIds.includes(categoryId);
-  const pickerAccent = categoryById[categoryId]?.color ?? "#2F6BFF";
+  // Categoria escolhida no modal: se não estiver entre as rápidas padrão,
+  // ela é injetada na PRIMEIRA posição para o usuário ver o botão ativo
+  // da escolha atual (ex.: "Saúde").
+  const pickedCategory = categoryId ? categoryById[categoryId] : undefined;
+  const visibleCategories =
+    pickedCategory && !quickIds.includes(pickedCategory.id)
+      ? [pickedCategory, ...quickCategories]
+      : quickCategories;
   const filteredCategories = categories.filter((c) =>
     normalizeText(c.label).includes(normalizeText(query)),
   );
@@ -414,7 +420,7 @@ export function AddTransactionSheet({
                 Categoria
               </p>
               <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
-                {quickCategories.map((c) => {
+                {visibleCategories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
                     <button
@@ -422,7 +428,7 @@ export function AddTransactionSheet({
                       type="button"
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
-                        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
+                        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
                         selected ? "text-glass-ink" : "glass text-glass-sub",
                       )}
                       style={
@@ -436,35 +442,25 @@ export function AddTransactionSheet({
                     >
                       <CategoryIcon
                         categoryId={c.id}
-                        size="size-5"
-                        iconSize="size-3"
+                        size="size-4"
+                        iconSize="size-2.5"
                       />
                       {c.label}
                     </button>
                   );
                 })}
-                {/* Outras — mesmo visual das pílulas, abre o seletor completo */}
+                {/* Outras — sempre no final da linha e NUNCA com estado ativo;
+                    serve apenas para abrir o seletor completo. */}
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className={cn(
-                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
-                    pickedFromMenu ? "text-glass-ink" : "glass text-glass-sub",
-                  )}
-                  style={
-                    pickedFromMenu
-                      ? {
-                          backgroundColor: `${pickerAccent}1f`,
-                          boxShadow: `0 0 0 2px ${pickerAccent}`,
-                        }
-                      : undefined
-                  }
+                  className="glass flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub transition-all"
                 >
                   <SquircleIcon
                     icon={Plus}
-                    color={pickerAccent}
-                    size="size-5"
-                    iconSize="size-3"
+                    color="#2F6BFF"
+                    size="size-4"
+                    iconSize="size-2.5"
                   />
                   Outras
                 </button>
