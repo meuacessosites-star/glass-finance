@@ -851,21 +851,25 @@ export function AddTransactionSheet({
             </button>
           </div>
 
-          {/* Seletor completo de categorias — bottom sheet com busca */}
+          {/* Seletor completo de categorias — bottom sheet com busca. NENHUM
+              Fragment dentro do AnimatePresence: cada elemento é um filho
+              keyado e condicional próprio, para o framer-motion desmontar as
+              saídas (backdrop + sheet) sem perder a referência do DOM. */}
           <AnimatePresence>
             {pickerOpen && (
-              <>
-                <motion.div
-                  key="cat-backdrop"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.22 }}
-                  onClick={() => setPickerOpen(false)}
-                  className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
-                />
-                <motion.div
-                  key="cat-sheet"
+              <motion.div
+                key="cat-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+                onClick={() => setPickerOpen(false)}
+                className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+              />
+            )}
+            {pickerOpen && (
+              <motion.div
+                key="cat-sheet"
                   initial={{ y: "100%" }}
                   animate={{ y: 0 }}
                   exit={{ y: "100%" }}
@@ -980,7 +984,6 @@ export function AddTransactionSheet({
                     )}
                   </div>
                 </motion.div>
-              </>
             )}
           </AnimatePresence>
         </motion.div>

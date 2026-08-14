@@ -393,16 +393,23 @@ export function ScanReceiptSheet({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="scan-sheet"
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 30, stiffness: 330 }}
-          className="glass glass-strong absolute inset-0 z-[56] flex flex-col"
-        >
+    <div className="contents">
+      {/* ---------------- SCANNER (source + leitura animada) ----------------
+          O formulário unificado de revisão NÃO é filho deste sheet: ele é
+          renderizado como IRMÃO do AnimatePresence do scanner (lá embaixo).
+          Assim as duas árvores de saída do framer-motion nunca desmontam o
+          mesmo nó do DOM — eliminando o erro de "removeChild" na troca de
+          Loading → Formulário. Cada estado fica isolado em um <div key=…>. */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="scan-sheet"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 330 }}
+            className="glass glass-strong absolute inset-0 z-[56] flex flex-col"
+          >
           {/* Header */}
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <div>
@@ -612,20 +619,24 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          {/* ---------------- REVISÃO UNIFICADA ----------------
-              A revisão é EXATAMENTE o formulário completo do "Adicionar
-              Manual" (abas, categoria, pagamento, repetição, data, hora,
-              anexos e rascunho). A IA apenas pré-preenche; o botão final é o
-              mesmo "Adicionar despesa/receita". */}
-          <AddTransactionSheet
-            key="review-form"
-            open={formOpen}
-            onClose={handleReviewClose}
-            onExitComplete={() => onClose()}
-            initial={prefill}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- REVISÃO UNIFICADA ----------------
+          IRMÃO do sheet do scanner — nunca aninhado dentro do motion.div do
+          scanner. A revisão é EXATAMENTE o formulário completo do "Adicionar
+          Manual" (abas, categoria, pagamento, repetição, data, hora, anexos
+          e rascunho). A IA apenas pré-preenche via `initial`; o botão final é
+          o mesmo "Adicionar despesa/receita". Todas as props obrigatórias
+          (open, onClose, onExitComplete, initial) são passadas. */}
+      <AddTransactionSheet
+        key="review-form"
+        open={formOpen}
+        onClose={handleReviewClose}
+        onExitComplete={() => onClose()}
+        initial={prefill}
+      />
+    </div>
   );
 }
