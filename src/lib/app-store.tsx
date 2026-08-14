@@ -179,11 +179,18 @@ function sanitizeTransactions(v: unknown): Transaction[] {
       const frequency: Transaction["frequency"] =
         frequencyRaw === "mensal" ||
         frequencyRaw === "semanal" ||
-        frequencyRaw === "anual"
+        frequencyRaw === "anual" ||
+        frequencyRaw === "dias"
           ? frequencyRaw
           : recurrence === "recorrente"
             ? "mensal"
             : undefined;
+      const frequencyInterval: Transaction["frequencyInterval"] =
+        frequency === "dias" &&
+        typeof t.frequencyInterval === "number" &&
+        Number.isFinite(t.frequencyInterval)
+          ? Math.min(365, Math.max(1, Math.round(t.frequencyInterval)))
+          : undefined;
       const installments =
         recurrence === "parcelada" &&
         typeof t.installments === "number" &&
@@ -233,6 +240,7 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         : undefined,
       recurrence,
       frequency,
+      frequencyInterval,
       installments,
       currentInstallment,
       paymentMethod:
@@ -395,7 +403,8 @@ type AppStoreValue = {
     note?: string;
     attachments?: string[];
     recurrence?: "unica" | "recorrente" | "parcelada";
-    frequency?: "mensal" | "semanal" | "anual";
+    frequency?: "mensal" | "semanal" | "anual" | "dias";
+    frequencyInterval?: number;
     installments?: number;
     currentInstallment?: number;
     paymentMethod?: string;

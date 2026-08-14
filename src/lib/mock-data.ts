@@ -31,14 +31,25 @@ export const categoryById = Object.fromEntries(
  * parcelada (dividida em N parcelas). */
 export type RecurrenceMode = "unica" | "recorrente" | "parcelada";
 
-/** Frequência usada quando recurrence === "recorrente". */
-export type RecurrenceFrequency = "mensal" | "semanal" | "anual";
+/** Frequência usada quando recurrence === "recorrente". "dias" é a cada
+ * N dias (quantidade em `frequencyInterval`). */
+export type RecurrenceFrequency = "mensal" | "semanal" | "anual" | "dias";
 
 export const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
   mensal: "Mensal",
   semanal: "Semanal",
   anual: "Anual",
+  dias: "Dias",
 };
+
+/** Full frequency label: "Mensal", "Semanal", "Anual" or "A cada 15 dias". */
+export function frequencyLabel(
+  f?: RecurrenceFrequency,
+  interval?: number,
+): string {
+  if (f === "dias") return `A cada ${interval ?? 30} dias`;
+  return FREQUENCY_LABELS[f ?? "mensal"];
+}
 
 export type Transaction = {
   id: string;
@@ -53,6 +64,8 @@ export type Transaction = {
   recurrence?: RecurrenceMode;
   /** Frequência quando recurrence === "recorrente". */
   frequency?: RecurrenceFrequency;
+  /** Nº de dias entre ocorrências quando frequency === "dias". */
+  frequencyInterval?: number;
   /** Total de parcelas quando recurrence === "parcelada". */
   installments?: number;
   /** Parcela atual (1-based) quando recurrence === "parcelada". */
@@ -68,7 +81,10 @@ export type Transaction = {
 /** Short human label for the transaction's recurrence, or null when única. */
 export function recurrenceLabel(t: Transaction): string | null {
   if (t.recurrence === "recorrente") {
-    return `Recorrente · ${FREQUENCY_LABELS[t.frequency ?? "mensal"]}`;
+    return `Recorrente · ${frequencyLabel(
+      t.frequency,
+      t.frequencyInterval,
+    )}`;
   }
   if (t.recurrence === "parcelada") {
     return `Parcelado · ${t.currentInstallment ?? 1}/${t.installments ?? 2}`;

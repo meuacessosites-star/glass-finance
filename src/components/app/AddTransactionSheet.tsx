@@ -61,6 +61,7 @@ const FREQUENCIES: { id: RecurrenceFrequency; label: string }[] = [
   { id: "mensal", label: "Mensal" },
   { id: "semanal", label: "Semanal" },
   { id: "anual", label: "Anual" },
+  { id: "dias", label: "Dias" },
 ];
 
 /** Reads any file into a raw data URL (used for non-image attachments). */
@@ -131,6 +132,7 @@ export function AddTransactionSheet({
   const [attachments, setAttachments] = useState<PickedAttachment[]>([]);
   const [recurrence, setRecurrence] = useState<RecurrenceMode>("unica");
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
+  const [daysInterval, setDaysInterval] = useState(15);
   const [installments, setInstallments] = useState(2);
   const [currentInstallment, setCurrentInstallment] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
@@ -150,6 +152,7 @@ export function AddTransactionSheet({
     setAttachments([]);
     setRecurrence("unica");
     setFrequency("mensal");
+    setDaysInterval(15);
     setInstallments(2);
     setCurrentInstallment(1);
     setPaymentMethod("");
@@ -237,6 +240,10 @@ export function AddTransactionSheet({
         : undefined,
       recurrence: recurrence === "unica" ? undefined : recurrence,
       frequency: recurrence === "recorrente" ? frequency : undefined,
+      frequencyInterval:
+        recurrence === "recorrente" && frequency === "dias"
+          ? daysInterval
+          : undefined,
       installments: recurrence === "parcelada" ? installments : undefined,
       currentInstallment:
         recurrence === "parcelada" ? currentInstallment : undefined,
@@ -457,23 +464,41 @@ export function AddTransactionSheet({
 
               {/* Recorrente: frequency */}
               {recurrence === "recorrente" && (
-                <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-black/5 p-1">
-                  {FREQUENCIES.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setFrequency(f.id)}
-                      className={cn(
-                        "rounded-xl py-2 text-[13px] font-semibold transition-all",
-                        frequency === f.id
-                          ? "bg-white shadow-sm text-glass-ink"
-                          : "text-glass-sub",
-                      )}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div className="mt-3 grid grid-cols-4 gap-1 rounded-2xl bg-black/5 p-1">
+                    {FREQUENCIES.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setFrequency(f.id)}
+                        className={cn(
+                          "rounded-xl py-2 text-[13px] font-semibold transition-all",
+                          frequency === f.id
+                            ? "bg-white shadow-sm text-glass-ink"
+                            : "text-glass-sub",
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  {frequency === "dias" && (
+                    <div className="mt-3">
+                      <p className="mb-1.5 text-[12px] font-semibold text-glass-sub">
+                        Repete a cada
+                      </p>
+                      <Stepper
+                        value={daysInterval}
+                        onChange={setDaysInterval}
+                        min={2}
+                        max={90}
+                        suffix={
+                          daysInterval === 1 ? "dia" : "dias"
+                        }
+                      />
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Parcelada: total + current installment */}
@@ -669,6 +694,31 @@ export function AddTransactionSheet({
 
           {/* Footer */}
           <div className="px-5 pb-7 pt-2">
+            {/* Parcelada: quanto fica cada parcela */}
+            {recurrence === "parcelada" && cents > 0 && (
+              <div className="glass glass-soft mb-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
+                <div>
+                  <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                    Cada parcela
+                  </p>
+                  <p className="amount-tabular text-[17px] font-bold leading-tight text-glass-ink">
+                    {(cents / 100 / installments).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                    {installments} × no total
+                  </p>
+                  <p className="amount-tabular text-[13.5px] font-semibold leading-tight text-glass-sub">
+                    {amountLabel} · registrando {currentInstallment} de{" "}
+                    {installments}
+                  </p>
+                </div>
+              </div>
+            )}
             <button
               type="button"
               disabled={!canSave}

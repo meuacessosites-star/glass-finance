@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Layers, Paperclip, Repeat } from "lucide-react";
 import {
-  FREQUENCY_LABELS,
   formatCurrency,
+  frequencyLabel,
   shortDate,
   type Transaction,
 } from "@/lib/mock-data";
@@ -52,7 +52,10 @@ export function TransactionRow({
             {transaction.recurrence === "recorrente" && (
               <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
                 <Repeat className="size-2.5" strokeWidth={2.6} />
-                {FREQUENCY_LABELS[transaction.frequency ?? "mensal"]}
+                {frequencyLabel(
+                  transaction.frequency,
+                  transaction.frequencyInterval,
+                )}
               </span>
             )}
             {transaction.recurrence === "parcelada" && (
