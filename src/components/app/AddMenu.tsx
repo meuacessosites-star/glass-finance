@@ -94,30 +94,31 @@ export function AddMenu({
   return (
     <AnimatePresence>
       {open && (
-        <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            onClick={onClose}
-            className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
-          />
-          <motion.div
-            key="sheet"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 330 }}
-            drag="y"
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.6 }}
-            onDragEnd={(_, info) => {
-              if (info.offset.y > 90 || info.velocity.y > 500) onClose();
-            }}
-            className="glass glass-strong absolute inset-x-0 bottom-0 z-50 rounded-t-[2.2rem] px-5 pb-8 pt-3"
-          >
+        <motion.div
+          key="backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22 }}
+          onClick={onClose}
+          className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+        />
+      )}
+      {open && (
+        <motion.div
+          key="sheet"
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 30, stiffness: 330 }}
+          drag="y"
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={{ top: 0, bottom: 0.6 }}
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 90 || info.velocity.y > 500) onClose();
+          }}
+          className="glass glass-strong absolute inset-x-0 bottom-0 z-50 rounded-t-[2.2rem] px-5 pb-8 pt-3"
+        >
             <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15 dark:bg-black/25" />
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -167,8 +168,7 @@ export function AddMenu({
                 </motion.button>
               ))}
             </div>
-          </motion.div>
-        </>
+        </motion.div>
       )}
     </AnimatePresence>
   );

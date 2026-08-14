@@ -150,24 +150,25 @@ export function Sidebar() {
     <>
       <AnimatePresence>
         {isOpen && (
-          <>
-            <motion.div
-              key="sidebar-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={close}
-              className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
-            />
-            <motion.aside
-              key="sidebar-panel"
-              initial={{ x: "-105%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-105%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 330 }}
-              className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] p-4"
-            >
+          <motion.div
+            key="sidebar-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={close}
+            className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+          />
+        )}
+        {isOpen && (
+          <motion.aside
+            key="sidebar-panel"
+            initial={{ x: "-105%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-105%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 330 }}
+            className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] p-4"
+          >
               {/* Header */}
               <div className="flex items-center justify-between">
                 <p className="text-[15px] font-bold tracking-tight text-glass-ink">
@@ -334,8 +335,7 @@ export function Sidebar() {
                   Sair da conta
                 </p>
               </button>
-            </motion.aside>
-          </>
+          </motion.aside>
         )}
       </AnimatePresence>
 
