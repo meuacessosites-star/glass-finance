@@ -1,32 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CalendarDays,
-  Check,
-  Clock,
-  Mic,
-  X,
-} from "lucide-react";
-import { toast } from "sonner";
+import { ArrowUp, Mic, Send, X } from "lucide-react";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type {
+  FinanceChatMessage,
+  FinanceChatResult,
+  FinanceTransactionDraft,
+} from "@/convex/aiVision";
 import { useSuggestedCategory } from "@/hooks/use-suggested-category";
-import { useAppStore } from "@/lib/app-store";
 import { SCAN_CATEGORIES } from "@/lib/receipt-scan";
-import { parseVoiceCommand, todayIso } from "@/lib/voice-command";
+import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-import { HorizontalScroll } from "./HorizontalScroll";
+import { normalizePaymentMethod } from "./PaymentMethodSelector";
+import {
+  AddTransactionSheet,
+  type TransactionFormValues,
+  type TxType,
+} from "./AddTransactionSheet";
 
 // ---------------------------------------------------------------------------
-// Comando de Voz — dictates a transaction using the browser's Web Speech API
-// (pt-BR). Shows the live transcript, parses "gastei cinquenta reais no
-// mercado" into value/description/category/date, then lets the user review
-// and edit before saving. Falls back to typing or example commands when the
-// microphone is unavailable.
+// Assistente financeiro — conversa por texto ou voz e usa Gemini para coletar
+// os dados necessários antes de encaminhá-los ao formulário unificado.
 // ---------------------------------------------------------------------------
 
-type Step = "listen" | "review";
-type TxType = "expense" | "income";
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+};
 
 // Minimal typings — the Web Speech API is not in the standard TS lib.
 type SRResult = { isFinal: boolean; [index: number]: { transcript: string } };
@@ -54,18 +56,16 @@ function getSRCtor(): (new () => SRInstance) | null {
   );
 }
 
-const EXAMPLES = [
-  "Gastei cinquenta reais no mercado",
-  "Uber quarenta e dois reais e cinquenta",
-  "Netflix vinte e sete reais e noventa",
-  "Recebi mil e duzentos reais do cliente",
-  "Farmácia trinta reais ontem",
-];
+const INCOME_CATEGORY_IDS = new Set(["salario", "freelance", "transferencias"]);
+const initialAssistantMessage: ChatMessage = {
+  id: "assistant-welcome",
+  role: "assistant",
+  text: "Olá! Me conte uma receita ou despesa, por texto ou voz. Ex.: “gastei 32 reais no almoço”.",
+};
 
-const inputClass =
-  "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
-
-const INCOME_IDS = new Set(["salario", "freelance"]);
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const newMessageId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function VoiceCommandSheet({
   open,
@@ -74,124 +74,222 @@ export function VoiceCommandSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, addTransaction } = useAppStore();
+  const { categories } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
+  const converseFinancialTransaction = useAction(
+    api.aiVision.converseFinancialTransaction,
+  );
 
   const [supported] = useState(() => getSRCtor() !== null);
-  const [step, setStep] = useState<Step>("listen");
+  const [messages, setMessages] = useState<ChatMessage[]>([initialAssistantMessage]);
+  const [draft, setDraft] = useState("");
   const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [error, setError] = useState("");
-  const [manualInput, setManualInput] = useState("");
-
-  // Review fields
-  const [type, setType] = useState<TxType>("expense");
-  const [cents, setCents] = useState(0);
-  const [title, setTitle] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [time, setTime] = useState("");
+  const [waiting, setWaiting] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [formInitial, setFormInitial] = useState<TransactionFormValues | null>(
+    null,
+  );
 
   const recRef = useRef<SRInstance | null>(null);
   const transcriptRef = useRef("");
-  const errorRef = useRef(false);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const handoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fresh state + cleanup every time the sheet opens/closes.
+  const defaultCategoryId = (type: TxType) => {
+    const category = categories.find((item) =>
+      type === "income"
+        ? INCOME_CATEGORY_IDS.has(item.id)
+        : !INCOME_CATEGORY_IDS.has(item.id),
+    );
+    return category?.id ?? categories[0]?.id ?? "outros";
+  };
+
+  const toFormInitial = (
+    transaction: FinanceTransactionDraft,
+  ): TransactionFormValues => {
+    const type: TxType =
+      transaction.transactionType === "income" ? "income" : "expense";
+    let categoryId = defaultCategoryId(type);
+    const suggested = SCAN_CATEGORIES.find(
+      (category) => category.id === transaction.categorySuggestion,
+    );
+
+    if (suggested) {
+      categoryId = applySuggestedCategory(suggested).id;
+    } else if (
+      transaction.categorySuggestion &&
+      categories.some((category) => category.id === transaction.categorySuggestion)
+    ) {
+      categoryId = transaction.categorySuggestion;
+    }
+
+    const payment = normalizePaymentMethod(transaction.paymentMethod);
+    const cents = Math.min(
+      999_999_999,
+      Math.max(0, Math.round(Number(transaction.total) * 100) || 0),
+    );
+
+    return {
+      type,
+      cents,
+      title: transaction.title.trim().slice(0, 120) || "Transação",
+      categoryId,
+      date: transaction.date || todayIso(),
+      time: transaction.time || "",
+      note: "",
+      attachments: [],
+      recurrence: "unica",
+      frequency: "mensal",
+      daysInterval: 15,
+      installments: 2,
+      currentInstallment: 1,
+      paymentMethod: payment.method,
+      cardMode: payment.cardMode,
+      cardId: null,
+    };
+  };
+
+  // The sheet is unmounted whenever it closes, so useState naturally creates
+  // a fresh conversation on the next opening. This effect only releases
+  // external browser resources and pending handoffs on unmount.
   useEffect(() => {
-    if (!open) return;
-    setStep("listen");
-    setListening(false);
-    setTranscript("");
-    setError("");
-    setManualInput("");
-    setTitle("");
-    setCents(0);
-    setCategoryId("");
-    setType("expense");
-    setDate(todayIso());
-    setTime("");
-    transcriptRef.current = "";
-    errorRef.current = false;
     return () => {
       recRef.current?.abort();
       recRef.current = null;
+      if (handoffTimerRef.current) {
+        clearTimeout(handoffTimerRef.current);
+        handoffTimerRef.current = null;
+      }
     };
-  }, [open]);
+  }, []);
 
-  // Cleanup on unmount.
-  useEffect(() => () => recRef.current?.abort(), []);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, waiting]);
 
-  const defaultCategoryId = () => {
-    const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
-    return fallback?.id ?? categories[0]?.id ?? "outros";
-  };
+  const sendMessage = async (raw: string) => {
+    const text = raw.replace(/\s+/g, " ").trim().slice(0, 1000);
+    if (!text || waiting || reviewOpen) return;
 
-  const goReview = (raw: string) => {
-    const parsed = parseVoiceCommand(raw);
-    setTitle(parsed.title);
-    setCents(Math.round(parsed.amount * 100));
-    setType(parsed.isIncome ? "income" : "expense");
-    setDate(parsed.date || todayIso());
-    setTime(parsed.time);
-    if (parsed.categoryId && parsed.categoryId !== "outros") {
-      const suggested = SCAN_CATEGORIES.find(
-        (c) => c.id === parsed.categoryId,
-      );
-      if (suggested) {
-        const { id, created } = applySuggestedCategory(suggested);
-        setCategoryId(id);
-        if (created) {
-          toast(`Categoria "${suggested.label}" criada`, {
-            description: "Você pode renomeá-la em Categorias a qualquer momento.",
-          });
-        }
-        setStep("review");
+    const userMessage: ChatMessage = { id: newMessageId(), role: "user", text };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setDraft("");
+    setWaiting(true);
+
+    try {
+      const result = (await converseFinancialTransaction({
+        messages: nextMessages.map(
+          (message): FinanceChatMessage => ({
+            role: message.role,
+            text: message.text,
+          }),
+        ),
+      })) as FinanceChatResult;
+
+      if (!result.ok) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId(),
+            role: "assistant",
+            text: result.message,
+          },
+        ]);
         return;
       }
+
+      if (result.kind === "question") {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId(),
+            role: "assistant",
+            text: result.message,
+          },
+        ]);
+        return;
+      }
+
+      const initial = toFormInitial(result.transaction);
+      setMessages((current) => [
+        ...current,
+        {
+          id: newMessageId(),
+          role: "assistant",
+          text: "Tudo certo! Verifique os dados abaixo:",
+        },
+      ]);
+      setFormInitial(initial);
+      handoffTimerRef.current = setTimeout(() => {
+        handoffTimerRef.current = null;
+        setReviewOpen(true);
+      }, 700);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: newMessageId(),
+          role: "assistant",
+          text: "Não consegui analisar agora. Tente novamente em instantes.",
+        },
+      ]);
+    } finally {
+      setWaiting(false);
     }
-    setCategoryId(parsed.categoryId || defaultCategoryId());
-    setStep("review");
   };
 
   const startListening = () => {
     const Ctor = getSRCtor();
-    if (!Ctor) return;
-    setError("");
-    setTranscript("");
-    transcriptRef.current = "";
-    errorRef.current = false;
+    if (!Ctor || waiting || reviewOpen) {
+      if (!Ctor) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId(),
+            role: "assistant",
+            text: "Seu navegador não liberou o microfone. Você pode digitar a transação abaixo.",
+          },
+        ]);
+      }
+      return;
+    }
 
+    transcriptRef.current = "";
     const rec = new Ctor();
     rec.lang = "pt-BR";
     rec.continuous = false;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    rec.onresult = (e) => {
-      let t = "";
-      for (let i = 0; i < e.results.length; i++) {
-        t += e.results[i][0]?.transcript ?? "";
+    rec.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript ?? "";
       }
-      transcriptRef.current = t;
-      setTranscript(t);
+      transcriptRef.current = transcript;
+      setDraft(transcript);
     };
-    rec.onerror = (e) => {
-      errorRef.current = true;
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setError("Permissão do microfone negada — permita o acesso ou use um exemplo acima.");
-      } else if (e.error === "no-speech") {
-        setError("Não ouvi nada. Aproxime o microfone e tente de novo.");
-      } else if (e.error !== "aborted") {
-        setError("Não foi possível ouvir agora. Tente de novo ou digite o comando.");
+    rec.onerror = (event) => {
+      if (event.error !== "aborted") {
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId(),
+            role: "assistant",
+            text:
+              event.error === "not-allowed" || event.error === "service-not-allowed"
+                ? "Não consegui acessar o microfone. Você pode digitar a transação abaixo."
+                : "Não consegui ouvir agora. Tente novamente ou escreva sua mensagem.",
+          },
+        ]);
       }
     };
     rec.onend = () => {
       setListening(false);
-      const final = transcriptRef.current.trim();
-      if (final) goReview(final);
-      else if (!errorRef.current) {
-        setError("Não entendi o que foi dito — tente de novo ou use um exemplo.");
-      }
+      const finalTranscript = transcriptRef.current.trim();
+      recRef.current = null;
+      if (finalTranscript) void sendMessage(finalTranscript);
     };
 
     recRef.current = rec;
@@ -199,7 +297,7 @@ export function VoiceCommandSheet({
       rec.start();
       setListening(true);
     } catch {
-      setError("Não foi possível iniciar o microfone. Tente de novo ou digite o comando.");
+      setListening(false);
     }
   };
 
@@ -211,324 +309,139 @@ export function VoiceCommandSheet({
     }
   };
 
-  const handleAmount = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 9);
-    setCents(digits ? parseInt(digits, 10) : 0);
-  };
-
-  const amountLabel = (cents / 100).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-
-  const canSave = cents > 0 && title.trim().length > 0 && !!categoryId;
-
-  const handleSave = () => {
-    if (!canSave) return;
-    addTransaction({
-      title: title.trim(),
-      categoryId,
-      amount: type === "expense" ? -cents / 100 : cents / 100,
-      date,
-      time: time || undefined,
-    });
-    toast(type === "expense" ? "Despesa registrada" : "Receita registrada", {
-      description: `“${title.trim()}” já está no seu histórico.`,
-    });
+  const handleFormClose = () => {
+    if (handoffTimerRef.current) {
+      clearTimeout(handoffTimerRef.current);
+      handoffTimerRef.current = null;
+    }
+    setReviewOpen(false);
+    setFormInitial(null);
     onClose();
   };
 
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
-          key="voice-sheet"
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 30, stiffness: 330 }}
-          className="glass glass-strong absolute inset-0 z-[57] flex flex-col"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pb-1 pt-4">
-            <div>
-              <h3 className="text-[20px] font-bold tracking-tight text-glass-ink">
-                Comando de voz
-              </h3>
-              <p className="text-[12.5px] text-glass-sub">
-                {step === "listen"
-                  ? "Dite o gasto e pronto"
-                  : "Confira o que entendemos"}
-              </p>
-            </div>
-            <button
-              type="button"
-              aria-label="Fechar"
-              onClick={onClose}
-              className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
-            >
-              <X className="size-[18px]" />
-            </button>
-          </div>
-
-          {/* ---------------- LISTEN ---------------- */}
-          {step === "listen" && (
-            <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-8 pt-2 text-center">
-              {/* Mic */}
-              <div className="relative mx-auto mt-4 flex size-28 items-center justify-center">
-                {listening && (
-                  <>
-                    <span className="absolute inset-0 animate-ping rounded-full bg-[#AF52DE]/30" />
-                    <span className="absolute -inset-3 animate-pulse rounded-full bg-[#AF52DE]/15" />
-                  </>
-                )}
-                <button
-                  type="button"
-                  aria-label={listening ? "Parar" : "Começar a falar"}
-                  onClick={listening ? stopListening : startListening}
-                  className={cn(
-                    "relative flex size-28 items-center justify-center rounded-full text-white shadow-[0_20px_50px_-16px_rgba(175,82,222,0.65)] transition-transform active:scale-95",
-                    listening
-                      ? "bg-gradient-to-br from-[#c86bff] to-[#AF52DE]"
-                      : "bg-gradient-to-br from-[#c86bff] to-[#7d3fd1]",
-                  )}
-                >
-                  <Mic className="size-11" strokeWidth={2} />
-                </button>
-              </div>
-
-              <p className="mt-6 text-[16px] font-bold text-glass-ink">
-                {listening
-                  ? "Estou ouvindo…"
-                  : supported
-                    ? "Toque no microfone e dite"
-                    : "Microfone indisponível neste navegador"}
-              </p>
-              <p className="mx-auto mt-1 max-w-[280px] text-[13px] leading-relaxed text-glass-sub">
-                Diga algo como “gastei cinquenta reais no mercado” — valor,
-                descrição e categoria entram sozinhos.
-              </p>
-
-              {/* Live transcript */}
-              {transcript && (
-                <div className="glass mx-auto mt-5 w-full max-w-[320px] rounded-2xl px-4 py-3 text-left">
-                  <p className="text-[14px] font-medium leading-relaxed text-glass-ink">
-                    “{transcript}”
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <p className="mx-auto mt-3 max-w-[300px] text-[13px] font-semibold leading-relaxed text-[#FF3B30]">
-                  {error}
+        <div className="absolute inset-0 z-[57]">
+          <motion.div
+            key="financial-assistant-sheet"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 330 }}
+            className={cn(
+              "glass glass-strong absolute inset-0 flex flex-col",
+              reviewOpen ? "hidden" : "flex",
+            )}
+          >
+            <div className="flex items-center justify-between px-5 pb-2 pt-4">
+              <div>
+                <h3 className="text-[20px] font-bold tracking-tight text-glass-ink">
+                  Assistente financeiro
+                </h3>
+                <p className="text-[12.5px] text-glass-sub">
+                  Registre receitas e despesas conversando
                 </p>
-              )}
-
-              {/* Example commands (simulate the mic) */}
-              <p className="mt-6 text-[11.5px] font-semibold uppercase tracking-wide text-glass-faint">
-                Exemplos prontos
-              </p>
-              <div className="mx-auto mt-2 flex max-w-[320px] flex-wrap justify-center gap-2">
-                {EXAMPLES.map((ex) => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => goReview(ex)}
-                    className="glass rounded-full px-3.5 py-2 text-[12px] font-semibold text-glass-sub transition-colors hover:bg-white/60 active:scale-95"
-                  >
-                    {ex}
-                  </button>
-                ))}
               </div>
+              <button
+                type="button"
+                aria-label="Fechar"
+                onClick={onClose}
+                className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+              >
+                <X className="size-[18px]" />
+              </button>
+            </div>
 
-              {/* Manual input */}
-              <div className="mx-auto mt-6 w-full max-w-[320px]">
+            <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-4 pt-2">
+              <div className="space-y-3">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "flex",
+                      message.role === "user" ? "justify-end" : "justify-start",
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        "max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[14px] font-medium leading-relaxed shadow-sm",
+                        message.role === "user"
+                          ? "rounded-br-md bg-blue-500 text-white"
+                          : "rounded-bl-md bg-gray-100 text-glass-ink",
+                      )}
+                    >
+                      {message.text}
+                    </p>
+                  </div>
+                ))}
+                {waiting && (
+                  <div className="flex justify-start">
+                    <div className="rounded-2xl rounded-bl-md bg-gray-100 px-3.5 py-3 text-[13px] font-semibold text-glass-sub">
+                      Analisando sua transação…
+                    </div>
+                  </div>
+                )}
+                <div ref={bottomRef} />
+              </div>
+            </div>
+
+            <div className="border-t border-black/5 bg-white/50 px-4 pb-7 pt-3">
+              <div className="flex items-end gap-2 rounded-2xl bg-white/80 p-1.5 shadow-sm ring-1 ring-black/5">
                 <input
-                  value={manualInput}
-                  onChange={(e) => setManualInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && manualInput.trim()) {
-                      goReview(manualInput.trim());
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      void sendMessage(draft);
                     }
                   }}
-                  placeholder="Ou digite: gastei 40 reais na padaria"
-                  maxLength={120}
-                  className={inputClass}
+                  placeholder="Digite uma receita ou despesa"
+                  maxLength={1000}
+                  disabled={waiting || reviewOpen}
+                  className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[14px] font-medium text-glass-ink outline-none placeholder:text-glass-faint disabled:opacity-60"
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    if (manualInput.trim()) goReview(manualInput.trim());
-                  }}
-                  className="glass glass-soft mt-2 w-full rounded-full py-2.5 text-[13.5px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
+                  aria-label={listening ? "Parar gravação" : "Gravar áudio"}
+                  onClick={listening ? stopListening : startListening}
+                  disabled={waiting || reviewOpen}
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-xl transition-transform active:scale-90 disabled:opacity-40",
+                    listening
+                      ? "bg-[#AF52DE] text-white"
+                      : "bg-gray-100 text-glass-sub",
+                  )}
                 >
-                  Analisar comando
+                  <Mic className="size-[18px]" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Enviar mensagem"
+                  onClick={() => void sendMessage(draft)}
+                  disabled={waiting || !draft.trim() || reviewOpen}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-500 text-white transition-transform active:scale-90 disabled:opacity-40"
+                >
+                  {waiting ? <ArrowUp className="size-[18px]" /> : <Send className="size-[17px]" />}
                 </button>
               </div>
+              {!supported && (
+                <p className="px-1 pt-2 text-[11.5px] font-medium text-glass-faint">
+                  Microfone indisponível neste navegador; use o campo de texto.
+                </p>
+              )}
             </div>
-          )}
+          </motion.div>
 
-          {/* ---------------- REVIEW ---------------- */}
-          {step === "review" && (
-            <>
-              <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
-                {/* Type */}
-                <div className="grid grid-cols-2 gap-1 rounded-2xl bg-black/5 p-1">
-                  {(["expense", "income"] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setType(t)}
-                      className={cn(
-                        "flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
-                        type === t ? "bg-white shadow-sm" : "text-glass-sub",
-                      )}
-                    >
-                      {t === "expense" ? (
-                        <ArrowDownLeft className="size-4 text-[#FF3B30]" />
-                      ) : (
-                        <ArrowUpRight className="size-4 text-[#17a443]" />
-                      )}
-                      <span
-                        className={
-                          type === t
-                            ? t === "expense"
-                              ? "text-[#FF3B30]"
-                              : "text-[#17a443]"
-                            : "text-glass-sub"
-                        }
-                      >
-                        {t === "expense" ? "Despesa" : "Receita"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Amount */}
-                <div className="mt-6 text-center">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Valor
-                  </p>
-                  <input
-                    inputMode="numeric"
-                    value={amountLabel}
-                    onChange={(e) => handleAmount(e.target.value)}
-                    placeholder="R$ 0,00"
-                    aria-label="Valor"
-                    className={cn(
-                      "mt-1 w-full bg-transparent text-center text-[36px] font-bold tracking-tight outline-none",
-                      type === "expense" ? "text-[#FF3B30]" : "text-[#17a443]",
-                    )}
-                  />
-                  <div className="mx-auto mt-2 h-0.5 w-16 rounded-full bg-primary/30" />
-                </div>
-
-                {/* Description */}
-                <div className="mt-6">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Descrição
-                  </p>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex.: Mercado"
-                    maxLength={40}
-                    className={cn(inputClass, "mt-2")}
-                  />
-                </div>
-
-                {/* Category */}
-                <div className="mt-6">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Categoria
-                  </p>
-                  <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
-                    {categories.map((c) => {
-                      const selected = categoryId === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setCategoryId(c.id)}
-                          className={cn(
-                            "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
-                            selected ? "text-glass-ink" : "glass text-glass-sub",
-                          )}
-                          style={
-                            selected
-                              ? {
-                                  backgroundColor: `${c.color}1f`,
-                                  boxShadow: `0 0 0 2px ${c.color}`,
-                                }
-                              : undefined
-                          }
-                        >
-                          <span
-                            className="size-2 rounded-full"
-                            style={{ backgroundColor: c.color }}
-                          />
-                          {c.label}
-                        </button>
-                      );
-                    })}
-                  </HorizontalScroll>
-                </div>
-
-                {/* Date + time */}
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                      Data
-                    </p>
-                    <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
-                      <CalendarDays className="size-4 shrink-0 text-glass-sub" />
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                      Hora
-                    </p>
-                    <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
-                      <Clock className="size-4 shrink-0 text-glass-sub" />
-                      <input
-                        type="time"
-                        value={time}
-                        onChange={(e) => setTime(e.target.value)}
-                        className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="space-y-2.5 px-5 pb-7 pt-2">
-                <button
-                  type="button"
-                  disabled={!canSave}
-                  onClick={handleSave}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-all hover:brightness-105 active:scale-[0.98]"
-                >
-                  <Check className="size-[18px]" strokeWidth={2.6} />
-                  Salvar transação
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep("listen")}
-                  className="glass glass-soft w-full rounded-full py-3 text-[14px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
-                >
-                  Falar de novo
-                </button>
-              </div>
-            </>
-          )}
-        </motion.div>
+          <div className={reviewOpen ? "block" : "hidden"}>
+            <AddTransactionSheet
+              open={true}
+              onClose={handleFormClose}
+              initial={formInitial ?? null}
+            />
+          </div>
+        </div>
       )}
     </AnimatePresence>
   );

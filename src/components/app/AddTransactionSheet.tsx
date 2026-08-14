@@ -36,7 +36,7 @@ import {
 // store, so it shows up in the Home summary, the history and the reports.
 // ---------------------------------------------------------------------------
 
-const INCOME_IDS = new Set(["salario", "freelance"]);
+const INCOME_IDS = new Set(["salario", "freelance", "transferencias"]);
 
 /** Categorias mais comuns mostradas como pílulas rápidas no formulário. */
 const QUICK_EXPENSE_IDS = ["alimentacao", "transporte", "moradia"];

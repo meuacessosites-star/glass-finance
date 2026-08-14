@@ -498,3 +498,294 @@ export const extractReceipt = action({
     return normalizeGemini(result.text);
   },
 });
+
+
+// ---------------------------------------------------------------------------
+// Assistente conversacional financeiro — Google Gemini via REST.
+// ---------------------------------------------------------------------------
+
+export type FinanceChatMessage = {
+  role: "user" | "assistant";
+  text: string;
+};
+
+export type FinanceTransactionDraft = {
+  transactionType: "income" | "expense";
+  total: number;
+  title: string;
+  categorySuggestion: string;
+  date?: string;
+  time?: string;
+  paymentMethod?: string;
+};
+
+export type FinanceChatResult =
+  | { ok: true; kind: "question"; message: string }
+  | {
+      ok: true;
+      kind: "transaction";
+      message: string;
+      transaction: FinanceTransactionDraft;
+    }
+  | { ok: false; kind: "error"; message: string };
+
+type GeminiFinanceDraft = {
+  tipo?: string;
+  valor?: number | string;
+  descricao?: string;
+  categoria?: string;
+  data?: string;
+  hora?: string;
+  forma_pagamento?: string;
+};
+
+type GeminiFinanceReply = {
+  status?: string;
+  mensagem?: string;
+  transacao?: GeminiFinanceDraft | null;
+};
+
+const FINANCE_AGENT_PROMPT = [
+  "Você é o assistente financeiro conversacional do GranaScan e responde sempre em português brasileiro.",
+  "Analise a conversa para registrar uma única transação financeira. Procure tipo (receita ou despesa), valor, descrição e categoria.",
+  "Uma transação só está completa se tiver tipo, valor estritamente positivo e descrição compreensível. Não invente valor, descrição, categoria, data, hora ou forma de pagamento.",
+  "Se faltar tipo, valor ou descrição, retorne status 'pergunta', transacao null e uma única mensagem curta, gentil e específica perguntando somente pelo dado mais importante que falta. Exemplos: 'Qual foi o valor desse gasto?' ou 'O que você comprou?'.",
+  "Se estiver completa, retorne status 'transacao', uma mensagem curta de confirmação e transacao preenchida. Para gasto use tipo 'despesa'; para dinheiro recebido use 'receita'.",
+  "Classifique categoria como uma de: Alimentação, Restaurantes, Café, Transporte, Moradia, Manutenção, Saúde, Academia, Lazer, Viagem, Pets, Compras, Presentes, Assinaturas, Educação, Salário, Freelance, Transferências ou Outros.",
+  "Data deve ser DD/MM/AAAA somente quando dita pelo usuário; hora deve ser HH:MM somente quando dita; forma_pagamento pode ser Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência ou Saldo somente quando mencionada.",
+  "Retorne exclusivamente um objeto JSON nesta estrutura: { \"status\": \"pergunta ou transacao\", \"mensagem\": \"texto curto\", \"transacao\": { \"tipo\": \"receita ou despesa\", \"valor\": 0.00, \"descricao\": \"descrição\", \"categoria\": \"categoria permitida\", \"data\": \"DD/MM/AAAA ou vazio\", \"hora\": \"HH:MM ou vazio\", \"forma_pagamento\": \"forma ou vazio\" } ou null }.",
+].join(" ");
+
+const FINANCE_AGENT_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["pergunta", "transacao"] },
+    mensagem: { type: "string" },
+    transacao: {
+      type: "object",
+      nullable: true,
+      properties: {
+        tipo: { type: "string", enum: ["receita", "despesa"] },
+        valor: { type: "number" },
+        descricao: { type: "string" },
+        categoria: { type: "string" },
+        data: { type: "string" },
+        hora: { type: "string" },
+        forma_pagamento: { type: "string" },
+      },
+      required: [
+        "tipo",
+        "valor",
+        "descricao",
+        "categoria",
+        "data",
+        "hora",
+        "forma_pagamento",
+      ],
+    },
+  },
+  required: ["status", "mensagem", "transacao"],
+} as const;
+
+function safeAgentMessage(value: unknown, fallback: string): string {
+  const message = String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 360);
+  return message || fallback;
+}
+
+function normalizeFinanceReply(text: string): FinanceChatResult {
+  try {
+    const parsed = JSON.parse(stripMarkdown(text)) as GeminiFinanceReply;
+    const draft = parsed.transacao;
+    const rawType = normalizeText(String(draft?.tipo ?? ""));
+    const hasValidType = rawType === "receita" || rawType === "despesa";
+    const isComplete =
+      normalizeText(String(parsed.status ?? "")) === "transacao" &&
+      draft &&
+      hasValidType &&
+      parseNumber(draft.valor) > 0 &&
+      String(draft.descricao ?? "").trim().length >= 2;
+
+    if (!isComplete) {
+      return {
+        ok: true,
+        kind: "question",
+        message: safeAgentMessage(
+          parsed.mensagem,
+          "Para registrar, preciso saber o valor e uma breve descrição.",
+        ),
+      };
+    }
+
+    const completeDraft = draft as GeminiFinanceDraft;
+    const transactionType = toTransactionType(String(completeDraft.tipo ?? ""));
+    const title = toSuggestedTitle(String(completeDraft.descricao ?? ""));
+    const total = parseNumber(completeDraft.valor);
+
+    return {
+      ok: true,
+      kind: "transaction",
+      message: safeAgentMessage(
+        parsed.mensagem,
+        "Tudo certo! Verifique os dados abaixo:",
+      ),
+      transaction: {
+        transactionType,
+        total,
+        title,
+        categorySuggestion: toCategoryId(String(completeDraft.categoria ?? "")),
+        date: toIsoDate(String(completeDraft.data ?? "")) || undefined,
+        time: toTime(String(completeDraft.hora ?? "")) || undefined,
+        paymentMethod:
+          normalizePaymentMethod(String(completeDraft.forma_pagamento ?? "")) || undefined,
+      },
+    };
+  } catch {
+    return {
+      ok: true,
+      kind: "question",
+      message: "Não consegui entender todos os dados. Qual foi o valor e a descrição da transação?",
+    };
+  }
+}
+
+function createFinanceRequestBody(
+  messages: FinanceChatMessage[],
+  includeSchema: boolean,
+) {
+  const history = messages.slice(-12);
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: FINANCE_AGENT_PROMPT }],
+      },
+      ...history.map((message) => ({
+        role: message.role === "assistant" ? "model" : "user",
+        parts: [{ text: message.text }],
+      })),
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+      ...(includeSchema ? { responseSchema: FINANCE_AGENT_RESPONSE_SCHEMA } : {}),
+    },
+  };
+}
+
+async function callFinanceAgent(
+  apiKey: string,
+  messages: FinanceChatMessage[],
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const errors: string[] = [];
+  const models = await getAvailableModels(apiKey);
+
+  for (const model of models) {
+    try {
+      let response = await fetch(
+        `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createFinanceRequestBody(messages, true)),
+          signal: AbortSignal.timeout(60_000),
+        },
+      );
+      let body = await response.text();
+
+      if (
+        response.status === 400 &&
+        /responseSchema|responseMimeType|schema/i.test(body)
+      ) {
+        response = await fetch(
+          `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(createFinanceRequestBody(messages, false)),
+            signal: AbortSignal.timeout(60_000),
+          },
+        );
+        body = await response.text();
+      }
+
+      if (!response.ok) {
+        errors.push(`gemini ${model} → http ${response.status}`);
+        if ([401, 403, 429].includes(response.status)) break;
+        continue;
+      }
+
+      const data = JSON.parse(body) as GeminiResponse;
+      const text =
+        data.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text ?? "")
+          .join("") ?? "";
+      if (text.trim()) return { ok: true, text };
+      errors.push(`gemini ${model} → resposta-vazia`);
+    } catch (error) {
+      errors.push(`gemini ${model} → ${(error as Error).message || "falhou"}`);
+    }
+  }
+
+  return { ok: false, error: errors.join(" | ") || "gemini-falhou" };
+}
+
+/**
+ * Responde a uma conversa financeira. Quando a mensagem estiver incompleta,
+ * devolve uma pergunta; quando estiver completa, devolve um rascunho seguro
+ * para o formulário unificado de transações.
+ */
+export const converseFinancialTransaction = action({
+  args: {
+    messages: v.array(
+      v.object({
+        role: v.string(),
+        text: v.string(),
+      }),
+    ),
+  },
+  handler: async (
+    _ctx: unknown,
+    { messages }: { messages: Array<{ role: string; text: string }> },
+  ): Promise<FinanceChatResult> => {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false,
+        kind: "error",
+        message: "O assistente financeiro não está configurado neste ambiente.",
+      };
+    }
+
+    const history: FinanceChatMessage[] = messages
+      .filter(
+        (message) =>
+          (message.role === "user" || message.role === "assistant") &&
+          message.text.trim().length > 0,
+      )
+      .slice(-12)
+      .map((message) => ({
+        role: message.role as FinanceChatMessage["role"],
+        text: message.text.trim().slice(0, 1000),
+      }));
+
+    if (!history.length || history[history.length - 1]?.role !== "user") {
+      return {
+        ok: false,
+        kind: "error",
+        message: "Envie uma mensagem para que eu possa ajudar com o registro.",
+      };
+    }
+
+    const result = await callFinanceAgent(apiKey, history);
+    if (!result.ok) {
+      return {
+        ok: false,
+        kind: "error",
+        message: "Não consegui analisar agora. Tente novamente em instantes.",
+      };
+    }
+
+    return normalizeFinanceReply(result.text);
+  },
+});
