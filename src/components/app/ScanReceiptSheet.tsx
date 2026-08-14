@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import {
   CARD_MODE_LABELS,
+  normalizePaymentMethod,
   PaymentMethodSelector,
   type CardMode,
   type PaymentMethodId,
@@ -178,10 +179,10 @@ export function ScanReceiptSheet({
   };
 
   /**
-   * Preenche o formulário com os dados EXATOS devolvidos pelo Gemini,
-   * aplicando as regras universais: 3+ itens → Descrição com categoria geral
-   * (Mercado/Farmácia/Restaurante); 1–2 itens → "1x Produto"; Rascunho com
-   * "Estabelecimento: {loja}" + lista formatada dos itens.
+   * Preenche o formulário com os dados estruturados devolvidos pelo Gemini.
+   * A categoria indicada pela IA tem prioridade; palavras-chave locais só são
+   * usadas como contingência. A descrição de item único preserva somente o
+   * nome do item e o rascunho inclui pagamento e hora quando identificados.
    */
   const applyScraped = (res: ReceiptResult) => {
     const store = res.store || "";
@@ -189,19 +190,41 @@ export function ScanReceiptSheet({
     const total =
       (res.total && res.total > 0
         ? res.total
-        : items.reduce((sum, it) => sum + (it.price || 0), 0)) || 0;
+        : items.reduce((sum, item) => sum + (item.price || 0), 0)) || 0;
     if (total > 0) setCents(Math.round(total * 100));
     if (res.date) setDate(res.date);
     if (res.time) setTime(res.time);
+    if (res.paymentMethod) {
+      const payment = normalizePaymentMethod(res.paymentMethod);
+      if (payment.method) {
+        setPaymentMethod(payment.method);
+        setCardMode(payment.cardMode);
+      }
+    }
+
     if (items.length > 0) {
       setTitle(describePurchase(items, store, res.store ?? ""));
-      setNote(draftPurchase(store, items));
-      const detected = classifyPurchase(items, store).categoryId;
-      if (detected && detected !== "outros") applyCategory(detected);
     } else {
       setTitle((prev) => (prev.trim() ? prev : store || "Comprovante"));
     }
-    if (!categoryId) setCategoryId(defaultCategoryId());
+    setNote(
+      draftPurchase(store, items, {
+        paymentMethod: res.paymentMethod,
+        time: res.time,
+      }),
+    );
+
+    const fallbackCategory = classifyPurchase(items, store).categoryId;
+    const suggestedCategory =
+      res.categorySuggestion && res.categorySuggestion !== "outros"
+        ? res.categorySuggestion
+        : fallbackCategory;
+    if (suggestedCategory && suggestedCategory !== "outros") {
+      applyCategory(suggestedCategory);
+    } else if (!categoryId) {
+      setCategoryId(defaultCategoryId());
+    }
+
     setScanResultInfo(
       `Leitura por IA · ${store || "comprovante"} · ${items.length} ${
         items.length === 1 ? "item" : "itens"

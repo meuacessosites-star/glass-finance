@@ -2,9 +2,8 @@
 // Regras universais de preenchimento do Leitor de Notas (valem para o
 // scraping via QR/SEFAZ E para o fallback de OCR):
 //   1. Descrição: 3+ itens → categoria geral (Mercado/Farmácia/Restaurante);
-//      1–2 itens → quantidade x nome do produto ("1x Pimenta CH").
-//   2. Rascunho: "Estabelecimento: {nome}" no topo + lista
-//      "Quantidade x Nome - R$ Valor" de cada item.
+//      2 itens → quantidade x nome do primeiro produto; 1 item → somente nome.
+//   2. Rascunho: estabelecimento, forma de pagamento, hora e lista de itens.
 // Este módulo é puro (sem dependências de UI/backend) para poder rodar no
 // cliente e nas actions do Convex.
 // ---------------------------------------------------------------------------
@@ -71,28 +70,43 @@ export function classifyPurchase(
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Regra 1 — Descrição: 3+ itens → categoria geral; 1–2 itens → quantidade e
- * nome do PRIMEIRO produto; sem itens → o fallback (nome da loja / título). */
+/** Regra 1 — Descrição: 3+ itens → categoria geral; 2 itens → quantidade e
+ * nome do primeiro produto; 1 item → somente o nome. Sem itens, usa o fallback. */
 export function describePurchase(
   items: PurchaseItem[],
   storeName = "",
   fallback = "",
 ): string {
   if (items.length === 0) return fallback || storeName;
+  const firstItem = items[0];
+  if (items.length === 1) return firstItem.name.trim().slice(0, 60);
   if (items.length >= 3) return classifyPurchase(items, storeName).label;
-  const it = items[0];
-  const q = normalizeQtyLabel(it.qty);
-  return `${q ? q + " " : ""}${it.name}`.trim().slice(0, 60);
+  const quantity = normalizeQtyLabel(firstItem.qty);
+  return `${quantity ? quantity + " " : ""}${firstItem.name}`.trim().slice(0, 60);
 }
 
-/** Regra 2 — Rascunho: "Estabelecimento: {nome}" no topo e abaixo a lista
- * limpa "Quantidade x Nome - R$ Valor". */
-export function draftPurchase(storeName: string, items: PurchaseItem[]): string {
+type PurchaseDraftMeta = {
+  paymentMethod?: string;
+  time?: string;
+};
+
+/** Regra 2 — Rascunho: estabelecimento, forma de pagamento, hora e abaixo a
+ * lista limpa "Quantidade x Nome - R$ Valor". */
+export function draftPurchase(
+  storeName: string,
+  items: PurchaseItem[],
+  meta: PurchaseDraftMeta = {},
+): string {
   const lines: string[] = [];
   if (storeName.trim()) lines.push(`Estabelecimento: ${storeName.trim()}`);
-  for (const it of items.slice(0, 12)) {
-    const q = normalizeQtyLabel(it.qty);
-    lines.push(`${q ? q + " " : ""}${it.name} - ${brl(it.price)}`.trim());
+  if (meta.paymentMethod?.trim())
+    lines.push(`Forma de Pagamento: ${meta.paymentMethod.trim()}`);
+  if (meta.time?.trim()) lines.push(`Hora: ${meta.time.trim()}`);
+  for (const item of items.slice(0, 12)) {
+    const quantity = normalizeQtyLabel(item.qty);
+    lines.push(
+      `${quantity ? quantity + " " : ""}${item.name} - ${brl(item.price)}`.trim(),
+    );
   }
   if (!lines.length) return "";
   let out = lines.join("\n");

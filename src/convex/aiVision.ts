@@ -8,7 +8,8 @@ import { v } from "convex/values";
 //
 // O frontend envia uma imagem como data URL. Esta action remove o prefixo da
 // data URL, envia somente o base64 em `inline_data` e devolve um contrato
-// estável para a tela: { ok, store, date, time, total, items, error }.
+// estável para a tela: { ok, store, date, time, paymentMethod,
+// categorySuggestion, total, items, error }.
 //
 // Os nomes de modelos do Gemini mudam e alguns aliases são descontinuados.
 // Por isso, antes de gerar conteúdo, a action consulta `models.list` com a
@@ -24,6 +25,8 @@ export type ReceiptResult = {
   store?: string;
   date?: string; // yyyy-mm-dd (input date nativo)
   time?: string; // HH:MM
+  paymentMethod?: string;
+  categorySuggestion?: string;
   total?: number;
   items: ReceiptItem[];
   error?: string;
@@ -34,6 +37,9 @@ type GeminiReceipt = {
   estabelecimento?: string;
   valor_total?: number | string;
   data?: string;
+  hora?: string;
+  forma_pagamento?: string;
+  categoria_sugerida?: string;
   itens?: GeminiItem[];
 };
 
@@ -72,8 +78,11 @@ let modelCache: { expiresAt: number; models: string[] } | null = null;
 const RECEIPT_PROMPT = [
   "Analise esta imagem de comprovante, recibo ou nota fiscal brasileira.",
   "Extraia somente informações que estejam visíveis na imagem; não invente dados.",
+  "Identifique a hora da transação, se impressa, no formato HH:MM.",
+  "Identifique a forma de pagamento, se impressa, como Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto ou Transferência.",
+  "Classifique a compra em uma única categoria entre: Alimentação, Restaurantes, Café, Transporte, Moradia, Manutenção, Saúde, Academia, Lazer, Viagem, Pets, Compras, Presentes, Assinaturas, Educação, Salário, Freelance ou Outros.",
   "Retorne um único objeto JSON com exatamente esta estrutura:",
-  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
+  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "hora": "HH:MM ou vazio", "forma_pagamento": "Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência ou vazio", "categoria_sugerida": "Uma das categorias permitidas", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
   "Use números em valor_total e valor. Se um campo não puder ser identificado, use string vazia, 0 ou uma lista vazia conforme o tipo.",
 ].join(" ");
 
@@ -84,6 +93,9 @@ const RECEIPT_RESPONSE_SCHEMA = {
     estabelecimento: { type: "string" },
     valor_total: { type: "number" },
     data: { type: "string" },
+    hora: { type: "string" },
+    forma_pagamento: { type: "string" },
+    categoria_sugerida: { type: "string" },
     itens: {
       type: "array",
       items: {
@@ -97,7 +109,15 @@ const RECEIPT_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["estabelecimento", "valor_total", "data", "itens"],
+  required: [
+    "estabelecimento",
+    "valor_total",
+    "data",
+    "hora",
+    "forma_pagamento",
+    "categoria_sugerida",
+    "itens",
+  ],
 } as const;
 
 const stripMarkdown = (value: string) =>
@@ -138,6 +158,58 @@ function toIsoDate(raw: string): string {
   return "";
 }
 
+/** Extrai apenas uma hora válida para o campo nativo do formulário. */
+function toTime(raw: string): string {
+  const match = raw.trim().match(/\b([01]\d|2[0-3])[:h]([0-5]\d)\b/i);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
+const normalizeText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+/** Converte variações de pagamento em rótulos que a tela e o rascunho exibem. */
+function normalizePaymentMethod(raw: string): string {
+  const value = normalizeText(raw);
+  if (value.includes("pix")) return "Pix";
+  if (value.includes("dinheiro")) return "Dinheiro";
+  if (value.includes("boleto")) return "Boleto";
+  if (value.includes("transfer")) return "Transferência";
+  if (value.includes("credito")) return "Cartão de Crédito";
+  if (value.includes("debito")) return "Cartão de Débito";
+  if (value.includes("cartao") || value.includes("card")) return "Cartão";
+  return "";
+}
+
+/** Traduz o rótulo restrito do Gemini para o id de categoria do aplicativo. */
+function toCategoryId(raw: string): string {
+  const value = normalizeText(raw);
+  const categories: [RegExp, string][] = [
+    [/^restaurante/, "restaurantes"],
+    [/^alimentacao/, "alimentacao"],
+    [/^cafe/, "cafe"],
+    [/^transporte/, "transporte"],
+    [/^moradia/, "moradia"],
+    [/^manutencao/, "manutencao"],
+    [/^saude/, "saude"],
+    [/^academia/, "academia"],
+    [/^lazer/, "lazer"],
+    [/^viagem/, "viagem"],
+    [/^pets?$/, "pets"],
+    [/^compras?$/, "compras"],
+    [/^presentes?$/, "presentes"],
+    [/^assinaturas?$/, "assinaturas"],
+    [/^educacao/, "educacao"],
+    [/^salario/, "salario"],
+    [/^freelance/, "freelance"],
+    [/^outros?$/, "outros"],
+  ];
+  return categories.find(([pattern]) => pattern.test(value))?.[1] ?? "outros";
+}
+
 /** Normaliza o JSON devolvido pelo modelo na forma usada pela tela. */
 function normalizeGemini(text: string): ReceiptResult {
   try {
@@ -164,6 +236,10 @@ function normalizeGemini(text: string): ReceiptResult {
       ok: true,
       store: store || undefined,
       date: toIsoDate(String(parsed.data ?? "")) || undefined,
+      time: toTime(String(parsed.hora ?? "")) || undefined,
+      paymentMethod:
+        normalizePaymentMethod(String(parsed.forma_pagamento ?? "")) || undefined,
+      categorySuggestion: toCategoryId(String(parsed.categoria_sugerida ?? "")),
       total: total || undefined,
       items,
     };
