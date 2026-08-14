@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { Outlet, useNavigate } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
@@ -16,6 +16,7 @@ import { AppStoreProvider, useAppStore } from "@/lib/app-store";
  * On mobile it is edge-to-edge; on desktop it renders as a device bezel.
  */
 function DashboardShell() {
+  const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -56,6 +57,7 @@ function DashboardShell() {
             onManual={() => setManualOpen(true)}
             onScan={() => setScanOpen(true)}
             onVoice={() => setVoiceOpen(true)}
+            onLoan={() => navigate("/dashboard/emprestimos")}
           />
           <AddTransactionSheet
             open={manualOpen}

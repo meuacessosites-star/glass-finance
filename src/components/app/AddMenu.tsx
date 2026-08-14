@@ -55,6 +55,7 @@ export function AddMenu({
   onManual,
   onScan,
   onVoice,
+  onLoan,
 }: {
   open: boolean;
   onClose: () => void;
@@ -64,6 +65,8 @@ export function AddMenu({
   onScan?: () => void;
   /** Called when “Comando de Voz” is chosen — opens the voice command screen. */
   onVoice?: () => void;
+  /** Called when “Emprestar/Cartão” is chosen — opens the loans screen. */
+  onLoan?: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -84,6 +87,10 @@ export function AddMenu({
     }
     if (option.id === "voice") {
       onVoice?.();
+      return;
+    }
+    if (option.id === "loan") {
+      onLoan?.();
       return;
     }
     toast(`${option.label} chega em breve`, {
