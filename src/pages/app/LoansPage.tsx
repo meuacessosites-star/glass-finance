@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Banknote, CreditCard } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { useAppStore } from "@/lib/app-store";
 import {
   cardLoans,
   dayLabel,
@@ -38,7 +39,9 @@ function StatusPill({ status }: { status: "pago" | "pendente" }) {
   );
 }
 
-function LoanRow({ loan }: { loan: Loan }) {
+type LoanRowData = Loan & { dateLabel?: string };
+
+function LoanRow({ loan }: { loan: LoanRowData }) {
   const receiving = loan.direction === "receber";
   return (
     <div className="flex items-center gap-3.5 py-3">
@@ -53,7 +56,7 @@ function LoanRow({ loan }: { loan: Loan }) {
           {loan.name}
         </p>
         <p className="mt-0.5 text-[12.5px] text-glass-sub">
-          {dayLabel(loan.date)}
+          {loan.dateLabel ?? dayLabel(loan.date)}
         </p>
       </div>
       <div className="flex flex-col items-end gap-1.5">
@@ -147,8 +150,24 @@ function CardLoanRow({ loan }: { loan: CardLoan }) {
 
 export default function LoansPage() {
   const [tab, setTab] = useState<Tab>("dinheiro");
+  const { loanReceivables } = useAppStore();
 
-  const receivable = loans.filter((l) => l.direction === "receber");
+  const recordedReceivables: LoanRowData[] = loanReceivables.map((item) => ({
+    id: item.id,
+    name: item.contact,
+    amount: item.amount,
+    date: item.dueDate ?? item.createdAt,
+    status: "pendente",
+    direction: "receber",
+    dateLabel:
+      item.status === "open"
+        ? "Dívida em aberto"
+        : `Vence em ${shortDate(item.dueDate ?? item.createdAt)}`,
+  }));
+  const receivable = [
+    ...recordedReceivables,
+    ...loans.filter((l) => l.direction === "receber"),
+  ];
   const payable = loans.filter((l) => l.direction === "pagar");
   const pendingReceivable = receivable
     .filter((l) => l.status === "pendente")

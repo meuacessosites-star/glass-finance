@@ -36,11 +36,29 @@ export type AppCard = {
   color: string;
 };
 
+/** Devolução vinculada a um valor emprestado a terceiros. */
+export type LoanReceivable = {
+  id: string;
+  loanId: string;
+  contact: string;
+  amount: number;
+  /** Ausente apenas quando a cobrança foi criada como dívida em aberto. */
+  dueDate?: string;
+  status: "scheduled" | "open";
+  installment?: number;
+  installments?: number;
+  transactionId?: string;
+  description?: string;
+  paymentMethod?: string;
+  createdAt: string;
+};
+
 /** Data that belongs to a single profile — never shared between profiles. */
 export type ProfileData = {
   categories: AppCategory[];
   cards: AppCard[];
   transactions: Transaction[];
+  loanReceivables: LoanReceivable[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
@@ -83,16 +101,8 @@ function defaultData(): ProfileData {
     categories: seedCategories.map((c) => ({ ...c })),
     cards: DEFAULT_CARDS.map((c) => ({ ...c })),
     transactions: seedTransactions.map((t) => ({ ...t })),
+    loanReceivables: [],
     pin: null,
-  };
-}
-
-function cloneData(data: ProfileData): ProfileData {
-  return {
-    categories: data.categories.map((c) => ({ ...c })),
-    cards: data.cards.map((c) => ({ ...c })),
-    transactions: data.transactions.map((t) => ({ ...t })),
-    pin: data.pin,
   };
 }
 
@@ -159,6 +169,45 @@ function sanitizeCards(v: unknown): AppCard[] {
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
+}
+
+function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => {
+      const status = item.status === "open" ? "open" : "scheduled";
+      const dueDate =
+        typeof item.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate)
+          ? item.dueDate
+          : undefined;
+      return {
+        id: str(item.id, uid("receivable")),
+        loanId: str(item.loanId, uid("loan")),
+        contact: str(item.contact, "Contato"),
+        amount:
+          typeof item.amount === "number" && Number.isFinite(item.amount)
+            ? Math.max(0.01, item.amount)
+            : 0.01,
+        dueDate: status === "scheduled" ? dueDate : undefined,
+        status,
+        installment:
+          typeof item.installment === "number" && Number.isFinite(item.installment)
+            ? Math.max(1, Math.round(item.installment))
+            : undefined,
+        installments:
+          typeof item.installments === "number" && Number.isFinite(item.installments)
+            ? Math.max(1, Math.round(item.installments))
+            : undefined,
+        transactionId: typeof item.transactionId === "string" ? item.transactionId : undefined,
+        description: typeof item.description === "string" ? item.description.slice(0, 120) : undefined,
+        paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod.slice(0, 20) : undefined,
+        createdAt:
+          typeof item.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(item.createdAt)
+            ? item.createdAt.slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+      };
+    });
 }
 
 function sanitizeTransactions(v: unknown): Transaction[] {
@@ -317,6 +366,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
           categories: sanitizeCategories(nested.categories),
           cards: sanitizeCards(nested.cards),
           transactions: sanitizeTransactions(nested.transactions),
+          loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
           pin: pin4(nested.pin),
         },
       };
@@ -328,6 +378,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
         categories: sharedCategories.map((c) => ({ ...c })),
         cards: sharedCards.map((c) => ({ ...c })),
         transactions: seedTransactions.map((t) => ({ ...t })),
+        loanReceivables: [],
         pin:
           legacy && base.id === parsed.activeProfileId
             ? pin4(parsed.pin)
@@ -386,6 +437,7 @@ type AppStoreValue = {
   categories: AppCategory[];
   cards: AppCard[];
   transactions: Transaction[];
+  loanReceivables: LoanReceivable[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   /** Creates a category on the active profile and returns its id. */
@@ -410,6 +462,16 @@ type AppStoreValue = {
     paymentMethod?: string;
     cardId?: string;
     cardMode?: "credito" | "debito";
+  }) => void;
+  createLoanRecord: (data: {
+    contact: string;
+    description?: string;
+    amount: number;
+    date: string;
+    categoryId: string;
+    paymentMethod: string;
+    collectionMode: "fixed" | "open";
+    receivables?: { amount: number; dueDate: string; installment: number; installments: number }[];
   }) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
   updateProfile: (
@@ -446,8 +508,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const activeData = active?.data ?? {
       categories: [] as AppCategory[],
       cards: [] as AppCard[],
-      transactions: [] as Transaction[],
-      pin: null,
+        transactions: [] as Transaction[],
+        loanReceivables: [] as LoanReceivable[],
+        pin: null,
     };
 
     const categoryById: Record<string, AppCategory> = {};
@@ -470,6 +533,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       categories: activeData.categories,
       cards: activeData.cards,
       transactions: activeData.transactions,
+      loanReceivables: activeData.loanReceivables,
       pin: activeData.pin,
       categoryById,
       addCategory: (data) => {
@@ -507,6 +571,93 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           ...d,
           transactions: [{ id: uid("t"), ...data }, ...d.transactions],
         })),
+      createLoanRecord: (data) =>
+        patchActiveData((d) => {
+          const loanId = uid("loan");
+          const createdAt = new Date().toISOString().slice(0, 10);
+          const collectionLabel =
+            data.collectionMode === "fixed"
+              ? `${data.receivables?.length ?? 0} parcela(s) agendada(s)`
+              : "Dívida em aberto";
+          const originalNote = [
+            data.description?.trim() || undefined,
+            `Contato: ${data.contact}`,
+            `Cobrança: ${collectionLabel}`,
+            `Referência: ${loanId}`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+          const original = {
+            id: uid("t"),
+            title: `Emprestei para ${data.contact}`,
+            categoryId: data.categoryId,
+            amount: -Math.abs(data.amount),
+            date: data.date,
+            note: originalNote,
+            paymentMethod: data.paymentMethod,
+          };
+
+          if (data.collectionMode === "open") {
+            const openDebt: LoanReceivable = {
+              id: uid("receivable"),
+              loanId,
+              contact: data.contact,
+              amount: Math.abs(data.amount),
+              status: "open",
+              description: data.description?.trim() || undefined,
+              paymentMethod: data.paymentMethod,
+              createdAt,
+            };
+            return {
+              ...d,
+              transactions: [original, ...d.transactions],
+              loanReceivables: [openDebt, ...d.loanReceivables],
+            };
+          }
+
+          const scheduled = (data.receivables ?? []).map((item) => {
+            const transactionId = uid("t");
+            const receivable: LoanReceivable = {
+              id: uid("receivable"),
+              loanId,
+              contact: data.contact,
+              amount: Math.abs(item.amount),
+              dueDate: item.dueDate,
+              status: "scheduled",
+              installment: item.installment,
+              installments: item.installments,
+              transactionId,
+              description: data.description?.trim() || undefined,
+              paymentMethod: data.paymentMethod,
+              createdAt,
+            };
+            return { receivable, transaction: {
+              id: transactionId,
+              title: `Devolução de ${data.contact} · ${item.installment}/${item.installments}`,
+              categoryId: data.categoryId,
+              amount: Math.abs(item.amount),
+              date: item.dueDate,
+              note: [
+                data.description?.trim() || undefined,
+                `Conta a receber de ${data.contact}`,
+                `Parcela ${item.installment}/${item.installments}`,
+                `Referência: ${loanId}`,
+              ].filter(Boolean).join("\n"),
+              paymentMethod: data.paymentMethod,
+              recurrence: "parcelada" as const,
+              installments: item.installments,
+              currentInstallment: item.installment,
+            } };
+          });
+          return {
+            ...d,
+            transactions: [original, ...scheduled.map((item) => item.transaction), ...d.transactions],
+            loanReceivables: [
+              ...scheduled.map((item) => item.receivable),
+              ...d.loanReceivables,
+            ],
+          };
+        }),
       addProfile: (data) =>
         setState((s) => {
           const profile: AppProfile = {
