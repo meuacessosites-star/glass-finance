@@ -1,15 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
   Check,
+  Clock,
+  FileText,
+  ImagePlus,
+  Layers,
+  Minus,
+  Paperclip,
+  Plus,
+  Repeat,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { imageToDataUrl } from "@/lib/receipt-scan";
+import type { RecurrenceFrequency, RecurrenceMode } from "@/lib/mock-data";
 import { CategoryIcon } from "./CategoryIcon";
 import {
   PaymentMethodSelector,
@@ -27,8 +37,81 @@ const INCOME_IDS = new Set(["salario", "freelance"]);
 
 type TxType = "expense" | "income";
 
+/** An attachment picked in the form: a data URL plus display metadata. */
+type PickedAttachment = {
+  src: string;
+  isImage: boolean;
+  name: string;
+};
+
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
+
+const RECURRENCE_OPTIONS: {
+  id: RecurrenceMode;
+  label: string;
+  desc: string;
+}[] = [
+  { id: "unica", label: "Única", desc: "Acontece uma vez" },
+  { id: "recorrente", label: "Recorrente", desc: "Se repete todo mês/semana/ano" },
+  { id: "parcelada", label: "Parcelada", desc: "Dividida em N parcelas" },
+];
+
+const FREQUENCIES: { id: RecurrenceFrequency; label: string }[] = [
+  { id: "mensal", label: "Mensal" },
+  { id: "semanal", label: "Semanal" },
+  { id: "anual", label: "Anual" },
+];
+
+/** Reads any file into a raw data URL (used for non-image attachments). */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read-failed"));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
+}
+
+function Stepper({
+  value,
+  onChange,
+  min,
+  max,
+  suffix,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  suffix: string;
+}) {
+  return (
+    <div className="glass glass-soft flex items-center justify-between rounded-2xl px-2 py-2">
+      <button
+        type="button"
+        aria-label="Diminuir"
+        disabled={value <= min}
+        onClick={() => onChange(Math.max(min, value - 1))}
+        className="flex size-8 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
+      >
+        <Minus className="size-4" strokeWidth={2.6} />
+      </button>
+      <p className="text-[14px] font-bold text-glass-ink">
+        {value} {suffix}
+      </p>
+      <button
+        type="button"
+        aria-label="Aumentar"
+        disabled={value >= max}
+        onClick={() => onChange(Math.min(max, value + 1))}
+        className="flex size-8 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
+      >
+        <Plus className="size-4" strokeWidth={2.6} />
+      </button>
+    </div>
+  );
+}
 
 export function AddTransactionSheet({
   open,
@@ -43,9 +126,17 @@ export function AddTransactionSheet({
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState("");
+  const [note, setNote] = useState("");
+  const [attachments, setAttachments] = useState<PickedAttachment[]>([]);
+  const [recurrence, setRecurrence] = useState<RecurrenceMode>("unica");
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
+  const [installments, setInstallments] = useState(2);
+  const [currentInstallment, setCurrentInstallment] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fresh form every time the sheet opens.
   useEffect(() => {
@@ -54,6 +145,13 @@ export function AddTransactionSheet({
     setCents(0);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
+    setTime("");
+    setNote("");
+    setAttachments([]);
+    setRecurrence("unica");
+    setFrequency("mensal");
+    setInstallments(2);
+    setCurrentInstallment(1);
     setPaymentMethod("");
     setCardMode("");
     setCardId(null);
@@ -86,6 +184,45 @@ export function AddTransactionSheet({
 
   const canSave = cents > 0 && title.trim().length > 0 && !!categoryId;
 
+  const handleFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const room = 6 - attachments.length;
+    const picked = Array.from(files).slice(0, Math.max(0, room));
+    if (picked.length === 0) {
+      toast("Limite de 6 anexos por transação");
+      return;
+    }
+    for (const file of picked) {
+      if (file.size > 3_000_000) {
+        toast(`"${file.name}" é grande demais`, {
+          description: "O limite é de 3 MB por arquivo.",
+        });
+        continue;
+      }
+      try {
+        if (file.type.startsWith("image/")) {
+          const src = await imageToDataUrl(file, 1000, 0.82);
+          setAttachments((prev) => [
+            ...prev,
+            { src, isImage: true, name: file.name },
+          ]);
+        } else {
+          const src = await fileToDataUrl(file);
+          setAttachments((prev) => [
+            ...prev,
+            { src, isImage: false, name: file.name },
+          ]);
+        }
+      } catch {
+        toast(`Não foi possível ler "${file.name}"`);
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (index: number) =>
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+
   const handleSave = () => {
     if (!canSave) return;
     addTransaction({
@@ -93,6 +230,16 @@ export function AddTransactionSheet({
       categoryId,
       amount: type === "expense" ? -cents / 100 : cents / 100,
       date,
+      time: time || undefined,
+      note: note.trim() || undefined,
+      attachments: attachments.length
+        ? attachments.map((a) => a.src)
+        : undefined,
+      recurrence: recurrence === "unica" ? undefined : recurrence,
+      frequency: recurrence === "recorrente" ? frequency : undefined,
+      installments: recurrence === "parcelada" ? installments : undefined,
+      currentInstallment:
+        recurrence === "parcelada" ? currentInstallment : undefined,
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
@@ -251,6 +398,118 @@ export function AddTransactionSheet({
               </div>
             </div>
 
+            {/* Repetition */}
+            <div className="mt-6">
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                Repetição
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {RECURRENCE_OPTIONS.map((option) => {
+                  const active = recurrence === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setRecurrence(option.id);
+                        if (option.id === "parcelada") {
+                          setCurrentInstallment(1);
+                        }
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition-all active:scale-[0.99]",
+                        active
+                          ? "bg-primary/10 ring-2 ring-primary/40"
+                          : "glass glass-soft hover:bg-white/60",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-9 shrink-0 items-center justify-center rounded-xl",
+                          active ? "bg-primary text-white" : "bg-black/5 text-glass-sub",
+                        )}
+                      >
+                        {option.id === "recorrente" ? (
+                          <Repeat className="size-[17px]" strokeWidth={2.3} />
+                        ) : option.id === "parcelada" ? (
+                          <Layers className="size-[17px]" strokeWidth={2.3} />
+                        ) : (
+                          <Check className="size-[17px]" strokeWidth={2.6} />
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            "block text-[14px] font-semibold",
+                            active ? "text-primary" : "text-glass-ink",
+                          )}
+                        >
+                          {option.label}
+                        </span>
+                        <span className="block text-[12px] text-glass-sub">
+                          {option.desc}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Recorrente: frequency */}
+              {recurrence === "recorrente" && (
+                <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-black/5 p-1">
+                  {FREQUENCIES.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFrequency(f.id)}
+                      className={cn(
+                        "rounded-xl py-2 text-[13px] font-semibold transition-all",
+                        frequency === f.id
+                          ? "bg-white shadow-sm text-glass-ink"
+                          : "text-glass-sub",
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Parcelada: total + current installment */}
+              {recurrence === "parcelada" && (
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  <div>
+                    <p className="mb-1.5 text-[12px] font-semibold text-glass-sub">
+                      Parcelas
+                    </p>
+                    <Stepper
+                      value={installments}
+                      onChange={(v) => {
+                        setInstallments(v);
+                        setCurrentInstallment((c) => Math.min(c, v));
+                      }}
+                      min={2}
+                      max={24}
+                      suffix={installments === 1 ? "parcela" : "parcelas"}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-[12px] font-semibold text-glass-sub">
+                      Parcela atual
+                    </p>
+                    <Stepper
+                      value={currentInstallment}
+                      onChange={setCurrentInstallment}
+                      min={1}
+                      max={installments}
+                      suffix={`de ${installments}`}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Payment method */}
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
@@ -274,21 +533,137 @@ export function AddTransactionSheet({
               />
             </div>
 
-            {/* Date */}
+            {/* Date + optional time */}
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                  Data
+                </p>
+                <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
+                  <CalendarDays className="size-4 shrink-0 text-glass-sub" />
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                </label>
+              </div>
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                  Hora{" "}
+                  <span className="normal-case text-glass-faint">(opcional)</span>
+                </p>
+                <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
+                  <Clock className="size-4 shrink-0 text-glass-sub" />
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Attachments */}
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                Data
+                Anexos{" "}
+                <span className="normal-case text-glass-faint">
+                  (imagens ou arquivos)
+                </span>
               </p>
-              <label className="glass glass-soft mt-2 flex w-full items-center gap-3 rounded-2xl px-4 py-3">
-                <CalendarDays className="size-4 shrink-0 text-glass-sub" />
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
-                  className="w-full bg-transparent text-[15px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                />
-              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                multiple
+                onChange={(e) => handleFiles(e.target.files)}
+                className="hidden"
+              />
+              <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5">
+                {attachments.map((att, i) =>
+                  att.isImage ? (
+                    <div
+                      key={i}
+                      className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl"
+                    >
+                      <img
+                        src={att.src}
+                        alt={att.name}
+                        className="size-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remover ${att.name}`}
+                        onClick={() => removeAttachment(i)}
+                        className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-transform active:scale-90"
+                      >
+                        <X className="size-3" strokeWidth={3} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      key={i}
+                      className="glass glass-soft flex h-[68px] w-[150px] shrink-0 flex-col justify-center rounded-2xl px-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#2F6BFF]/15 text-[#2F6BFF]">
+                          <FileText className="size-4" strokeWidth={2.3} />
+                        </span>
+                        <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-glass-ink">
+                          {att.name}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={`Remover ${att.name}`}
+                          onClick={() => removeAttachment(i)}
+                          className="shrink-0 text-glass-sub transition-colors hover:text-[#FF3B30]"
+                        >
+                          <X className="size-4" strokeWidth={2.6} />
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
+                {attachments.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="glass flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl text-glass-sub transition-all hover:bg-white/60 active:scale-95"
+                  >
+                    <ImagePlus className="size-5" strokeWidth={2.2} />
+                    <span className="text-[10px] font-semibold">Anexar</span>
+                  </button>
+                )}
+              </div>
+              {attachments.length > 0 && (
+                <p className="mt-1.5 flex items-center gap-1 text-[11.5px] text-glass-faint">
+                  <Paperclip className="size-3" /> {attachments.length} de 6
+                  anexos
+                </p>
+              )}
+            </div>
+
+            {/* Draft */}
+            <div className="mt-6">
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                Rascunho{" "}
+                <span className="normal-case text-glass-faint">(opcional)</span>
+              </p>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Anotações, observações, itens da compra…"
+                maxLength={300}
+                rows={3}
+                className={cn(
+                  inputClass,
+                  "mt-2 min-h-[84px] resize-none leading-relaxed",
+                )}
+              />
             </div>
           </div>
 

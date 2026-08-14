@@ -1,6 +1,11 @@
 import { useState } from "react";
-import { Paperclip } from "lucide-react";
-import { formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
+import { Layers, Paperclip, Repeat } from "lucide-react";
+import {
+  FREQUENCY_LABELS,
+  formatCurrency,
+  shortDate,
+  type Transaction,
+} from "@/lib/mock-data";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
@@ -42,6 +47,18 @@ export function TransactionRow({
               <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
                 <Paperclip className="size-2.5" strokeWidth={2.6} />
                 {transaction.attachments!.length}
+              </span>
+            )}
+            {transaction.recurrence === "recorrente" && (
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
+                <Repeat className="size-2.5" strokeWidth={2.6} />
+                {FREQUENCY_LABELS[transaction.frequency ?? "mensal"]}
+              </span>
+            )}
+            {transaction.recurrence === "parcelada" && (
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
+                <Layers className="size-2.5" strokeWidth={2.6} />
+                {transaction.currentInstallment ?? 1}/{transaction.installments ?? 2}
               </span>
             )}
           </p>

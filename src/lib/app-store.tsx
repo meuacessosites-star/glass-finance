@@ -165,7 +165,43 @@ function sanitizeTransactions(v: unknown): Transaction[] {
   if (!Array.isArray(v)) return seedTransactions.map((t) => ({ ...t }));
   const list = v
     .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
-    .map((t) => ({
+    .map((t) => {
+      const recurrenceRaw =
+        typeof t.recurrence === "string" ? t.recurrence : "";
+      const recurrence: Transaction["recurrence"] =
+        recurrenceRaw === "recorrente" ||
+        recurrenceRaw === "parcelada" ||
+        recurrenceRaw === "unica"
+          ? recurrenceRaw
+          : undefined;
+      const frequencyRaw =
+        typeof t.frequency === "string" ? t.frequency : "";
+      const frequency: Transaction["frequency"] =
+        frequencyRaw === "mensal" ||
+        frequencyRaw === "semanal" ||
+        frequencyRaw === "anual"
+          ? frequencyRaw
+          : recurrence === "recorrente"
+            ? "mensal"
+            : undefined;
+      const installments =
+        recurrence === "parcelada" &&
+        typeof t.installments === "number" &&
+        Number.isFinite(t.installments)
+          ? Math.min(48, Math.max(2, Math.round(t.installments)))
+          : undefined;
+      const currentInstallment =
+        recurrence === "parcelada" &&
+        typeof t.currentInstallment === "number" &&
+        Number.isFinite(t.currentInstallment)
+          ? Math.min(
+              typeof t.installments === "number" && t.installments > 0
+                ? t.installments
+                : 48,
+              Math.max(1, Math.round(t.currentInstallment)),
+            )
+          : undefined;
+      return {
       id: str(t.id, uid("t")),
       title: str(t.title, "Transação"),
       categoryId: str(t.categoryId, "outros"),
@@ -189,10 +225,16 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         ? t.attachments
             .filter(
               (a): a is string =>
-                typeof a === "string" && a.startsWith("data:image"),
+                typeof a === "string" &&
+                a.startsWith("data:") &&
+                a.length < 3_000_000,
             )
             .slice(0, 6)
         : undefined,
+      recurrence,
+      frequency,
+      installments,
+      currentInstallment,
       paymentMethod:
         typeof t.paymentMethod === "string" && t.paymentMethod.trim()
           ? t.paymentMethod.trim().slice(0, 20)
@@ -207,7 +249,8 @@ function sanitizeTransactions(v: unknown): Transaction[] {
           : t.paymentMethod === "credito" || t.paymentMethod === "debito"
             ? t.paymentMethod
             : undefined,
-    }))
+      };
+    })
     .filter((t) => t.amount !== 0);
   return list.length > 0 ? list : seedTransactions.map((t) => ({ ...t }));
 }
@@ -351,6 +394,10 @@ type AppStoreValue = {
     time?: string;
     note?: string;
     attachments?: string[];
+    recurrence?: "unica" | "recorrente" | "parcelada";
+    frequency?: "mensal" | "semanal" | "anual";
+    installments?: number;
+    currentInstallment?: number;
     paymentMethod?: string;
     cardId?: string;
     cardMode?: "credito" | "debito";

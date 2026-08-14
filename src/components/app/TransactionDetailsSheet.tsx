@@ -1,9 +1,24 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { CalendarDays, Clock, CreditCard, FileText, ImageIcon, X } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  CreditCard,
+  FileText,
+  ImageIcon,
+  Layers,
+  Repeat,
+  X,
+} from "lucide-react";
 import { useAppStore } from "@/lib/app-store";
-import { dayLabel, formatCurrency, shortDate, type Transaction } from "@/lib/mock-data";
+import {
+  dayLabel,
+  formatCurrency,
+  recurrenceLabel,
+  shortDate,
+  type Transaction,
+} from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import {
@@ -148,6 +163,18 @@ export function TransactionDetailsSheet({
                   </p>
                 </div>
               )}
+              {recurrenceLabel(transaction) && (
+                <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
+                  {transaction.recurrence === "parcelada" ? (
+                    <Layers className="size-4 shrink-0 text-glass-sub" />
+                  ) : (
+                    <Repeat className="size-4 shrink-0 text-glass-sub" />
+                  )}
+                  <p className="text-[13px] font-medium text-glass-ink">
+                    {recurrenceLabel(transaction)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Draft / notes */}
@@ -169,21 +196,35 @@ export function TransactionDetailsSheet({
                   Anexos
                 </p>
                 <div className="grid grid-cols-3 gap-2">
-                  {attachments.map((src, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      aria-label={`Ver anexo ${i + 1}`}
-                      onClick={() => setLightbox(src)}
-                      className="group relative aspect-square overflow-hidden rounded-2xl transition-transform active:scale-95"
-                    >
-                      <img
-                        src={src}
-                        alt={`Anexo ${i + 1}`}
-                        className="size-full object-cover"
-                      />
-                    </button>
-                  ))}
+                  {attachments.map((src, i) =>
+                    src.startsWith("data:image") ? (
+                      <button
+                        key={i}
+                        type="button"
+                        aria-label={`Ver anexo ${i + 1}`}
+                        onClick={() => setLightbox(src)}
+                        className="group relative aspect-square overflow-hidden rounded-2xl transition-transform active:scale-95"
+                      >
+                        <img
+                          src={src}
+                          alt={`Anexo ${i + 1}`}
+                          className="size-full object-cover"
+                        />
+                      </button>
+                    ) : (
+                      <a
+                        key={i}
+                        href={src}
+                        download={`anexo-${i + 1}`}
+                        className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-2xl bg-white/40 px-2 text-center transition-transform active:scale-95"
+                      >
+                        <FileText className="size-5 shrink-0 text-[#2F6BFF]" />
+                        <span className="truncate text-[10.5px] font-semibold leading-tight text-glass-sub">
+                          Arquivo
+                        </span>
+                      </a>
+                    ),
+                  )}
                 </div>
               </div>
             )}

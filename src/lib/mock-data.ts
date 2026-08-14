@@ -27,6 +27,19 @@ export const categoryById = Object.fromEntries(
   categories.map((c) => [c.id, c]),
 ) as Record<string, Category>;
 
+/** Repetição da transação: única, recorrente (todo mês/semana/ano) ou
+ * parcelada (dividida em N parcelas). */
+export type RecurrenceMode = "unica" | "recorrente" | "parcelada";
+
+/** Frequência usada quando recurrence === "recorrente". */
+export type RecurrenceFrequency = "mensal" | "semanal" | "anual";
+
+export const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
+  mensal: "Mensal",
+  semanal: "Semanal",
+  anual: "Anual",
+};
+
 export type Transaction = {
   id: string;
   title: string;
@@ -35,7 +48,15 @@ export type Transaction = {
   date: string; // ISO yyyy-mm-dd
   time?: string; // HH:MM — set when scanned from a receipt
   note?: string; // free text (draft / observations)
-  attachments?: string[]; // receipt photos (data URLs)
+  attachments?: string[]; // photos / files attached (data URLs)
+  /** Repetição: undefined = única. */
+  recurrence?: RecurrenceMode;
+  /** Frequência quando recurrence === "recorrente". */
+  frequency?: RecurrenceFrequency;
+  /** Total de parcelas quando recurrence === "parcelada". */
+  installments?: number;
+  /** Parcela atual (1-based) quando recurrence === "parcelada". */
+  currentInstallment?: number;
   /** Payment method id: pix | dinheiro | cartao | boleto | transferencia */
   paymentMethod?: string;
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
@@ -43,6 +64,17 @@ export type Transaction = {
   /** When paymentMethod is "cartao": "credito" | "debito". */
   cardMode?: string;
 };
+
+/** Short human label for the transaction's recurrence, or null when única. */
+export function recurrenceLabel(t: Transaction): string | null {
+  if (t.recurrence === "recorrente") {
+    return `Recorrente · ${FREQUENCY_LABELS[t.frequency ?? "mensal"]}`;
+  }
+  if (t.recurrence === "parcelada") {
+    return `Parcelado · ${t.currentInstallment ?? 1}/${t.installments ?? 2}`;
+  }
+  return null;
+}
 
 export const transactions: Transaction[] = [
   // ---- Agosto de 2026 ----
