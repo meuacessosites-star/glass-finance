@@ -860,8 +860,11 @@ export function AddTransactionSheet({
                     )}
                   </label>
 
-                  {/* Lista vertical filtrada em tempo real */}
-                  <div className="no-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto">
+                  {/* Lista vertical filtrada em tempo real — o padding horizontal
+                      dá respiro ao anel azul do item ativo para ele renderizar
+                      com os cantos arredondados na direita, sem ser cortado pelo
+                      overflow do contêiner. */}
+                  <div className="no-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto px-1">
                     {filteredCategories.length === 0 ? (
                       <div className="flex flex-col items-center gap-2 py-10 text-center">
                         <div className="flex size-12 items-center justify-center rounded-2xl bg-glass-ink/10">
