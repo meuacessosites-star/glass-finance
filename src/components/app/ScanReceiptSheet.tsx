@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Camera,
   Check,
@@ -81,7 +81,6 @@ export function ScanReceiptSheet({
   // Pré-preenchimento do formulário unificado (AddTransactionSheet) com o
   // resultado da IA — ou vazio quando o usuário escolhe preencher manualmente.
   const [prefill, setPrefill] = useState<TransactionFormValues | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
@@ -126,7 +125,6 @@ export function ScanReceiptSheet({
     setScanMsgIndex(0);
     setScanError("");
     setPrefill(null);
-    setFormOpen(false);
     sourceFileRef.current = null;
 
     return () => clearScanTimers();
@@ -296,13 +294,11 @@ export function ScanReceiptSheet({
     cardId: null,
   }) satisfies TransactionFormValues;
 
-  /** Abre o formulário unificado pré-preenchido (resultado da IA ou vazio).
-   * A troca explícita para review desmonta a view de sucesso do scanner antes
-   * de exibir o formulário, evitando que ela permaneça sobreposta a ele. */
+  /** Atualiza o formulário unificado já montado com o pré-preenchimento.
+   * A mudança para review alterna somente a visibilidade entre as duas views. */
   const openReviewForm = (values: TransactionFormValues) => {
     setPrefill(values);
     setStep("review");
-    setFormOpen(true);
   };
 
   /**
@@ -473,33 +469,25 @@ export function ScanReceiptSheet({
     });
   };
 
-  /** O formulário fechou (salvou ou descartou). Aqui só fechamos o formulário:
-   * o scanner inteiro só é fechado em `onExitComplete` — depois que a
-   * animação de saída do formulário terminou e o nó saiu do DOM. Assim os dois
-   * AnimatePresence (formulário + scanner) nunca desmontam árvores aninhadas
-   * ao mesmo tempo, o que disparava o erro de "removeChild". */
+  /** Fecha a revisão e o sheet pai sem desmontar seletivamente o scanner.
+   * As duas views continuam montadas; apenas recebem a classe `hidden`. */
   const handleReviewClose = () => {
-    setFormOpen(false);
+    setStep("source");
+    setPrefill(null);
+    onClose();
   };
 
   return (
     <div className="contents">
-      {/* ---------------- SCANNER (source + leitura animada) ----------------
-          O formulário unificado de revisão NÃO é filho deste sheet: ele é
-          renderizado como IRMÃO do AnimatePresence do scanner (lá embaixo).
-          Assim as duas árvores de saída do framer-motion nunca desmontam o
-          mesmo nó do DOM — eliminando o erro de "removeChild" na troca de
-          Loading → Formulário. Cada estado fica isolado em um <div key=…>. */}
-      <AnimatePresence>
-        {open && step !== "review" && (
-          <motion.div
-            key="view-scanner-shell"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 330 }}
-            className="glass glass-strong absolute inset-0 z-[56] flex flex-col"
-          >
+      {/* Scanner e revisão ficam sempre montados. A troca por `hidden` evita
+          que o React/Radix remova uma árvore enquanto a outra é exibida. */}
+      <div className={open && step !== "review" ? "block" : "hidden"}>
+        <motion.div
+          initial={false}
+          animate={{ y: open && step !== "review" ? 0 : "100%" }}
+          transition={{ type: "spring", damping: 30, stiffness: 330 }}
+          className="glass glass-strong absolute inset-0 z-[56] flex flex-col"
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <div>
@@ -712,24 +700,20 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </motion.div>
+      </div>
 
-      {/* ---------------- REVISÃO UNIFICADA ----------------
-          IRMÃO do sheet do scanner — nunca aninhado dentro do motion.div do
-          scanner. A revisão é EXATAMENTE o formulário completo do "Adicionar
-          Manual" (abas, categoria, pagamento, repetição, data, hora, anexos
-          e rascunho). A IA apenas pré-preenche via `initial`; o botão final é
-          o mesmo "Adicionar despesa/receita". Todas as props obrigatórias
-          (open, onClose, onExitComplete, initial) são passadas. */}
-      <AddTransactionSheet
-        key="view-form"
-        open={formOpen}
-        onClose={handleReviewClose}
-        onExitComplete={() => onClose()}
-        initial={prefill}
-      />
+      {/* A revisão também permanece montada desde a abertura do scanner.
+          `initial` começa nulo e o formulário aplica seus próprios defaults
+          seguros até a IA fornecer um pré-preenchimento válido. */}
+      <div className={open && step === "review" ? "block" : "hidden"}>
+        <AddTransactionSheet
+          key="view-form"
+          open={true}
+          onClose={handleReviewClose}
+          initial={prefill ?? null}
+        />
+      </div>
     </div>
   );
 }
