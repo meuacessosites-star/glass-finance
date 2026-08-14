@@ -3,7 +3,7 @@
 // scraping via QR/SEFAZ E para o fallback de OCR):
 //   1. Descrição: 3+ itens → categoria geral (Mercado/Farmácia/Restaurante);
 //      2 itens → quantidade x nome do primeiro produto; 1 item → somente nome.
-//   2. Rascunho: estabelecimento, forma de pagamento, hora e lista de itens.
+//   2. Rascunho: somente a lista limpa dos itens comprados.
 // Este módulo é puro (sem dependências de UI/backend) para poder rodar no
 // cliente e nas actions do Convex.
 // ---------------------------------------------------------------------------
@@ -85,23 +85,10 @@ export function describePurchase(
   return `${quantity ? quantity + " " : ""}${firstItem.name}`.trim().slice(0, 60);
 }
 
-type PurchaseDraftMeta = {
-  paymentMethod?: string;
-  time?: string;
-};
-
-/** Regra 2 — Rascunho: estabelecimento, forma de pagamento, hora e abaixo a
- * lista limpa "Quantidade x Nome - R$ Valor". */
-export function draftPurchase(
-  storeName: string,
-  items: PurchaseItem[],
-  meta: PurchaseDraftMeta = {},
-): string {
+/** Regra 2 — Rascunho: somente a lista limpa "Quantidade x Nome - R$ Valor".
+ * Dados do comprovante pertencem aos campos próprios do formulário, não à nota. */
+export function draftPurchase(items: PurchaseItem[]): string {
   const lines: string[] = [];
-  if (storeName.trim()) lines.push(`Estabelecimento: ${storeName.trim()}`);
-  if (meta.paymentMethod?.trim())
-    lines.push(`Forma de Pagamento: ${meta.paymentMethod.trim()}`);
-  if (meta.time?.trim()) lines.push(`Hora: ${meta.time.trim()}`);
   for (const item of items.slice(0, 12)) {
     const quantity = normalizeQtyLabel(item.qty);
     lines.push(

@@ -41,12 +41,10 @@ import {
 //   Aceita QUALQUER imagem: nota fiscal com ou sem QR, recibo simples etc.
 //   1. Foto recebida → conversão imediata para base64 (sem validação de QR);
 //   2. Status fixo: "Analisando a inteligência do comprovante…";
-//   3. O base64 vai DIRETO para a action extractReceipt (Gemini, modelo
-//      gemini-1.5-pro-latest), que devolve o JSON { estabelecimento,
-//      valor_total, data, itens };
-//   4. Regras condicionais: 3+ itens → Descrição com categoria (Mercado/
-//      Farmácia/Restaurante); 1–2 itens → "qtd x Produto"; Rascunho →
-//      "Estabelecimento: {loja}" + lista limpa dos itens.
+//   3. O base64 vai DIRETO para a action extractReceipt (Gemini), que devolve
+//      campos estruturados de valor, tipo, título, categoria e itens;
+//   4. O tipo receita/despesa aciona o comportamento existente da tela; o
+//      rascunho de despesas contém apenas os itens e receitas ficam sem itens.
 //   5. Erro final só se o Gemini falhar ou a imagem for ilegível.
 // ---------------------------------------------------------------------------
 
@@ -179,14 +177,15 @@ export function ScanReceiptSheet({
   };
 
   /**
-   * Preenche o formulário com os dados estruturados devolvidos pelo Gemini.
-   * A categoria indicada pela IA tem prioridade; palavras-chave locais só são
-   * usadas como contingência. A descrição de item único preserva somente o
-   * nome do item e o rascunho inclui pagamento e hora quando identificados.
+   * Preenche o formulário a partir do contrato estruturado do Gemini. O tipo
+   * seleciona a apresentação já existente de receita/despesa; o título da IA
+   * é usado diretamente e regras locais servem apenas como contingência.
    */
   const applyScraped = (res: ReceiptResult) => {
     const store = res.store || "";
     const items = res.items;
+    const scannedType = res.transactionType ?? "expense";
+    const effectiveType = typeTouchedRef.current ? type : scannedType;
     const total =
       (res.total && res.total > 0
         ? res.total
@@ -194,6 +193,7 @@ export function ScanReceiptSheet({
     if (total > 0) setCents(Math.round(total * 100));
     if (res.date) setDate(res.date);
     if (res.time) setTime(res.time);
+    if (!typeTouchedRef.current) setType(effectiveType);
     if (res.paymentMethod) {
       const payment = normalizePaymentMethod(res.paymentMethod);
       if (payment.method) {
@@ -202,23 +202,32 @@ export function ScanReceiptSheet({
       }
     }
 
-    if (items.length > 0) {
-      setTitle(describePurchase(items, store, res.store ?? ""));
-    } else {
-      setTitle((prev) => (prev.trim() ? prev : store || "Comprovante"));
-    }
-    setNote(
-      draftPurchase(store, items, {
-        paymentMethod: res.paymentMethod,
-        time: res.time,
-      }),
-    );
+    const fallbackTitle =
+      effectiveType === "income"
+        ? store
+          ? `Pix recebido de ${store}`
+          : "Receita recebida"
+        : items.length > 0
+          ? describePurchase(items, store, res.store ?? "")
+          : store || "Comprovante";
+    setTitle(res.suggestedTitle || fallbackTitle);
 
-    const fallbackCategory = classifyPurchase(items, store).categoryId;
+    // Despesas recebem somente os itens comprados. Para receitas, não há itens
+    // adquiridos a registrar no rascunho.
+    setNote(effectiveType === "income" ? "" : draftPurchase(items));
+
+    const fallbackCategory =
+      effectiveType === "income"
+        ? "freelance"
+        : classifyPurchase(items, store).categoryId;
     const suggestedCategory =
-      res.categorySuggestion && res.categorySuggestion !== "outros"
-        ? res.categorySuggestion
-        : fallbackCategory;
+      effectiveType === "income"
+        ? INCOME_IDS.has(res.categorySuggestion ?? "")
+          ? res.categorySuggestion
+          : fallbackCategory
+        : res.categorySuggestion && res.categorySuggestion !== "outros"
+          ? res.categorySuggestion
+          : fallbackCategory;
     if (suggestedCategory && suggestedCategory !== "outros") {
       applyCategory(suggestedCategory);
     } else if (!categoryId) {

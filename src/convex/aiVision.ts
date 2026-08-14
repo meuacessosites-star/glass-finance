@@ -9,7 +9,7 @@ import { v } from "convex/values";
 // O frontend envia uma imagem como data URL. Esta action remove o prefixo da
 // data URL, envia somente o base64 em `inline_data` e devolve um contrato
 // estável para a tela: { ok, store, date, time, paymentMethod,
-// categorySuggestion, total, items, error }.
+// categorySuggestion, transactionType, suggestedTitle, total, items, error }.
 //
 // Os nomes de modelos do Gemini mudam e alguns aliases são descontinuados.
 // Por isso, antes de gerar conteúdo, a action consulta `models.list` com a
@@ -27,6 +27,8 @@ export type ReceiptResult = {
   time?: string; // HH:MM
   paymentMethod?: string;
   categorySuggestion?: string;
+  transactionType?: "income" | "expense";
+  suggestedTitle?: string;
   total?: number;
   items: ReceiptItem[];
   error?: string;
@@ -40,6 +42,8 @@ type GeminiReceipt = {
   hora?: string;
   forma_pagamento?: string;
   categoria_sugerida?: string;
+  tipo_transacao?: string;
+  titulo_sugerido?: string;
   itens?: GeminiItem[];
 };
 
@@ -78,11 +82,13 @@ let modelCache: { expiresAt: number; models: string[] } | null = null;
 const RECEIPT_PROMPT = [
   "Analise esta imagem de comprovante, recibo ou nota fiscal brasileira.",
   "Extraia somente informações que estejam visíveis na imagem; não invente dados.",
+  "Defina tipo_transacao como receita somente se o documento comprovar depósito, Pix recebido, crédito em conta ou transferência recebida a favor do usuário. Toda compra, pagamento, débito, Pix enviado ou nota fiscal é despesa.",
   "Identifique a hora da transação, se impressa, no formato HH:MM.",
-  "Identifique a forma de pagamento, se impressa, como Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto ou Transferência.",
-  "Classifique a compra em uma única categoria entre: Alimentação, Restaurantes, Café, Transporte, Moradia, Manutenção, Saúde, Academia, Lazer, Viagem, Pets, Compras, Presentes, Assinaturas, Educação, Salário, Freelance ou Outros.",
+  "Procure ATIVAMENTE a forma de pagamento em todo o comprovante, inclusive entrelinhas, cabeçalhos e rodapés de notas sem QR Code. Identifique Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto ou Transferência somente quando houver evidência impressa.",
+  "Classifique a transação em uma única categoria entre: Alimentação, Restaurantes, Café, Transporte, Moradia, Manutenção, Saúde, Academia, Lazer, Viagem, Pets, Compras, Presentes, Assinaturas, Educação, Salário, Freelance ou Outros. Para receita, use Salário quando aplicável e Freelance para Pix, depósito ou transferência recebida sem vínculo salarial identificado.",
+  "Monte titulo_sugerido assim: para receita, 'Pix recebido de [Nome do Pagador ou Empresa]'; para despesa com um item, use o nome do produto; para despesa com vários itens, use 'Compra em [Nome do Estabelecimento]'.",
   "Retorne um único objeto JSON com exatamente esta estrutura:",
-  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "hora": "HH:MM ou vazio", "forma_pagamento": "Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência ou vazio", "categoria_sugerida": "Uma das categorias permitidas", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
+  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "hora": "HH:MM ou vazio", "forma_pagamento": "Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência ou vazio", "categoria_sugerida": "Uma das categorias permitidas", "tipo_transacao": "receita ou despesa", "titulo_sugerido": "Título conforme as regras", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
   "Use números em valor_total e valor. Se um campo não puder ser identificado, use string vazia, 0 ou uma lista vazia conforme o tipo.",
 ].join(" ");
 
@@ -96,6 +102,8 @@ const RECEIPT_RESPONSE_SCHEMA = {
     hora: { type: "string" },
     forma_pagamento: { type: "string" },
     categoria_sugerida: { type: "string" },
+    tipo_transacao: { type: "string", enum: ["receita", "despesa"] },
+    titulo_sugerido: { type: "string" },
     itens: {
       type: "array",
       items: {
@@ -116,6 +124,8 @@ const RECEIPT_RESPONSE_SCHEMA = {
     "hora",
     "forma_pagamento",
     "categoria_sugerida",
+    "tipo_transacao",
+    "titulo_sugerido",
     "itens",
   ],
 } as const;
@@ -210,6 +220,15 @@ function toCategoryId(raw: string): string {
   return categories.find(([pattern]) => pattern.test(value))?.[1] ?? "outros";
 }
 
+/** Receita só é aceita quando o modelo devolve explicitamente o valor permitido. */
+function toTransactionType(raw: string): "income" | "expense" {
+  return normalizeText(raw) === "receita" ? "income" : "expense";
+}
+
+function toSuggestedTitle(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
 /** Normaliza o JSON devolvido pelo modelo na forma usada pela tela. */
 function normalizeGemini(text: string): ReceiptResult {
   try {
@@ -232,6 +251,9 @@ function normalizeGemini(text: string): ReceiptResult {
       return { ok: false, items: [], error: "nota-ilegivel" };
     }
 
+    const transactionType = toTransactionType(String(parsed.tipo_transacao ?? ""));
+    const suggestedTitle = toSuggestedTitle(String(parsed.titulo_sugerido ?? ""));
+
     return {
       ok: true,
       store: store || undefined,
@@ -240,6 +262,8 @@ function normalizeGemini(text: string): ReceiptResult {
       paymentMethod:
         normalizePaymentMethod(String(parsed.forma_pagamento ?? "")) || undefined,
       categorySuggestion: toCategoryId(String(parsed.categoria_sugerida ?? "")),
+      transactionType,
+      suggestedTitle: suggestedTitle || undefined,
       total: total || undefined,
       items,
     };
