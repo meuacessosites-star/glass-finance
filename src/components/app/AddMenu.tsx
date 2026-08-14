@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
-import { toast } from "sonner";
 import { SquircleIcon } from "./ThemeToggle";
 
 const options: {
@@ -93,9 +92,7 @@ export function AddMenu({
       onLoan?.();
       return;
     }
-    toast(`${option.label} chega em breve`, {
-      description: "Estamos finalizando este recurso para você ✨",
-    });
+    return;
   };
 
   return (

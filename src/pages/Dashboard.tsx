@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Outlet, useNavigate } from "react-router";
+import { Outlet } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
 import { AddTransactionSheet } from "@/components/app/AddTransactionSheet";
+import { LoanTransactionSheet } from "@/components/app/LoanTransactionSheet";
 import { ScanReceiptSheet } from "@/components/app/ScanReceiptSheet";
 import { VoiceCommandSheet } from "@/components/app/VoiceCommandSheet";
 import { PinLock } from "@/components/app/PinLock";
@@ -16,11 +17,11 @@ import { AppStoreProvider, useAppStore } from "@/lib/app-store";
  * On mobile it is edge-to-edge; on desktop it renders as a device bezel.
  */
 function DashboardShell() {
-  const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [loanOpen, setLoanOpen] = useState(false);
   const { activeProfile, pinUsage } = useAppStore();
 
   // Lock on app open only when the active profile has a PIN AND the "Uso do
@@ -57,7 +58,7 @@ function DashboardShell() {
             onManual={() => setManualOpen(true)}
             onScan={() => setScanOpen(true)}
             onVoice={() => setVoiceOpen(true)}
-            onLoan={() => navigate("/dashboard/emprestimos")}
+            onLoan={() => setLoanOpen(true)}
           />
           <AddTransactionSheet
             open={manualOpen}
@@ -70,6 +71,10 @@ function DashboardShell() {
           <VoiceCommandSheet
             open={voiceOpen}
             onClose={() => setVoiceOpen(false)}
+          />
+          <LoanTransactionSheet
+            open={loanOpen}
+            onClose={() => setLoanOpen(false)}
           />
 
           {/* Sidebar + PIN lock (on top of everything) */}
