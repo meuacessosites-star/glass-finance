@@ -40,8 +40,9 @@ import {
 //   Aceita QUALQUER imagem: nota fiscal com ou sem QR, recibo simples etc.
 //   1. Foto recebida → conversão imediata para base64 (sem validação de QR);
 //   2. Status fixo: "Analisando a inteligência do comprovante…";
-//   3. O base64 vai DIRETO para a action extractReceipt (gemini-1.5-flash),
-//      que devolve o JSON { estabelecimento, valor_total, data, itens };
+//   3. O base64 vai DIRETO para a action extractReceipt (Gemini, modelo
+//      gemini-1.5-pro-latest), que devolve o JSON { estabelecimento,
+//      valor_total, data, itens };
 //   4. Regras condicionais: 3+ itens → Descrição com categoria (Mercado/
 //      Farmácia/Restaurante); 1–2 itens → "qtd x Produto"; Rascunho →
 //      "Estabelecimento: {loja}" + lista limpa dos itens.
@@ -227,7 +228,8 @@ export function ScanReceiptSheet({
    * FUNÇÃO CENTRAL — lê QUALQUER imagem de comprovante com o Gemini.
    *   1) Sem nenhuma validação de QR Code: converte a foto para base64;
    *   2) Status "Analisando a inteligência do comprovante…";
-   *   3) Envia o base64 DIRETO para extractReceipt (gemini-1.5-flash);
+   *   3) Envia o base64 DIRETO para extractReceipt (Gemini — modelo
+   *      gemini-1.5-pro-latest, com fallback automático para outros);
    *   4) Preenche os campos com o JSON estruturado + regras condicionais;
    *   5) Erro final só se o Gemini falhar ou a imagem for ilegível.
    */

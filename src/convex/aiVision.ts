@@ -11,11 +11,12 @@ import { v } from "convex/values";
 // generateContent com o System Prompt estrito, que devolve APENAS o JSON
 // { estabelecimento, valor_total, data, itens: [{ qtd, produto, valor }] }.
 //
-// Robustez do modelo: nem todo nome de modelo está habilitado em todas as
-// chaves/projetos (erro 404 "models/... is not found for API version
-// v1beta"). A ordem tenta primeiro gemini-1.5-flash-latest (o nome pedido),
-// depois gemini-1.5-pro, gemini-pro-vision (versões antigas) e, por último,
-// os modelos 2.x mais recentes — até um responder com sucesso.
+// Robustez do modelo: contas novas do Google não têm mais acesso à família
+// 1.5 descontinuada ("This model ... is no longer available to new users").
+// A ordem tenta primeiro gemini-1.5-pro-latest (nome obrigatório), depois
+// gemini-1.5-flash-latest e gemini-pro-vision, e por fim os modelos 2.x
+// (gemini-2.0-flash / gemini-2.5-flash), que são os disponíveis para contas
+// novas — até um responder com sucesso. Nenhum nome 1.5 "puro" é usado.
 // ---------------------------------------------------------------------------
 
 export type ReceiptItem = { name: string; qty: string; price: number };
@@ -41,14 +42,14 @@ const SYSTEM_PROMPT =
 
 /**
  * Nomes de modelo tentados em ordem (404 "model not found" → tenta o
- * próximo). gemini-1.5-flash-latest primeiro (nome obrigatório da solução),
- * com fallbacks antigos (gemini-pro-vision) e modernos (2.x) para chaves
- * que não têm os 1.5 habilitados.
+ * próximo). gemini-1.5-pro-latest primeiro (nome obrigatório da solução);
+ * os nomes 1.5 "puros" (gemini-1.5-flash / gemini-1.5-pro) foram REMOVIDOS
+ * de vez — o Google os descontinuou para contas novas. Os 2.x ficam como
+ * rede de segurança para chaves que só aceitam modelos atuais.
  */
 const MODEL_CANDIDATES = [
+  "gemini-1.5-pro-latest",
   "gemini-1.5-flash-latest",
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
   "gemini-pro-vision",
   "gemini-2.0-flash",
   "gemini-2.5-flash",
@@ -143,7 +144,7 @@ async function callGemini(
   mimeType: string,
   b64: string,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
-  let lastError = "";
+  const errors: string[] = [];
   for (const model of MODEL_CANDIDATES) {
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${model}` +
@@ -172,12 +173,14 @@ async function callGemini(
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        lastError = `gemini http ${res.status}${
-          body ? `: ${body.slice(0, 160)}` : ""
-        }`;
-        // 404 = modelo não encontrado/habilitado → tenta o próximo nome.
+        errors.push(
+          `gemini ${model} → http ${res.status}${
+            body ? `: ${body.slice(0, 140)}` : ""
+          }`,
+        );
+        // 404 = modelo não encontrado/descontinuado → tenta o próximo nome.
         if (res.status === 404) continue;
-        return { ok: false, error: lastError };
+        return { ok: false, error: errors.join(" | ") };
       }
       const data = (await res.json()) as {
         candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -187,16 +190,16 @@ async function callGemini(
           ?.map((p) => p.text ?? "")
           .join("") ?? "";
       if (!text.trim()) {
-        lastError = "resposta-vazia";
+        errors.push(`gemini ${model} → resposta-vazia`);
         continue;
       }
       return { ok: true, text };
     } catch (e) {
-      lastError = (e as Error).message ?? "gemini-falhou";
+      errors.push(`gemini ${model} → ${(e as Error).message ?? "falhou"}`);
       continue;
     }
   }
-  return { ok: false, error: lastError || "gemini-falhou" };
+  return { ok: false, error: errors.join(" | ") || "gemini-falhou" };
 }
 
 /**
