@@ -28,6 +28,7 @@ import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
+import { HorizontalScroll } from "./HorizontalScroll";
 import {
   CARD_MODE_LABELS,
   normalizePaymentMethod,
@@ -622,7 +623,7 @@ export function ScanReceiptSheet({
             <>
               <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
                 {/* Attachments strip */}
-                <div className="no-scrollbar -mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-0.5">
+                <HorizontalScroll className="-mx-5 mt-3 gap-3 px-5 pb-0.5">
                   {images.map((img, i) => (
                     <div key={i} className="relative shrink-0">
                       <img
@@ -652,7 +653,7 @@ export function ScanReceiptSheet({
                       </span>
                     </button>
                   )}
-                </div>
+                </HorizontalScroll>
                 <input
                   ref={addMoreRef}
                   type="file"
@@ -749,15 +750,7 @@ export function ScanReceiptSheet({
                   <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                     Categoria
                   </p>
-                  <div
-                    className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5"
-                    onWheel={(e) => {
-                      const el = e.currentTarget;
-                      if (el.scrollWidth > el.clientWidth) {
-                        el.scrollLeft += e.deltaY;
-                      }
-                    }}
-                  >
+                  <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                     {categories.map((c) => {
                       const selected = categoryId === c.id;
                       return (
@@ -769,7 +762,7 @@ export function ScanReceiptSheet({
                           type="button"
                           onClick={() => setCategoryId(c.id)}
                           className={cn(
-                            "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
+                            "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
                             selected ? "text-glass-ink" : "glass text-glass-sub",
                           )}
                           style={
@@ -790,7 +783,7 @@ export function ScanReceiptSheet({
                         </button>
                       );
                     })}
-                  </div>
+                  </HorizontalScroll>
                 </div>
 
                 {/* Payment method */}
@@ -965,7 +958,7 @@ export function ScanReceiptSheet({
                   )}
 
                   {images.length > 0 && (
-                    <div className="no-scrollbar -mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-0.5">
+                    <HorizontalScroll className="-mx-1 mt-4 gap-2 px-1 pb-0.5">
                       {images.map((img, i) => (
                         <img
                           key={i}
@@ -974,7 +967,7 @@ export function ScanReceiptSheet({
                           className="h-16 w-16 shrink-0 rounded-xl object-cover"
                         />
                       ))}
-                    </div>
+                    </HorizontalScroll>
                   )}
                 </div>
 

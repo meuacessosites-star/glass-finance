@@ -1,6 +1,7 @@
 import { Banknote, Barcode, CreditCard, QrCode, Send, Wallet } from "lucide-react";
 import type { AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { HorizontalScroll } from "./HorizontalScroll";
 
 // ---------------------------------------------------------------------------
 // PaymentMethodSelector — shared form control for the manual-add and the
@@ -91,7 +92,7 @@ export function PaymentMethodSelector({
   return (
     <div>
       {/* Method chips */}
-      <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5">
+      <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
         {PAYMENT_METHODS.map((m) => {
           const Icon = m.icon;
           const selected = value === m.id;
@@ -102,20 +103,18 @@ export function PaymentMethodSelector({
               onClick={() => {
                 onValueChange(m.id);
                 if (m.id !== "cartao") onCardChange(null);
-              }}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
-                selected
-                  ? "bg-primary text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
-                  : "glass text-glass-sub",
-              )}
+              }}                className={cn(
+                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  selected
+                    ? "bg-primary text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
+                    : "glass text-glass-sub",
+                )}
             >
               <Icon className="size-3.5" strokeWidth={2.4} />
               {m.label}
             </button>
-          );
-        })}
-      </div>
+          );            })}
+      </HorizontalScroll>
 
       {/* Expanded card section: Crédito/Débito + saved cards */}
       {expanded && (
@@ -156,16 +155,15 @@ export function PaymentMethodSelector({
             ))}
           </div>
 
-          <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5">
+          <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
             <button
               type="button"
-              onClick={() => onCardChange(null)}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
-                cardId === null
-                  ? "bg-glass-ink text-white"
-                  : "glass text-glass-sub",
-              )}
+              onClick={() => onCardChange(null)}                className={cn(
+                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  cardId === null
+                    ? "bg-glass-ink text-white"
+                    : "glass text-glass-sub",
+                )}
             >
               <CreditCard className="size-3.5" strokeWidth={2.4} />
               Sem cartão
@@ -178,7 +176,7 @@ export function PaymentMethodSelector({
                   type="button"
                   onClick={() => onCardChange(c.id)}
                   className={cn(
-                    "flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-semibold transition-all active:scale-95",
+                    "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-semibold transition-all active:scale-95",
                     selected
                       ? "text-white shadow-[0_6px_16px_-6px_rgba(15,40,90,0.45)]"
                       : "glass text-glass-sub",
@@ -200,7 +198,7 @@ export function PaymentMethodSelector({
                 Nenhum cartão salvo — adicione em Cartões (menu lateral).
               </p>
             )}
-          </div>
+          </HorizontalScroll>
         </>
       )}
     </div>

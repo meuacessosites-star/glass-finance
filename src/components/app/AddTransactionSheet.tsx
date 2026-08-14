@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { imageToDataUrl } from "@/lib/receipt-scan";
 import type { RecurrenceFrequency, RecurrenceMode } from "@/lib/mock-data";
 import { CategoryIcon } from "./CategoryIcon";
+import { HorizontalScroll } from "./HorizontalScroll";
 import {
   PaymentMethodSelector,
   type CardMode,
@@ -364,15 +365,7 @@ export function AddTransactionSheet({
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                 Categoria
               </p>
-              <div
-                className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5"
-                onWheel={(e) => {
-                  const el = e.currentTarget;
-                  if (el.scrollWidth > el.clientWidth) {
-                    el.scrollLeft += e.deltaY;
-                  }
-                }}
-              >
+              <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                 {categories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
@@ -381,7 +374,7 @@ export function AddTransactionSheet({
                       type="button"
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
-                        "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
+                        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
                         selected ? "text-glass-ink" : "glass text-glass-sub",
                       )}
                       style={
@@ -402,7 +395,7 @@ export function AddTransactionSheet({
                     </button>
                   );
                 })}
-              </div>
+              </HorizontalScroll>
             </div>
 
             {/* Repetition */}
@@ -608,7 +601,7 @@ export function AddTransactionSheet({
                 onChange={(e) => handleFiles(e.target.files)}
                 className="hidden"
               />
-              <div className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5">
+              <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                 {attachments.map((att, i) =>
                   att.isImage ? (
                     <div
@@ -657,13 +650,13 @@ export function AddTransactionSheet({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="glass flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl text-glass-sub transition-all hover:bg-white/60 active:scale-95"
+                    className="glass flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-2xl text-glass-sub transition-all hover:bg-white/60 active:scale-95"
                   >
                     <ImagePlus className="size-5" strokeWidth={2.2} />
                     <span className="text-[10px] font-semibold">Anexar</span>
                   </button>
                 )}
-              </div>
+              </HorizontalScroll>
               {attachments.length > 0 && (
                 <p className="mt-1.5 flex items-center gap-1 text-[11.5px] text-glass-faint">
                   <Paperclip className="size-3" /> {attachments.length} de 6

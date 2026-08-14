@@ -15,6 +15,7 @@ import { useAppStore } from "@/lib/app-store";
 import { SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { parseVoiceCommand, todayIso } from "@/lib/voice-command";
 import { cn } from "@/lib/utils";
+import { HorizontalScroll } from "./HorizontalScroll";
 
 // ---------------------------------------------------------------------------
 // Comando de Voz — dictates a transaction using the browser's Web Speech API
@@ -441,15 +442,7 @@ export function VoiceCommandSheet({
                   <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                     Categoria
                   </p>
-                  <div
-                    className="no-scrollbar -mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-0.5"
-                    onWheel={(e) => {
-                      const el = e.currentTarget;
-                      if (el.scrollWidth > el.clientWidth) {
-                        el.scrollLeft += e.deltaY;
-                      }
-                    }}
-                  >
+                  <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                     {categories.map((c) => {
                       const selected = categoryId === c.id;
                       return (
@@ -458,7 +451,7 @@ export function VoiceCommandSheet({
                           type="button"
                           onClick={() => setCategoryId(c.id)}
                           className={cn(
-                            "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
+                            "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
                             selected ? "text-glass-ink" : "glass text-glass-sub",
                           )}
                           style={
@@ -478,7 +471,7 @@ export function VoiceCommandSheet({
                         </button>
                       );
                     })}
-                  </div>
+                  </HorizontalScroll>
                 </div>
 
                 {/* Date + time */}
