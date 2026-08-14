@@ -12,9 +12,10 @@ import { v } from "convex/values";
 // { estabelecimento, valor_total, data, itens: [{ qtd, produto, valor }] }.
 //
 // Robustez do modelo: nem todo nome de modelo está habilitado em todas as
-// chaves/projetos (erro 404 "models/... is not found"). Tentamos os nomes
-// em ordem — gemini-1.5-pro → gemini-1.5-flash-latest → gemini-1.5-flash —
-// até um responder com sucesso.
+// chaves/projetos (erro 404 "models/... is not found for API version
+// v1beta"). A ordem tenta primeiro gemini-1.5-flash-latest (o nome pedido),
+// depois gemini-1.5-pro, gemini-pro-vision (versões antigas) e, por último,
+// os modelos 2.x mais recentes — até um responder com sucesso.
 // ---------------------------------------------------------------------------
 
 export type ReceiptItem = { name: string; qty: string; price: number };
@@ -38,11 +39,19 @@ const SYSTEM_PROMPT =
   '"valor_total": 0.00, "data": "DD/MM/AAAA", "itens": [ { "qtd": 1, ' +
   '"produto": "Nome real do produto", "valor": 0.00 } ] }';
 
-/** Nomes de modelo tentados em ordem (404 → tenta o próximo). */
+/**
+ * Nomes de modelo tentados em ordem (404 "model not found" → tenta o
+ * próximo). gemini-1.5-flash-latest primeiro (nome obrigatório da solução),
+ * com fallbacks antigos (gemini-pro-vision) e modernos (2.x) para chaves
+ * que não têm os 1.5 habilitados.
+ */
 const MODEL_CANDIDATES = [
-  "gemini-1.5-pro",
   "gemini-1.5-flash-latest",
+  "gemini-1.5-pro",
   "gemini-1.5-flash",
+  "gemini-pro-vision",
+  "gemini-2.0-flash",
+  "gemini-2.5-flash",
 ];
 
 type GeminiItem = { qtd?: number | string; produto?: string; valor?: number | string };
@@ -149,6 +158,10 @@ async function callGemini(
               role: "user",
               parts: [
                 { text: SYSTEM_PROMPT },
+                // snake_case no wire REST (inline_data/mime_type). O
+                // camelCase (inlineData/mimeType) é só do SDK JavaScript —
+                // na API REST, campos camelCase são ignorados e a imagem
+                // não chega ao modelo.
                 { inline_data: { mime_type: mimeType, data: b64 } },
               ],
             },
@@ -198,7 +211,10 @@ export const extractReceipt = action({
     if (!apiKey) {
       return { ok: false, items: [], error: "no-gemini-key" };
     }
-    const m = image.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+    // Limpeza do base64 (MUITO IMPORTANTE): o Google rejeita imagens com
+    // prefixo "data:image/...;base64,". A regex remove o prefixo e captura
+    // o mimeType real (jpeg/png/webp/...) da imagem enviada.
+    const m = image.match(/^data:(image\/[\w.+-]+);base64,([^\s]+)$/i);
     if (!m) {
       return { ok: false, items: [], error: "imagem-invalida" };
     }
