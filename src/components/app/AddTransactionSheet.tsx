@@ -50,13 +50,35 @@ function normalizeText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-type TxType = "expense" | "income";
+export type TxType = "expense" | "income";
 
 /** An attachment picked in the form: a data URL plus display metadata. */
-type PickedAttachment = {
+export type PickedAttachment = {
   src: string;
   isImage: boolean;
   name: string;
+};
+
+/** Snapshot dos estados do formulário manual — usado também para pré-preencher
+ * a tela a partir de outra origem (ex.: resultado da IA no fluxo "Escanear
+ * Nota"). */
+export type TransactionFormValues = {
+  type: TxType;
+  cents: number;
+  title: string;
+  categoryId: string;
+  date: string;
+  time: string;
+  note: string;
+  attachments: PickedAttachment[];
+  recurrence: RecurrenceMode;
+  frequency: RecurrenceFrequency;
+  daysInterval: number;
+  installments: number;
+  currentInstallment: number;
+  paymentMethod: PaymentMethodId | "";
+  cardMode: CardMode | "";
+  cardId: string | null;
 };
 
 const inputClass =
@@ -132,9 +154,12 @@ function Stepper({
 export function AddTransactionSheet({
   open,
   onClose,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Pré-preenchimento opcional aplicado ao abrir (ex.: leitura da IA). */
+  initial?: TransactionFormValues | null;
 }) {
   const { categories, cards, addTransaction, categoryById } = useAppStore();
   const [type, setType] = useState<TxType>("expense");
@@ -182,7 +207,32 @@ export function AddTransactionSheet({
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
     setPickerOpen(false);
     setQuery("");
-  }, [open, categories]);
+
+    // Pré-preenchimento vindo de outra origem (ex.: leitura da IA no scanner).
+    if (initial) {
+      setType(initial.type ?? "expense");
+      setCents(initial.cents ?? 0);
+      setTitle(initial.title ?? "");
+      setCategoryId(
+        initial.categoryId &&
+          categories.some((c) => c.id === initial.categoryId)
+          ? initial.categoryId
+          : fallback?.id ?? categories[0]?.id ?? "outros",
+      );
+      setDate(initial.date || new Date().toISOString().slice(0, 10));
+      setTime(initial.time ?? "");
+      setNote(initial.note ?? "");
+      setAttachments(initial.attachments ?? []);
+      setRecurrence(initial.recurrence ?? "unica");
+      setFrequency(initial.frequency ?? "mensal");
+      setDaysInterval(initial.daysInterval ?? 15);
+      setInstallments(initial.installments ?? 2);
+      setCurrentInstallment(initial.currentInstallment ?? 1);
+      setPaymentMethod(initial.paymentMethod ?? "");
+      setCardMode(initial.cardMode ?? "");
+      setCardId(initial.cardId ?? null);
+    }
+  }, [open, categories, initial]);
 
   // Foco automático na busca ao abrir o seletor (apenas desktop/pointer fino).
   useEffect(() => {

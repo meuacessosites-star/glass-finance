@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CalendarDays,
   Camera,
   Check,
-  Clock,
-  CreditCard,
-  FileText,
   ImagePlus,
   RefreshCw,
   ScanLine,
@@ -27,46 +21,40 @@ import type { ReceiptResult } from "@/convex/aiVision";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
-import { CategoryIcon } from "./CategoryIcon";
-import { HorizontalScroll } from "./HorizontalScroll";
+import { normalizePaymentMethod } from "./PaymentMethodSelector";
 import {
-  CARD_MODE_LABELS,
-  normalizePaymentMethod,
-  PaymentMethodSelector,
-  type CardMode,
-  type PaymentMethodId,
-} from "./PaymentMethodSelector";
+  AddTransactionSheet,
+  type TransactionFormValues,
+} from "./AddTransactionSheet";
 
 // ---------------------------------------------------------------------------
 // Escanear Nota — 100% Google Gemini (SEM QR Code, SEM OCR).
 //   Aceita QUALQUER imagem: nota fiscal com ou sem QR, recibo simples etc.
 //   1. Foto recebida → conversão imediata para base64 (sem validação de QR);
-//   2. Status fixo: "Analisando a inteligência do comprovante…";
+//   2. Tela de leitura animada: porcentagem simulada (0→85%), barra de
+//      progresso e mensagens rotativas a cada 1,5s;
 //   3. O base64 vai DIRETO para a action extractReceipt (Gemini), que devolve
 //      campos estruturados de valor, tipo, título, categoria e itens;
-//   4. O tipo receita/despesa aciona o comportamento existente da tela; o
-//      rascunho de despesas contém apenas os itens e receitas ficam sem itens.
+//   4. Ao terminar (100%), o resultado é injetado no formulário COMPLETO do
+//      "Adicionar Manual" (AddTransactionSheet) — a única diferença entre os
+//      fluxos Manual e Scanner é a origem dos dados (digitação vs. IA);
+//      a imagem escaneada entra no campo de ANEXOS como miniatura;
 //   5. Erro final só se o Gemini falhar ou a imagem for ilegível.
 // ---------------------------------------------------------------------------
 
-type Step = "source" | "scan" | "edit" | "approve";
+type Step = "source" | "scan";
 type ScanPhase = "reading" | "success" | "failed";
-
-const inputClass =
-  "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
 const INCOME_IDS = new Set(["salario", "freelance", "transferencias"]);
 
-const PAYMENT_LABELS: Record<string, string> = {
-  pix: "Pix",
-  dinheiro: "Dinheiro",
-  cartao: "Cartão",
-  credito: "Crédito",
-  debito: "Débito",
-  boleto: "Boleto",
-  transferencia: "Transferência",
-  saldo: "Saldo",
-};
+/** Frases rotativas exibidas enquanto a IA lê o comprovante. */
+const SCAN_MESSAGES = [
+  "Lendo as letrinhas…",
+  "Identificando o estabelecimento…",
+  "Calculando os valores…",
+  "Conferindo os itens…",
+  "Quase pronto…",
+];
 
 export function ScanReceiptSheet({
   open,
@@ -75,89 +63,67 @@ export function ScanReceiptSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, cards, addTransaction } = useAppStore();
+  const { categories } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
   const extractReceipt = useAction(api.aiVision.extractReceipt);
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
   const [scanPhase, setScanPhase] = useState<ScanPhase>("reading");
-  const [scanStatus, setScanStatus] = useState("");
-  const [scanResultInfo, setScanResultInfo] = useState("");
+  // Porcentagem simulada da leitura: sobe até ~85% enquanto a IA responde e
+  // pula para 100% quando a API retorna.
+  const [progress, setProgress] = useState(0);
+  const [scanMsgIndex, setScanMsgIndex] = useState(0);
   // Motivo técnico da falha (ex.: "no-gemini-key", "gemini http 429") exibido
   // de forma discreta na tela de erro para facilitar o diagnóstico.
   const [scanError, setScanError] = useState("");
 
-  // Form fields (prefilled only with dados exatos da leitura)
-  const [title, setTitle] = useState("");
-  const [cents, setCents] = useState(0);
-  const [categoryId, setCategoryId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState("");
-  const [note, setNote] = useState("");
-  const [type, setType] = useState<"expense" | "income">("expense");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
-  const [cardMode, setCardMode] = useState<CardMode | "">("");
-  const [cardId, setCardId] = useState<string | null>(null);
+  // Pré-preenchimento do formulário unificado (AddTransactionSheet) com o
+  // resultado da IA — ou vazio quando o usuário escolhe preencher manualmente.
+  const [prefill, setPrefill] = useState<TransactionFormValues | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
-  const addMoreRef = useRef<HTMLInputElement | null>(null);
   // Bumped on every open/reset so stale scan results never fill a fresh form.
   const runIdRef = useRef(0);
   // Original picked File, kept so "Tentar novamente" re-scans at full quality.
   const sourceFileRef = useRef<File | null>(null);
-  // True once the user picks the date manually — scan data never overrides it.
-  const dateTouchedRef = useRef(false);
-  // True once the user picks Despesa/Receita manually — scan data never overrides it.
-  const typeTouchedRef = useRef(false);
-  // Timer that advances "success" → "approve", cleared on reset/unmount.
-  const successTimerRef = useRef<number | null>(null);
-  // Category chip refs, so the selected chip can be scrolled into view.
-  const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Timers da tela de leitura (progresso, mensagens e abertura do formulário).
+  const progressTimerRef = useRef<number | null>(null);
+  const messageTimerRef = useRef<number | null>(null);
+  const openFormTimerRef = useRef<number | null>(null);
+
+  /** Limpa todos os timers da tela de leitura. */
+  const clearScanTimers = () => {
+    if (progressTimerRef.current) window.clearInterval(progressTimerRef.current);
+    if (messageTimerRef.current) window.clearInterval(messageTimerRef.current);
+    if (openFormTimerRef.current) window.clearTimeout(openFormTimerRef.current);
+    progressTimerRef.current = null;
+    messageTimerRef.current = null;
+    openFormTimerRef.current = null;
+  };
 
   // Fresh state every time the sheet opens.
   useEffect(() => {
     if (!open) return;
     runIdRef.current += 1;
-    if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+    clearScanTimers();
     setStep("source");
     setImages([]);
     setScanPhase("reading");
-    setScanStatus("");
-    setScanResultInfo("");
+    setProgress(0);
+    setScanMsgIndex(0);
     setScanError("");
-    setTitle("");
-    setCents(0);
-    setCategoryId("");
-    setDate(new Date().toISOString().slice(0, 10));
-    setTime("");
-    setNote("");
-    setType("expense");
-    setPaymentMethod("");
-    setCardMode("");
-    setCardId(null);
+    setPrefill(null);
+    setFormOpen(false);
     sourceFileRef.current = null;
-    dateTouchedRef.current = false;
-    typeTouchedRef.current = false;
   }, [open]);
 
-  // Clear the success timer on unmount.
+  // Clear all timers on unmount.
   useEffect(() => {
-    return () => {
-      if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
-    };
+    return () => clearScanTimers();
   }, []);
-
-  // Keep the selected category chip visible in the scrollable chips row.
-  useEffect(() => {
-    if (!categoryId) return;
-    chipRefs.current[categoryId]?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
-  }, [categoryId]);
 
   /** Default expense category (used until the scan answers). */
   const defaultCategoryId = () => {
@@ -166,43 +132,32 @@ export function ScanReceiptSheet({
   };
 
   /** Resolves a scan category, auto-creating it when it doesn't exist. */
-  const applyCategory = (id: string) => {
+  const applyCategory = (id: string): string => {
     const suggested = SCAN_CATEGORIES.find((c) => c.id === id);
-    if (!suggested) return;
+    if (!suggested) return "";
     const { id: resolved, created } = applySuggestedCategory(suggested);
-    setCategoryId(resolved);
     if (created) {
       toast(`Categoria "${suggested.label}" criada`, {
         description: "Você pode renomeá-la em Categorias a qualquer momento.",
       });
     }
+    return resolved;
   };
 
   /**
-   * Preenche o formulário a partir do contrato estruturado do Gemini. O tipo
-   * seleciona a apresentação já existente de receita/despesa; o título da IA
-   * é usado diretamente e regras locais servem apenas como contingência.
+   * Monta o pré-preenchimento do formulário unificado a partir do contrato
+   * estruturado do Gemini. O tipo seleciona a apresentação já existente de
+   * receita/despesa; o título da IA é usado diretamente e regras locais
+   * servem apenas como contingência.
    */
-  const applyScraped = (res: ReceiptResult) => {
+  const buildPrefill = (res: ReceiptResult, img: string | null) => {
     const store = res.store || "";
     const items = res.items;
-    const scannedType = res.transactionType ?? "expense";
-    const effectiveType = typeTouchedRef.current ? type : scannedType;
+    const effectiveType = res.transactionType ?? "expense";
     const total =
       (res.total && res.total > 0
         ? res.total
         : items.reduce((sum, item) => sum + (item.price || 0), 0)) || 0;
-    if (total > 0) setCents(Math.round(total * 100));
-    if (res.date) setDate(res.date);
-    if (res.time) setTime(res.time);
-    if (!typeTouchedRef.current) setType(effectiveType);
-    if (res.paymentMethod) {
-      const payment = normalizePaymentMethod(res.paymentMethod);
-      if (payment.method) {
-        setPaymentMethod(payment.method);
-        setCardMode(payment.cardMode);
-      }
-    }
 
     const fallbackTitle =
       effectiveType === "income"
@@ -212,12 +167,12 @@ export function ScanReceiptSheet({
         : items.length > 0
           ? describePurchase(items, store, res.store ?? "")
           : store || "Comprovante";
-    setTitle(res.suggestedTitle || fallbackTitle);
+    const title = res.suggestedTitle || fallbackTitle;
 
     // Despesas recebem somente os itens comprados. Serviços digitais e
     // pagamentos únicos não usam o prefixo artificial "1x"; receitas ficam
     // sem itens adquiridos a registrar no rascunho.
-    setNote(
+    const note =
       effectiveType === "income"
         ? ""
         : draftPurchase(items, {
@@ -226,8 +181,7 @@ export function ScanReceiptSheet({
               res.purchaseContext === "single_payment" ||
               res.categorySuggestion === "assinaturas" ||
               /^assinatura\b/i.test(res.suggestedTitle ?? ""),
-          }),
-    );
+          });
 
     const fallbackCategory =
       effectiveType === "income"
@@ -241,41 +195,50 @@ export function ScanReceiptSheet({
         : res.categorySuggestion && res.categorySuggestion !== "outros"
           ? res.categorySuggestion
           : fallbackCategory;
-    if (suggestedCategory && suggestedCategory !== "outros") {
-      applyCategory(suggestedCategory);
-    } else if (!categoryId) {
-      setCategoryId(defaultCategoryId());
-    }
+    const resolvedCategory = suggestedCategory
+      ? applyCategory(suggestedCategory)
+      : "";
 
-    setScanResultInfo(
-      `Leitura por IA · ${store || "comprovante"} · ${items.length} ${
-        items.length === 1 ? "item" : "itens"
-      }`,
-    );
+    const payment = normalizePaymentMethod(res.paymentMethod);
+
+    return {
+      type: effectiveType,
+      cents: Math.round(total * 100),
+      title,
+      categoryId:
+        resolvedCategory || suggestedCategory || defaultCategoryId(),
+      date: res.date || new Date().toISOString().slice(0, 10),
+      time: res.time || "",
+      note,
+      // A imagem original escaneada entra no campo de ANEXOS do formulário.
+      attachments: img
+        ? [{ src: img, isImage: true, name: "Nota escaneada" }]
+        : [],
+      recurrence: "unica" as const,
+      frequency: "mensal" as const,
+      daysInterval: 15,
+      installments: 2,
+      currentInstallment: 1,
+      paymentMethod: payment.method,
+      cardMode: payment.cardMode,
+      cardId: null,
+    } satisfies TransactionFormValues;
   };
 
-  /** Termina uma leitura bem-sucedida e leva à tela de aprovação. */
-  const finishScan = (runId: number) => {
-    setScanPhase("success");
-    setScanStatus("Dados encontrados — abrindo a revisão…");
-    if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
-    successTimerRef.current = window.setTimeout(() => {
-      if (runId === runIdRef.current) setStep("approve");
-    }, 450);
+  /** Abre o formulário unificado pré-preenchido (resultado da IA ou vazio). */
+  const openReviewForm = (values: TransactionFormValues) => {
+    setPrefill(values);
+    setFormOpen(true);
   };
-
-  /** Aguarda `ms` milissegundos — evita que "Analisando a inteligência do
-   * comprovante…" vire um flash quando o modelo responde rápido demais. */
-  const sleep = (ms: number) =>
-    new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
   /**
    * FUNÇÃO CENTRAL — lê QUALQUER imagem de comprovante com o Gemini.
    *   1) Sem nenhuma validação de QR Code: converte a foto para base64;
-   *   2) Status "Analisando a inteligência do comprovante…";
+   *   2) Tela de leitura animada (porcentagem + barra + mensagens rotativas);
    *   3) Envia o base64 DIRETO para extractReceipt (Gemini — modelo
    *      gemini-1.5-pro-latest, com fallback automático para outros);
-   *   4) Preenche os campos com o JSON estruturado + regras condicionais;
+   *   4) Ao responder, pula para 100% e abre o formulário "Adicionar Manual"
+   *      já preenchido, com a nota anexada;
    *   5) Erro final só se o Gemini falhar ou a imagem for ilegível.
    */
   const lerComprovante = async (file: File) => {
@@ -284,8 +247,19 @@ export function ScanReceiptSheet({
 
     setStep("scan");
     setScanPhase("reading");
-    setScanStatus("Analisando a inteligência do comprovante…");
     setScanError("");
+    clearScanTimers();
+    setProgress(0);
+    setScanMsgIndex(0);
+
+    // Progresso simulado: sobe rápido até ~85% enquanto a IA processa.
+    progressTimerRef.current = window.setInterval(() => {
+      setProgress((p) => Math.min(85, p + 5 + Math.round(Math.random() * 8)));
+    }, 170);
+    // Mensagens rotativas a cada 1,5s.
+    messageTimerRef.current = window.setInterval(() => {
+      setScanMsgIndex((i) => (i + 1) % SCAN_MESSAGES.length);
+    }, 1500);
 
     // 1) Conversão imediata e segura para base64 (sem checagem de QR).
     let img: string | null = null;
@@ -303,10 +277,8 @@ export function ScanReceiptSheet({
     if (runId !== runIdRef.current) return;
     if (!img) {
       // Sem imagem não há o que enviar ao modelo — erro final (único caso).
+      clearScanTimers();
       setScanPhase("failed");
-      setScanStatus(
-        "Não foi possível abrir essa imagem. Tente outra foto ou preencha manualmente.",
-      );
       setScanError("conversao-imagem-falhou");
       return;
     }
@@ -325,20 +297,28 @@ export function ScanReceiptSheet({
     }
     if (runId !== runIdRef.current) return;
 
-    // 3) Preenchimento: o JSON estruturado vira a tela de aprovação.
+    // 3) Preenchimento: o JSON estruturado abre o formulário unificado.
     if (res?.ok && (res.total || res.store || res.items.length)) {
-      applyScraped(res);
-      finishScan(runId);
+      clearScanTimers();
+      setProgress(100);
+      setScanPhase("success");
+      const values = buildPrefill(res, img);
+      openFormTimerRef.current = window.setTimeout(() => {
+        if (runId === runIdRef.current) openReviewForm(values);
+      }, 550);
       return;
     }
 
     // 4) SÓ aqui (Gemini falhou ou imagem ilegível) → tela de erro.
+    clearScanTimers();
     setScanPhase("failed");
-    setScanStatus(
-      "Não foi possível ler o comprovante. Verifique se a foto está nítida, tente outra foto ou preencha manualmente.",
-    );
     setScanError(res?.error ?? "resposta-vazia");
   };
+
+  /** Aguarda `ms` milissegundos — evita que a leitura vire um flash quando o
+   * modelo responde rápido demais. */
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
   /** Traduz o código técnico de erro numa orientação clara. */
   const orientacaoErroIA = (raw: string): string => {
@@ -362,7 +342,7 @@ export function ScanReceiptSheet({
     e.target.value = "";
     if (!file) return;
     // Tudo acontece dentro de `lerComprovante`: base64 → Gemini →
-    // aprovação (ou erro final). Nenhum erro é disparado neste ponto.
+    // formulário preenchido (ou erro final). Nenhum erro é disparado aqui.
     void lerComprovante(file);
   };
 
@@ -372,65 +352,42 @@ export function ScanReceiptSheet({
     void lerComprovante(file);
   };
 
+  /** Volta à escolha da foto e cancela uma leitura em andamento. */
+  const backToSource = () => {
+    runIdRef.current += 1;
+    clearScanTimers();
+    setStep("source");
+  };
+
+  /** Falha na leitura: abre o formulário completo em branco para digitação. */
   const handleManualFill = () => {
-    if (!categoryId) setCategoryId(defaultCategoryId());
-    setStep("edit");
-  };
-
-  const handleAddMore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || images.length >= 6) return;
-    try {
-      const url = await imageToDataUrl(file, 1000);
-      setImages((prev) => [...prev, url]);
-    } catch {
-      toast("Não foi possível abrir essa imagem");
-    }
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleAmount = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 9);
-    setCents(digits ? parseInt(digits, 10) : 0);
-  };
-
-  const amountLabel = (cents / 100).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-
-  const canSave = cents > 0 && title.trim().length > 0 && !!categoryId;
-
-  const handleSave = () => {
-    if (!canSave) return;
-    addTransaction({
-      title: title.trim(),
-      categoryId,
-      amount: type === "income" ? cents / 100 : -cents / 100,
-      date,
-      time: time || undefined,
-      note: note.trim() || undefined,
-      attachments: images.length ? images : undefined,
-      paymentMethod: paymentMethod || undefined,
-      cardId: cardId ?? undefined,
-      cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
+    openReviewForm({
+      type: "expense",
+      cents: 0,
+      title: "",
+      categoryId: defaultCategoryId(),
+      date: new Date().toISOString().slice(0, 10),
+      time: "",
+      note: "",
+      attachments: images[0]
+        ? [{ src: images[0], isImage: true, name: "Nota escaneada" }]
+        : [],
+      recurrence: "unica",
+      frequency: "mensal",
+      daysInterval: 15,
+      installments: 2,
+      currentInstallment: 1,
+      paymentMethod: "",
+      cardMode: "",
+      cardId: null,
     });
-    toast("Nota escaneada e salva", {
-      description: "Ela já aparece no seu histórico, com a nota anexada.",
-    });
+  };
+
+  /** Fechou o formulário (salvou ou descartou) → fecha o scanner inteiro. */
+  const handleReviewClose = () => {
+    setFormOpen(false);
     onClose();
   };
-
-  const scanStatusTitle =
-    scanPhase === "reading"
-      ? "Analisando a inteligência do comprovante…"
-      : scanPhase === "success"
-        ? "Dados encontrados"
-        : "Não conseguimos ler";
 
   return (
     <AnimatePresence>
@@ -447,13 +404,11 @@ export function ScanReceiptSheet({
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <div>
               <h3 className="text-[20px] font-bold tracking-tight text-glass-ink">
-                {step === "approve" ? "Revisar e aprovar" : "Escanear nota"}
+                Escanear nota
               </h3>
               <p className="text-[12.5px] text-glass-sub">
                 {step === "source" && "Fotografe a nota ou escolha uma imagem"}
-                {step === "scan" && "Analisando a inteligência do comprovante…"}
-                {step === "edit" && "Confira e ajuste os campos"}
-                {step === "approve" && "Tudo certo antes de salvar?"}
+                {step === "scan" && "Isso leva alguns segundos"}
               </p>
             </div>
             <button
@@ -515,14 +470,14 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          {/* ---------------- SCAN (analisando a inteligência) ---------------- */}
+          {/* ---------------- SCAN (leitura animada) ---------------- */}
           {step === "scan" && (
             <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
               <div className="mx-auto mt-3 w-full max-w-[250px]">
                 {scanPhase !== "failed" && (
                   <button
                     type="button"
-                    onClick={() => setStep("source")}
+                    onClick={backToSource}
                     className="glass glass-soft mb-3 flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
                   >
                     <ImagePlus className="size-3.5" />
@@ -553,33 +508,63 @@ export function ScanReceiptSheet({
                   )}
                 </div>
 
-                {/* Status */}
+                {/* Status: mensagem rotativa + porcentagem + barra */}
                 <div className="glass mt-3 rounded-2xl px-4 py-3">
-                  <div className="flex items-center gap-2.5">
-                    {scanPhase === "success" ? (
+                  {scanPhase === "success" ? (
+                    <div className="flex items-center gap-2.5">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
                         <Check
                           className="size-3.5 text-[#17a443]"
                           strokeWidth={3}
                         />
                       </span>
-                    ) : (
-                      <span
-                        className={cn(
-                          "size-2.5 shrink-0 animate-pulse rounded-full",
-                          scanPhase === "failed"
-                            ? "bg-[#FF3B30]"
-                            : "bg-[#FF9500]",
-                        )}
-                      />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-[13.5px] font-semibold text-glass-ink">
-                        {scanStatusTitle}
-                      </p>
-                      <p className="text-[12px] text-glass-sub">{scanStatus}</p>
+                      <div className="min-w-0">
+                        <p className="text-[13.5px] font-semibold text-glass-ink">
+                          Dados encontrados
+                        </p>
+                        <p className="text-[12px] text-glass-sub">
+                          Abrindo a revisão…
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={cn(
+                            "size-2.5 shrink-0 animate-pulse rounded-full",
+                            scanPhase === "failed"
+                              ? "bg-[#FF3B30]"
+                              : "bg-[#FF9500]",
+                          )}
+                        />
+                        <p className="min-w-0 flex-1 text-[13.5px] font-semibold leading-snug text-glass-ink">
+                          {scanPhase === "failed"
+                            ? "Não conseguimos ler"
+                            : SCAN_MESSAGES[scanMsgIndex]}
+                        </p>
+                      </div>
+
+                      {scanPhase === "reading" && (
+                        <>
+                          <div className="mt-2.5 flex items-center justify-between gap-3">
+                            <p className="truncate text-[12px] font-medium text-glass-sub">
+                              Analisando a inteligência do comprovante…
+                            </p>
+                            <p className="amount-tabular shrink-0 text-[12.5px] font-bold text-primary">
+                              {progress}%
+                            </p>
+                          </div>
+                          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/10">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-primary to-[#7AA7FF] shadow-[0_0_10px_rgba(47,107,255,0.55)] transition-[width] duration-200 ease-out"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
 
                   {scanPhase === "failed" && (
                     <div className="mt-3 space-y-2.5">
@@ -618,395 +603,16 @@ export function ScanReceiptSheet({
             </div>
           )}
 
-          {/* ---------------- EDIT ---------------- */}
-          {step === "edit" && (
-            <>
-              <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
-                {/* Attachments strip */}
-                <HorizontalScroll className="-mx-5 mt-3 gap-3 px-5 pb-0.5">
-                  {images.map((img, i) => (
-                    <div key={i} className="relative shrink-0">
-                      <img
-                        src={img}
-                        alt={`Nota ${i + 1}`}
-                        className="h-24 w-24 rounded-2xl object-cover shadow-[0_8px_20px_-8px_rgba(15,40,90,0.4)]"
-                      />
-                      <button
-                        type="button"
-                        aria-label="Remover foto"
-                        onClick={() => removeImage(i)}
-                        className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-[#FF3B30] text-white shadow-md transition-transform active:scale-90"
-                      >
-                        <X className="size-3.5" strokeWidth={3} />
-                      </button>
-                    </div>
-                  ))}
-                  {images.length < 6 && (
-                    <button
-                      type="button"
-                      onClick={() => addMoreRef.current?.click()}
-                      className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-glass-faint/60 text-glass-sub transition-colors hover:bg-white/40"
-                    >
-                      <ImagePlus className="size-5" />
-                      <span className="text-[11px] font-semibold">
-                        Adicionar
-                      </span>
-                    </button>
-                  )}
-                </HorizontalScroll>
-                <input
-                  ref={addMoreRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleAddMore}
-                />
-
-                {scanResultInfo && (
-                  <div className="glass mt-3 flex items-center gap-3 rounded-2xl px-4 py-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
-                      <Check
-                        className="size-3.5 text-[#17a443]"
-                        strokeWidth={3}
-                      />
-                    </span>
-                    <p className="text-[12.5px] font-semibold leading-snug text-glass-ink">
-                      {scanResultInfo}
-                    </p>
-                  </div>
-                )}
-
-                {/* Type: despesa / receita */}
-                <div className="mt-6 flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setType("expense");
-                      typeTouchedRef.current = true;
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
-                      type === "expense"
-                        ? "bg-[#FF3B30]/12 text-[#FF3B30] ring-1 ring-[#FF3B30]/40"
-                        : "glass text-glass-sub",
-                    )}
-                  >
-                    <ArrowDownLeft className="size-4" /> Despesa
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setType("income");
-                      typeTouchedRef.current = true;
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-bold transition-all active:scale-95",
-                      type === "income"
-                        ? "bg-[#1FBF4F]/12 text-[#17a443] ring-1 ring-[#17a443]/40"
-                        : "glass text-glass-sub",
-                    )}
-                  >
-                    <ArrowUpRight className="size-4" /> Receita
-                  </button>
-                </div>
-
-                {/* Amount */}
-                <div className="mt-4 text-center">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Valor
-                  </p>
-                  <input
-                    inputMode="numeric"
-                    value={amountLabel}
-                    onChange={(e) => handleAmount(e.target.value)}
-                    placeholder="R$ 0,00"
-                    aria-label="Valor"
-                    className={cn(
-                      "mt-1 w-full bg-transparent text-center text-[36px] font-bold tracking-tight outline-none",
-                      type === "income"
-                        ? "text-[#17a443]"
-                        : "text-[#FF3B30]",
-                    )}
-                  />
-                  <div className="mx-auto mt-2 h-0.5 w-16 rounded-full bg-primary/30" />
-                </div>
-
-                {/* Description */}
-                <div className="mt-6">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Descrição
-                  </p>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex.: Pão de Açúcar"
-                    maxLength={40}
-                    className={cn(inputClass, "mt-2")}
-                  />
-                </div>
-
-                {/* Category */}
-                <div className="mt-6">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Categoria
-                  </p>
-                  <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
-                    {categories.map((c) => {
-                      const selected = categoryId === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          ref={(el) => {
-                            chipRefs.current[c.id] = el;
-                          }}
-                          type="button"
-                          onClick={() => setCategoryId(c.id)}
-                          className={cn(
-                            "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
-                            selected ? "text-glass-ink" : "glass text-glass-sub",
-                          )}
-                          style={
-                            selected
-                              ? {
-                                  backgroundColor: `${c.color}1f`,
-                                  boxShadow: `0 0 0 2px ${c.color}`,
-                                }
-                              : undefined
-                          }
-                        >
-                          <CategoryIcon
-                            categoryId={c.id}
-                            size="size-5"
-                            iconSize="size-3"
-                          />
-                          {c.label}
-                        </button>
-                      );
-                    })}
-                  </HorizontalScroll>
-                </div>
-
-                {/* Payment method */}
-                <div className="mt-6">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Forma de pagamento
-                  </p>
-                  <PaymentMethodSelector
-                    value={paymentMethod}
-                    onValueChange={(v) => {
-                      setPaymentMethod(v);
-                      if (v === "cartao") setCardMode("credito");
-                      else {
-                        setCardMode("");
-                        setCardId(null);
-                      }
-                    }}
-                    cardMode={cardMode}
-                    onCardModeChange={setCardMode}
-                    cardId={cardId}
-                    onCardChange={setCardId}
-                    cards={cards}
-                  />
-                </div>
-
-                {/* Date + time */}
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                      Data
-                    </p>
-                    <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
-                      <CalendarDays className="size-4 shrink-0 text-glass-sub" />
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(e) => {
-                          dateTouchedRef.current = true;
-                          setDate(e.target.value);
-                        }}
-                        className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                      Hora
-                    </p>
-                    <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
-                      <Clock className="size-4 shrink-0 text-glass-sub" />
-                      <input
-                        type="time"
-                        value={time}
-                        onChange={(e) => setTime(e.target.value)}
-                        className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Draft / notes */}
-                <div className="mt-6">
-                  <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    <FileText className="size-3.5" /> Rascunho / Observações
-                  </p>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Anotações, parcelas, o que você quiser lembrar…"
-                    maxLength={300}
-                    rows={3}
-                    className={cn(inputClass, "mt-2 resize-none leading-relaxed")}
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="px-5 pb-7 pt-2">
-                <button
-                  type="button"
-                  disabled={!canSave}
-                  onClick={() => setStep("approve")}
-                  className={cn(
-                    "flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-all hover:brightness-105 active:scale-[0.98]",
-                    !canSave && "opacity-50",
-                  )}
-                >
-                  <Check className="size-[18px]" strokeWidth={2.6} />
-                  Visualizar e aprovar
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ---------------- APPROVE ---------------- */}
-          {step === "approve" && (
-            <>
-              <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
-                {/* Receipt-style summary */}
-                <div className="glass rounded-3xl p-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#1FBF4F]/15">
-                      <ScanLine className="size-6 text-[#17a443]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[16px] font-bold text-glass-ink">
-                        {title}
-                      </p>
-                      <p className="text-[12.5px] text-glass-sub">
-                        {date.split("-").reverse().join("/")}
-                        {time ? ` às ${time}` : ""}
-                      </p>
-                    </div>
-                  </div>
-
-                  <p
-                    className={cn(
-                      "amount-tabular mt-4 text-[32px] font-bold leading-none tracking-tight",
-                      type === "income"
-                        ? "text-[#17a443]"
-                        : "text-[#FF3B30]",
-                    )}
-                  >
-                    {type === "income" ? "" : "−"}
-                    {amountLabel}
-                  </p>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <span
-                      className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-bold text-white"
-                      style={{
-                        backgroundColor:
-                          categories.find((c) => c.id === categoryId)?.color ??
-                          "#8E8E93",
-                      }}
-                    >
-                      <span className="size-1.5 rounded-full bg-white/90" />
-                      {categories.find((c) => c.id === categoryId)?.label ??
-                        "Outros"}
-                    </span>
-                    {paymentMethod && (
-                      <span className="glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub">
-                        <CreditCard className="size-3" />
-                        {PAYMENT_LABELS[paymentMethod] ?? paymentMethod}
-                        {paymentMethod === "cartao" && cardMode
-                          ? ` · ${
-                              CARD_MODE_LABELS[cardMode as "credito" | "debito"] ??
-                              cardMode
-                            }`
-                          : ""}
-                        {cardId &&
-                          ` · ${cards.find((c) => c.id === cardId)?.name ?? ""}`.trim()}
-                      </span>
-                    )}
-                    {images.length > 0 && (
-                      <span className="glass rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub">
-                        {images.length}{" "}
-                        {images.length === 1 ? "foto anexada" : "fotos anexadas"}
-                      </span>
-                    )}
-                  </div>
-
-                  {note.trim() && (
-                    <div className="mt-4 rounded-2xl bg-white/40 p-3">
-                      <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
-                        <FileText className="size-3.5" /> Rascunho
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-glass-ink">
-                        {note.trim()}
-                      </p>
-                    </div>
-                  )}
-
-                  {images.length > 0 && (
-                    <HorizontalScroll className="-mx-1 mt-4 gap-2 px-1 pb-0.5">
-                      {images.map((img, i) => (
-                        <img
-                          key={i}
-                          src={img}
-                          alt={`Anexo ${i + 1}`}
-                          className="h-16 w-16 shrink-0 rounded-xl object-cover"
-                        />
-                      ))}
-                    </HorizontalScroll>
-                  )}
-                </div>
-
-                <p className="mt-4 px-2 text-center text-[12px] leading-relaxed text-glass-faint">
-                  A nota fica anexada à transação e aparece quando você toca no
-                  card dela.
-                </p>
-              </div>
-
-              {/* Footer */}
-              <div className="space-y-2.5 px-5 pb-7 pt-2">
-                <button
-                  type="button"
-                  disabled={!canSave}
-                  onClick={handleSave}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-all hover:brightness-105 active:scale-[0.98]"
-                >
-                  <Check className="size-[18px]" strokeWidth={2.6} />
-                  Salvar transação
-                </button>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setStep("edit")}
-                    className="glass glass-soft rounded-full py-3 text-[14px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-full py-3 text-[14px] font-semibold text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10 active:scale-[0.98]"
-                  >
-                    Descartar
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {/* ---------------- REVISÃO UNIFICADA ----------------
+              A revisão é EXATAMENTE o formulário completo do "Adicionar
+              Manual" (abas, categoria, pagamento, repetição, data, hora,
+              anexos e rascunho). A IA apenas pré-preenche; o botão final é o
+              mesmo "Adicionar despesa/receita". */}
+          <AddTransactionSheet
+            open={formOpen}
+            onClose={handleReviewClose}
+            initial={prefill}
+          />
         </motion.div>
       )}
     </AnimatePresence>
