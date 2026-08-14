@@ -13,6 +13,7 @@ import {
   Paperclip,
   Plus,
   Repeat,
+  Search,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import { imageToDataUrl } from "@/lib/receipt-scan";
 import type { RecurrenceFrequency, RecurrenceMode } from "@/lib/mock-data";
 import { CategoryIcon } from "./CategoryIcon";
 import { HorizontalScroll } from "./HorizontalScroll";
+import { SquircleIcon } from "./ThemeToggle";
 import {
   PaymentMethodSelector,
   type CardMode,
@@ -35,6 +37,18 @@ import {
 // ---------------------------------------------------------------------------
 
 const INCOME_IDS = new Set(["salario", "freelance"]);
+
+/** Categorias mais comuns mostradas como pílulas rápidas no formulário. */
+const QUICK_EXPENSE_IDS = ["alimentacao", "transporte", "moradia"];
+const QUICK_INCOME_IDS = ["salario", "freelance"];
+
+/** Lowercase + remove acentos, para "Alimentação" bater com "alimentacao". */
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
 
 type TxType = "expense" | "income";
 
@@ -122,7 +136,7 @@ export function AddTransactionSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { categories, cards, addTransaction } = useAppStore();
+  const { categories, cards, addTransaction, categoryById } = useAppStore();
   const [type, setType] = useState<TxType>("expense");
   const [cents, setCents] = useState(0);
   const [title, setTitle] = useState("");
@@ -140,6 +154,11 @@ export function AddTransactionSheet({
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Fresh form every time the sheet opens.
   useEffect(() => {
@@ -161,7 +180,28 @@ export function AddTransactionSheet({
     setCardId(null);
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
+    setPickerOpen(false);
+    setQuery("");
   }, [open, categories]);
+
+  // Foco automático na busca ao abrir o seletor (apenas desktop/pointer fino).
+  useEffect(() => {
+    if (!pickerOpen) return;
+    setQuery("");
+    const finePointer = window.matchMedia?.("(pointer: fine)").matches ?? true;
+    if (!finePointer) return;
+    const t = setTimeout(() => searchRef.current?.focus(), 140);
+    return () => clearTimeout(t);
+  }, [pickerOpen]);
+
+  // Esc fecha o seletor.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setPickerOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickerOpen]);
 
   const switchType = (t: TxType) => {
     setType(t);
@@ -187,6 +227,14 @@ export function AddTransactionSheet({
   });
 
   const canSave = cents > 0 && title.trim().length > 0 && !!categoryId;
+
+  const quickIds = type === "income" ? QUICK_INCOME_IDS : QUICK_EXPENSE_IDS;
+  const quickCategories = categories.filter((c) => quickIds.includes(c.id));
+  const pickedFromMenu = categoryId !== "" && !quickIds.includes(categoryId);
+  const pickerAccent = categoryById[categoryId]?.color ?? "#2F6BFF";
+  const filteredCategories = categories.filter((c) =>
+    normalizeText(c.label).includes(normalizeText(query)),
+  );
 
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -366,7 +414,7 @@ export function AddTransactionSheet({
                 Categoria
               </p>
               <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
-                {categories.map((c) => {
+                {quickCategories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
                     <button
@@ -395,6 +443,31 @@ export function AddTransactionSheet({
                     </button>
                   );
                 })}
+                {/* Outras — mesmo visual das pílulas, abre o seletor completo */}
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all",
+                    pickedFromMenu ? "text-glass-ink" : "glass text-glass-sub",
+                  )}
+                  style={
+                    pickedFromMenu
+                      ? {
+                          backgroundColor: `${pickerAccent}1f`,
+                          boxShadow: `0 0 0 2px ${pickerAccent}`,
+                        }
+                      : undefined
+                  }
+                >
+                  <SquircleIcon
+                    icon={Plus}
+                    color={pickerAccent}
+                    size="size-5"
+                    iconSize="size-3"
+                  />
+                  Outras
+                </button>
               </HorizontalScroll>
             </div>
 
@@ -725,6 +798,136 @@ export function AddTransactionSheet({
               Adicionar {type === "expense" ? "despesa" : "receita"}
             </button>
           </div>
+
+          {/* Seletor completo de categorias — bottom sheet com busca */}
+          <AnimatePresence>
+            {pickerOpen && (
+              <>
+                <motion.div
+                  key="cat-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.22 }}
+                  onClick={() => setPickerOpen(false)}
+                  className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+                />
+                <motion.div
+                  key="cat-sheet"
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 30, stiffness: 330 }}
+                  className="glass glass-strong absolute inset-x-0 bottom-0 z-50 flex max-h-[74%] flex-col rounded-t-[2.2rem] px-5 pb-8 pt-3"
+                >
+                  <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15 dark:bg-black/25" />
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold tracking-tight text-glass-ink">
+                        Escolher categoria
+                      </h3>
+                      <p className="text-[13px] text-glass-sub">
+                        Todas as categorias disponíveis
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Fechar"
+                      onClick={() => setPickerOpen(false)}
+                      className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub active:scale-90"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {/* Busca com lupa */}
+                  <label className="glass glass-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
+                    <Search className="size-4 shrink-0 text-glass-sub" />
+                    <input
+                      ref={searchRef}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Buscar categoria…"
+                      inputMode="search"
+                      enterKeyHint="search"
+                      className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint"
+                    />
+                    {query && (
+                      <button
+                        type="button"
+                        aria-label="Limpar busca"
+                        onClick={() => setQuery("")}
+                        className="shrink-0 text-glass-sub transition-transform active:scale-90"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    )}
+                  </label>
+
+                  {/* Lista vertical filtrada em tempo real */}
+                  <div className="no-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto">
+                    {filteredCategories.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 py-10 text-center">
+                        <div className="flex size-12 items-center justify-center rounded-2xl bg-glass-ink/10">
+                          <Search className="size-5 text-glass-faint" />
+                        </div>
+                        <p className="text-[14px] font-semibold text-glass-ink">
+                          Nenhuma categoria
+                        </p>
+                        <p className="text-[12.5px] text-glass-sub">
+                          Tente buscar por outro termo.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 pb-1">
+                        {filteredCategories.map((c) => {
+                          const selected = categoryId === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                setCategoryId(c.id);
+                                setPickerOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-all active:scale-[0.99]",
+                                selected
+                                  ? "bg-primary/10 ring-2 ring-primary/40"
+                                  : "hover:bg-white/50",
+                              )}
+                            >
+                              <CategoryIcon
+                                categoryId={c.id}
+                                size="size-10"
+                                iconSize="size-[17px]"
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={cn(
+                                    "block truncate text-[14.5px] font-semibold",
+                                    selected ? "text-primary" : "text-glass-ink",
+                                  )}
+                                >
+                                  {c.label}
+                                </span>
+                              </span>
+                              {selected && (
+                                <Check
+                                  className="size-4 shrink-0 text-primary"
+                                  strokeWidth={2.6}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
