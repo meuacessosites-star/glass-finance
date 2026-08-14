@@ -42,7 +42,7 @@ import {
 //   5. Erro final só se o Gemini falhar ou a imagem for ilegível.
 // ---------------------------------------------------------------------------
 
-type Step = "source" | "scan";
+type Step = "source" | "scan" | "review";
 type ScanPhase = "reading" | "success" | "failed";
 
 const INCOME_IDS = new Set(["salario", "freelance", "transferencias"]);
@@ -158,13 +158,48 @@ export function ScanReceiptSheet({
    * servem apenas como contingência.
    */
   const buildPrefill = (res: ReceiptResult, img: string | null) => {
-    const store = res.store || "";
-    const items = res.items;
-    const effectiveType = res.transactionType ?? "expense";
+    const today = new Date().toISOString().slice(0, 10);
+    const store = typeof res.store === "string" ? res.store.trim() : "";
+    const items = Array.isArray(res.items)
+      ? res.items
+          .filter((item) => item && typeof item.name === "string")
+          .map((item) => ({
+            name: item.name.trim() || "Item não identificado",
+            qty:
+              typeof item.qty === "string" && item.qty.trim()
+                ? item.qty.trim()
+                : typeof item.qty === "number" &&
+                    Number.isFinite(item.qty) &&
+                    item.qty > 0
+                  ? String(Math.floor(item.qty))
+                  : "1",
+            price:
+              typeof item.price === "number" &&
+              Number.isFinite(item.price) &&
+              item.price >= 0
+                ? item.price
+                : 0,
+          }))
+      : [];
+    const effectiveType =
+      res.transactionType === "income" ? "income" : "expense";
+    const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
     const total =
-      (res.total && res.total > 0
+      typeof res.total === "number" &&
+      Number.isFinite(res.total) &&
+      res.total > 0
         ? res.total
-        : items.reduce((sum, item) => sum + (item.price || 0), 0)) || 0;
+        : itemsTotal;
+    const safeDate =
+      typeof res.date === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(res.date) &&
+      !Number.isNaN(Date.parse(`${res.date}T12:00:00`))
+        ? res.date
+        : today;
+    const safeTime =
+      typeof res.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(res.time)
+        ? res.time
+        : "";
 
     const fallbackTitle =
       effectiveType === "income"
@@ -172,9 +207,12 @@ export function ScanReceiptSheet({
           ? `Pix recebido de ${store}`
           : "Receita recebida"
         : items.length > 0
-          ? describePurchase(items, store, res.store ?? "")
+          ? describePurchase(items, store, store)
           : store || "Comprovante";
-    const title = res.suggestedTitle || fallbackTitle;
+    const title =
+      typeof res.suggestedTitle === "string" && res.suggestedTitle.trim()
+        ? res.suggestedTitle.trim()
+        : fallbackTitle;
 
     // Despesas recebem somente os itens comprados. Serviços digitais e
     // pagamentos únicos não usam o prefixo artificial "1x"; receitas ficam
@@ -187,7 +225,7 @@ export function ScanReceiptSheet({
               res.purchaseContext === "digital" ||
               res.purchaseContext === "single_payment" ||
               res.categorySuggestion === "assinaturas" ||
-              /^assinatura\b/i.test(res.suggestedTitle ?? ""),
+              /^assinatura\b/i.test(title),
           });
 
     const fallbackCategory =
@@ -205,22 +243,23 @@ export function ScanReceiptSheet({
     const resolvedCategory = suggestedCategory
       ? applyCategory(suggestedCategory)
       : "";
-
     const payment = normalizePaymentMethod(res.paymentMethod);
 
     return {
       type: effectiveType,
-      cents: Math.round(total * 100),
+      cents: Math.max(0, Math.round(total * 100)),
       title,
-      categoryId:
-        resolvedCategory || suggestedCategory || defaultCategoryId(),
-      date: res.date || new Date().toISOString().slice(0, 10),
-      time: res.time || "",
+      // Nunca repassa um ID sugerido sem resolução: o formulário recebe um ID
+      // existente/criado pelo catálogo ou um fallback seguro já presente.
+      categoryId: resolvedCategory || defaultCategoryId(),
+      date: safeDate,
+      time: safeTime,
       note,
       // A imagem original escaneada entra no campo de ANEXOS do formulário.
-      attachments: img
-        ? [{ src: img, isImage: true, name: "Nota escaneada" }]
-        : [],
+      attachments:
+        typeof img === "string" && img.startsWith("data:image/")
+          ? [{ src: img, isImage: true, name: "Nota escaneada" }]
+          : [],
       recurrence: "unica" as const,
       frequency: "mensal" as const,
       daysInterval: 15,
@@ -232,9 +271,37 @@ export function ScanReceiptSheet({
     } satisfies TransactionFormValues;
   };
 
-  /** Abre o formulário unificado pré-preenchido (resultado da IA ou vazio). */
+  /** Pré-preenchimento mínimo usado se uma resposta externa vier incompleta.
+   * Mantém a revisão navegável mesmo quando não for possível aproveitar os
+   * campos opcionais retornados pela IA. */
+  const buildSafeFallbackPrefill = (img: string | null) => ({
+    type: "expense" as const,
+    cents: 0,
+    title: "Comprovante",
+    categoryId: defaultCategoryId(),
+    date: new Date().toISOString().slice(0, 10),
+    time: "",
+    note: "",
+    attachments:
+      typeof img === "string" && img.startsWith("data:image/")
+        ? [{ src: img, isImage: true, name: "Nota escaneada" }]
+        : [],
+    recurrence: "unica" as const,
+    frequency: "mensal" as const,
+    daysInterval: 15,
+    installments: 2,
+    currentInstallment: 1,
+    paymentMethod: "" as const,
+    cardMode: "" as const,
+    cardId: null,
+  }) satisfies TransactionFormValues;
+
+  /** Abre o formulário unificado pré-preenchido (resultado da IA ou vazio).
+   * A troca explícita para review desmonta a view de sucesso do scanner antes
+   * de exibir o formulário, evitando que ela permaneça sobreposta a ele. */
   const openReviewForm = (values: TransactionFormValues) => {
     setPrefill(values);
+    setStep("review");
     setFormOpen(true);
   };
 
@@ -305,14 +372,30 @@ export function ScanReceiptSheet({
     if (runId !== runIdRef.current) return;
 
     // 3) Preenchimento: o JSON estruturado abre o formulário unificado.
-    if (res?.ok && (res.total || res.store || res.items.length)) {
+    // Respostas externas são verificadas em tempo de execução antes de acessar
+    // itens opcionais, evitando que um payload parcial deixe o scanner parado.
+    const hasItems = Array.isArray(res?.items) && res.items.length > 0;
+    const hasScanData =
+      typeof res?.total === "number" ||
+      (typeof res?.store === "string" && res.store.trim().length > 0) ||
+      hasItems;
+    if (res?.ok && hasScanData) {
       clearScanTimers();
       setProgress(100);
       setScanPhase("success");
-      const values = buildPrefill(res, img);
+
+      let values: TransactionFormValues;
+      try {
+        values = buildPrefill(res, img);
+      } catch (error) {
+        console.error("[Leitor de Notas] Pré-preenchimento inválido:", error);
+        values = buildSafeFallbackPrefill(img);
+      }
+
       openFormTimerRef.current = window.setTimeout(() => {
+        openFormTimerRef.current = null;
         if (runId === runIdRef.current) openReviewForm(values);
-      }, 550);
+      }, 1000);
       return;
     }
 
@@ -408,7 +491,7 @@ export function ScanReceiptSheet({
           mesmo nó do DOM — eliminando o erro de "removeChild" na troca de
           Loading → Formulário. Cada estado fica isolado em um <div key=…>. */}
       <AnimatePresence>
-        {open && (
+        {open && step !== "review" && (
           <motion.div
             key="view-scanner-shell"
             initial={{ y: "100%" }}
