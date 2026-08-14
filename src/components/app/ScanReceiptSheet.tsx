@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Camera,
@@ -95,20 +95,30 @@ export function ScanReceiptSheet({
   const openFormTimerRef = useRef<number | null>(null);
 
   /** Limpa todos os timers da tela de leitura. */
-  const clearScanTimers = () => {
-    if (progressTimerRef.current) window.clearInterval(progressTimerRef.current);
-    if (messageTimerRef.current) window.clearInterval(messageTimerRef.current);
-    if (openFormTimerRef.current) window.clearTimeout(openFormTimerRef.current);
+  const clearScanTimers = useCallback(() => {
+    if (progressTimerRef.current !== null) {
+      window.clearInterval(progressTimerRef.current);
+    }
+    if (messageTimerRef.current !== null) {
+      window.clearInterval(messageTimerRef.current);
+    }
+    if (openFormTimerRef.current !== null) {
+      window.clearTimeout(openFormTimerRef.current);
+    }
     progressTimerRef.current = null;
     messageTimerRef.current = null;
     openFormTimerRef.current = null;
-  };
+  }, []);
 
-  // Fresh state every time the sheet opens.
+  // Fresh state every time the sheet opens. The cleanup runs whenever the
+  // sheet closes or unmounts, so no progress/message interval can outlive its
+  // loading view and update a replacement DOM tree.
   useEffect(() => {
-    if (!open) return;
-    runIdRef.current += 1;
     clearScanTimers();
+    // Invalida respostas assíncronas quando o scanner fecha para que uma
+    // leitura pendente não reabra o formulário depois da desmontagem.
+    runIdRef.current += 1;
+    if (!open) return undefined;
     setStep("source");
     setImages([]);
     setScanPhase("reading");
@@ -118,12 +128,9 @@ export function ScanReceiptSheet({
     setPrefill(null);
     setFormOpen(false);
     sourceFileRef.current = null;
-  }, [open]);
 
-  // Clear all timers on unmount.
-  useEffect(() => {
     return () => clearScanTimers();
-  }, []);
+  }, [open, clearScanTimers]);
 
   /** Default expense category (used until the scan answers). */
   const defaultCategoryId = () => {
@@ -403,7 +410,7 @@ export function ScanReceiptSheet({
       <AnimatePresence>
         {open && (
           <motion.div
-            key="scan-sheet"
+            key="view-scanner-shell"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -434,7 +441,7 @@ export function ScanReceiptSheet({
           {/* ---------------- SOURCE ---------------- */}
           {step === "source" && (
             <div
-              key="source-view"
+              key="view-scanner"
               className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center"
             >
               <div className="flex size-20 items-center justify-center rounded-[1.6rem] bg-[#1FBF4F]/15 shadow-[0_14px_34px_-14px_rgba(31,191,79,0.6)]">
@@ -486,7 +493,7 @@ export function ScanReceiptSheet({
           {/* ---------------- SCAN (leitura animada) ---------------- */}
           {step === "scan" && (
             <div
-              key="scan-view"
+              key="view-loading"
               className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3"
             >
               <div className="mx-auto mt-3 w-full max-w-[250px]">
@@ -513,21 +520,24 @@ export function ScanReceiptSheet({
                     </div>
                   )}
                   {scanPhase !== "failed" && (
-                    <>
+                    <div key="view-scan-overlay">
                       <div className="pointer-events-none absolute inset-0 bg-[#0b1630]/10" />
                       <span className="pointer-events-none absolute left-3 top-3 h-5 w-5 rounded-tl-xl border-l-[3px] border-t-[3px] border-white/90" />
                       <span className="pointer-events-none absolute right-3 top-3 h-5 w-5 rounded-tr-xl border-r-[3px] border-t-[3px] border-white/90" />
                       <span className="pointer-events-none absolute bottom-3 left-3 h-5 w-5 rounded-bl-xl border-b-[3px] border-l-[3px] border-white/90" />
                       <span className="pointer-events-none absolute bottom-3 right-3 h-5 w-5 rounded-br-xl border-b-[3px] border-r-[3px] border-white/90" />
                       <div className="scan-line" aria-hidden="true" />
-                    </>
+                    </div>
                   )}
                 </div>
 
                 {/* Status: mensagem rotativa + porcentagem + barra */}
                 <div className="glass mt-3 rounded-2xl px-4 py-3">
                   {scanPhase === "success" ? (
-                    <div className="flex items-center gap-2.5">
+                    <div
+                      key="view-scan-success"
+                      className="flex items-center gap-2.5"
+                    >
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#1FBF4F]/15">
                         <Check
                           className="size-3.5 text-[#17a443]"
@@ -544,7 +554,7 @@ export function ScanReceiptSheet({
                       </div>
                     </div>
                   ) : (
-                    <>
+                    <div key="view-scan-status-active">
                       <div className="flex items-center gap-2.5">
                         <span
                           className={cn(
@@ -562,7 +572,7 @@ export function ScanReceiptSheet({
                       </div>
 
                       {scanPhase === "reading" && (
-                        <>
+                        <div key="view-scan-progress">
                           <div className="mt-2.5 flex items-center justify-between gap-3">
                             <p className="truncate text-[12px] font-medium text-glass-sub">
                               Analisando a inteligência do comprovante…
@@ -577,13 +587,13 @@ export function ScanReceiptSheet({
                               style={{ width: `${progress}%` }}
                             />
                           </div>
-                        </>
+                        </div>
                       )}
-                    </>
+                    </div>
                   )}
 
                   {scanPhase === "failed" && (
-                    <div className="mt-3 space-y-2.5">
+                    <div key="view-scan-failed" className="mt-3 space-y-2.5">
                       <div className="grid grid-cols-2 gap-2.5">
                         <button
                           type="button"
@@ -631,7 +641,7 @@ export function ScanReceiptSheet({
           o mesmo "Adicionar despesa/receita". Todas as props obrigatórias
           (open, onClose, onExitComplete, initial) são passadas. */}
       <AddTransactionSheet
-        key="review-form"
+        key="view-form"
         open={formOpen}
         onClose={handleReviewClose}
         onExitComplete={() => onClose()}
