@@ -63,6 +63,13 @@ const initialAssistantMessage: ChatMessage = {
   text: "Olá! Me conte uma receita ou despesa, por texto ou voz. Ex.: “gastei 32 reais no almoço”.",
 };
 
+const QUICK_SUGGESTIONS = [
+  "Gastei R$ 45 no almoço",
+  "Recebi R$ 2.500 de salário",
+  "Comprei no mercado R$ 150",
+  "Paguei a conta de luz R$ 120",
+] as const;
+
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const newMessageId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -375,6 +382,20 @@ export function VoiceCommandSheet({
                     </p>
                   </div>
                 ))}
+                {messages.length === 1 && !waiting && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {QUICK_SUGGESTIONS.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => void sendMessage(suggestion)}
+                        className="glass glass-soft rounded-full px-3 py-2 text-left text-[12px] font-semibold leading-tight text-glass-sub transition-transform active:scale-[0.98]"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {waiting && (
                   <div className="flex justify-start">
                     <div className="rounded-2xl rounded-bl-md bg-gray-100 px-3.5 py-3 text-[13px] font-semibold text-glass-sub">
