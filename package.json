@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx convex codegen || (test -f src/convex/_generated/api.ts && test -f src/convex/_generated/server.ts); tsc -b && vite build",
+    "build": "npx convex codegen && tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview"
