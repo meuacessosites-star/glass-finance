@@ -76,6 +76,8 @@ export type Transaction = {
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */
   cardMode?: string;
+  /** Convex people record linked to this transaction, when applicable. */
+  personId?: string;
 };
 
 /** Short human label for the transaction's recurrence, or null when única. */

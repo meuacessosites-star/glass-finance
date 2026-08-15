@@ -513,6 +513,10 @@ function sanitizeTransactions(v: unknown): Transaction[] {
           : t.paymentMethod === "credito" || t.paymentMethod === "debito"
             ? t.paymentMethod
             : undefined,
+      personId:
+        typeof t.personId === "string" && t.personId.trim()
+          ? t.personId.trim().slice(0, 80)
+          : undefined,
       };
     })
     .filter((t) => t.amount !== 0);
@@ -751,6 +755,7 @@ type AppStoreValue = {
     paymentMethod?: string;
     cardId?: string;
     cardMode?: "credito" | "debito";
+    personId?: string;
   }) => void;
   createLoanRecord: (data: {
     contact: string;

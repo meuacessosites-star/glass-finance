@@ -29,6 +29,7 @@ import {
   type CardMode,
   type PaymentMethodId,
 } from "./PaymentMethodSelector";
+import { PersonSelector } from "./PersonSelector";
 
 // ---------------------------------------------------------------------------
 // AddTransactionSheet — full-screen iOS-style page opened by “Adicionar
@@ -79,6 +80,7 @@ export type TransactionFormValues = {
   paymentMethod: PaymentMethodId | "";
   cardMode: CardMode | "";
   cardId: string | null;
+  personId?: string | null;
 };
 
 const inputClass =
@@ -184,6 +186,7 @@ export function AddTransactionSheet({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
+  const [personId, setPersonId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
@@ -192,6 +195,8 @@ export function AddTransactionSheet({
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Fresh form every time the sheet opens.
+  // The reset intentionally runs when the sheet opens to keep this form isolated.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open) return;
     setType("expense");
@@ -209,6 +214,7 @@ export function AddTransactionSheet({
     setPaymentMethod("");
     setCardMode("");
     setCardId(null);
+    setPersonId(null);
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
     setPickerOpen(false);
@@ -237,6 +243,7 @@ export function AddTransactionSheet({
       setPaymentMethod(initial.paymentMethod ?? "");
       setCardMode(initial.cardMode ?? "");
       setCardId(initial.cardId ?? null);
+      setPersonId(initial.personId ?? null);
     }
   }, [open, categories, initial]);
 
@@ -249,6 +256,7 @@ export function AddTransactionSheet({
     const t = setTimeout(() => searchRef.current?.focus(), 140);
     return () => clearTimeout(t);
   }, [pickerOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Esc fecha o seletor.
   useEffect(() => {
@@ -361,6 +369,7 @@ export function AddTransactionSheet({
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
+      personId: personId ?? undefined,
     });
     toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
       description: "Já aparece no seu resumo e no histórico.",
@@ -522,6 +531,12 @@ export function AddTransactionSheet({
                 </button>
               </HorizontalScroll>
             </div>
+
+            <PersonSelector
+              value={personId}
+              onValueChange={setPersonId}
+              label="Pessoa (opcional)"
+            />
 
             {/* Repetition */}
             <div className="mt-6">

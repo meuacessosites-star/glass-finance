@@ -32,7 +32,17 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
+    people: defineTable({
+      userSubject: v.string(),
+      name: v.string(),
+      phone: v.optional(v.string()),
+      avatarType: v.optional(
+        v.union(v.literal("letters"), v.literal("emoji"), v.literal("foto")),
+      ),
+      avatarValue: v.optional(v.string()),
+      avatarColor: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user_subject", ["userSubject"]),
 
     // tableName: defineTable({
     //   ...
