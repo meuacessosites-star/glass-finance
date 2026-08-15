@@ -12,10 +12,13 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { HorizontalScroll } from "./HorizontalScroll";
 import type { PaymentMethodId } from "./PaymentMethodSelector";
+import { PersonSelector } from "./PersonSelector";
 
 type CollectionMode = "fixed" | "open";
 
@@ -92,8 +95,9 @@ export function LoanTransactionSheet({
   onClose: () => void;
 }) {
   const { createLoanRecord, categories } = useAppStore();
+  const people = useQuery(api.people.list) as Array<{ _id: string; name: string }> | undefined;
   const [cents, setCents] = useState(0);
-  const [contact, setContact] = useState("");
+  const [personId, setPersonId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>("pix");
   const [collectionMode, setCollectionMode] = useState<CollectionMode>("fixed");
@@ -102,12 +106,13 @@ export function LoanTransactionSheet({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const amountLabel = useMemo(() => formatAmount(cents), [cents]);
+  const contact = people?.find((person) => person._id === personId)?.name ?? "";
   const categoryId =
     categories.find((category) => category.id === "transferencias")?.id ??
     categories.find((category) => category.id === "outros")?.id ??
     categories[0]?.id ??
     "outros";
-  const canSave = cents > 0 && contact.trim().length > 0;
+  const canSave = cents > 0 && Boolean(personId) && contact.trim().length > 0;
   const dueDates = useMemo(
     () =>
       collectionMode === "fixed"
@@ -120,7 +125,7 @@ export function LoanTransactionSheet({
 
   const reset = () => {
     setCents(0);
-    setContact("");
+    setPersonId(null);
     setDescription("");
     setPaymentMethod("pix");
     setCollectionMode("fixed");
@@ -225,21 +230,17 @@ export function LoanTransactionSheet({
               <div className="mx-auto mt-2 h-0.5 w-16 rounded-full bg-primary/30" />
             </div>
 
-            <div className="mt-6">
-              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                Nome do contato <span className="text-[#FF3B30]">*</span>
-              </p>
-              <input
-                value={contact}
-                onChange={(event) => setContact(event.target.value)}
-                placeholder="Nome do contato/amigo"
-                maxLength={40}
-                className={cn(inputClass, "mt-2")}
-              />
-              <p className="mt-1.5 px-1 text-[11.5px] text-glass-faint">
-                Essencial para acompanhar quem precisa devolver o valor.
-              </p>
-            </div>
+            <PersonSelector
+              value={personId}
+              onValueChange={setPersonId}
+              onNavigateToPeople={onClose}
+              required
+              label="Nome do contato"
+              placeholder="Selecionar pessoa"
+            />
+            <p className="mt-1.5 px-1 text-[11.5px] text-glass-faint">
+              Essencial para acompanhar quem precisa devolver o valor.
+            </p>
 
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">

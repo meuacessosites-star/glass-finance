@@ -112,6 +112,7 @@ export function ScanReceiptSheet({
   // Fresh state every time the sheet opens. The cleanup runs whenever the
   // sheet closes or unmounts, so no progress/message interval can outlive its
   // loading view and update a replacement DOM tree.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     clearScanTimers();
     // Invalida respostas assíncronas quando o scanner fecha para que uma
@@ -129,6 +130,7 @@ export function ScanReceiptSheet({
 
     return () => clearScanTimers();
   }, [open, clearScanTimers]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   /** Default expense category (used until the scan answers). */
   const defaultCategoryId = () => {

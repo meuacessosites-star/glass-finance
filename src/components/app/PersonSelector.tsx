@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronDown, Plus, Users } from "lucide-react";
 import { useQuery } from "convex/react";
+import { useNavigate } from "react-router";
 
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CreatePersonModal } from "./CreatePersonModal";
 import { PersonAvatar } from "./PersonAvatar";
 
 type PersonRecord = {
@@ -24,6 +24,7 @@ type PersonRecord = {
 type PersonSelectorProps = {
   value?: string | null;
   onValueChange: (value: string | null) => void;
+  onNavigateToPeople?: () => void;
   required?: boolean;
   label?: string;
   placeholder?: string;
@@ -33,14 +34,20 @@ type PersonSelectorProps = {
 export function PersonSelector({
   value,
   onValueChange,
+  onNavigateToPeople,
   required = false,
   label = "Pessoa",
   placeholder = "Selecionar pessoa",
   className,
 }: PersonSelectorProps) {
+  const navigate = useNavigate();
   const people = useQuery(api.people.list) as PersonRecord[] | undefined;
   const [open, setOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const goToPeople = () => {
+    setOpen(false);
+    onNavigateToPeople?.();
+    navigate("/dashboard/pessoas");
+  };
   const selectedPerson = useMemo(
     () => people?.find((person) => person._id === value),
     [people, value],
@@ -95,7 +102,11 @@ export function PersonSelector({
               <ChevronDown className="size-4 shrink-0 text-glass-sub" />
             </button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="glass glass-strong w-[min(22rem,calc(100vw-2rem))] p-2">
+          <PopoverContent
+            align="start"
+            style={{ zIndex: 70 }}
+            className="glass glass-strong w-[min(22rem,calc(100vw-2rem))] p-2"
+          >
             <div className="mb-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-glass-sub">
               Pessoas cadastradas
             </div>
@@ -135,10 +146,7 @@ export function PersonSelector({
             </div>
             <button
               type="button"
-              onClick={() => {
-                setOpen(false);
-                setCreateOpen(true);
-              }}
+              onClick={goToPeople}
               className="mt-2 flex w-full items-center gap-2 rounded-xl border-t border-black/5 px-2 pt-3 text-left text-[13px] font-semibold text-primary"
             >
               <span className="flex size-7 items-center justify-center rounded-full bg-primary/10">
@@ -151,7 +159,7 @@ export function PersonSelector({
 
         <button
           type="button"
-          onClick={() => setCreateOpen(true)}
+          onClick={goToPeople}
           className="glass flex size-12 shrink-0 items-center justify-center rounded-2xl text-primary transition-colors hover:bg-white/70"
           aria-label="Cadastrar nova pessoa"
         >
@@ -159,11 +167,6 @@ export function PersonSelector({
         </button>
       </div>
 
-      <CreatePersonModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(personId) => onValueChange(personId)}
-      />
     </div>
   );
 }

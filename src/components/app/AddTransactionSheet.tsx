@@ -535,6 +535,7 @@ export function AddTransactionSheet({
             <PersonSelector
               value={personId}
               onValueChange={setPersonId}
+              onNavigateToPeople={onClose}
               label="Pessoa (opcional)"
             />
 
