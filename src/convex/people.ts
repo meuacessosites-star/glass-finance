@@ -51,3 +51,43 @@ export const create = mutation({
     });
   },
 });
+
+export const update = mutation({
+  args: {
+    id: v.id("people"),
+    name: v.string(),
+    phone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userSubject = await getUserSubject(ctx);
+    const person = await ctx.db.get(args.id);
+    if (!person || person.userSubject !== userSubject) {
+      throw new Error("Pessoa não encontrada");
+    }
+
+    const name = args.name.trim();
+    if (!name) {
+      throw new Error("Informe o nome da pessoa");
+    }
+
+    await ctx.db.patch(args.id, {
+      name,
+      phone: args.phone?.replace(/\D/g, "") || undefined,
+    });
+  },
+});
+
+export const remove = mutation({
+  args: {
+    id: v.id("people"),
+  },
+  handler: async (ctx, args) => {
+    const userSubject = await getUserSubject(ctx);
+    const person = await ctx.db.get(args.id);
+    if (!person || person.userSubject !== userSubject) {
+      throw new Error("Pessoa não encontrada");
+    }
+
+    await ctx.db.delete(args.id);
+  },
+});
