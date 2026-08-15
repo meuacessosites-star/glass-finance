@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Bell, TrendingDown, TrendingUp } from "lucide-react";
 import { Link } from "react-router";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
@@ -17,10 +17,10 @@ import {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { activeProfile, transactions, reserves, reservesInBalance } =
+  const { activeProfile, visibleTransactions, reserves, reservesInBalance, notifications } =
     useAppStore();
 
-  const { income, expense } = monthTotals(transactions, currentMonthKey);
+  const { income, expense } = monthTotals(visibleTransactions, currentMonthKey);
   const balance = openingBalance + income - expense;
   const reservesTotal = reserves.reduce((s, r) => s + r.amount, 0);
   // Reservas aparecem junto com o saldo (total) ou ficam só na aba Reservas
@@ -28,7 +28,7 @@ export default function HomePage() {
   const shownBalance = reservesInBalance
     ? balance
     : Math.max(0, balance - reservesTotal);
-  const recent = [...transactions]
+  const recent = [...visibleTransactions]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
   const name =
@@ -36,6 +36,7 @@ export default function HomePage() {
     user?.name?.trim().split(" ")[0] ||
     "pessoa";
   const savingsPct = 12;
+  const pendingCount = notifications.filter((n) => n.status === "pending").length;
 
   return (
     <div className="space-y-5">
@@ -52,6 +53,18 @@ export default function HomePage() {
             Olá, {name} 👋
           </p>
         </div>
+        <Link
+          to="/dashboard/notificacoes"
+          aria-label={`Ver notificações${pendingCount > 0 ? ` (${pendingCount} pendentes)` : ""}`}
+          className="glass glass-soft relative flex size-9 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
+        >
+          <Bell className="size-[17px]" strokeWidth={2.3} />
+          {pendingCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FF3B30] px-1 text-[9.5px] font-bold leading-none text-white">
+              {pendingCount}
+            </span>
+          )}
+        </Link>
         <ThemeToggle />
       </motion.header>
 

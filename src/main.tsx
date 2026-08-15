@@ -24,6 +24,10 @@ const CardPurchasesPage = lazy(() => import("./pages/app/CardPurchasesPage.tsx")
 const NotificationsPage = lazy(() => import("./pages/app/NotificationsPage.tsx"));
 const ReservesPage = lazy(() => import("./pages/app/ReservesPage.tsx"));
 const PeoplePage = lazy(() => import("./pages/app/PeoplePage.tsx"));
+const FinancingsPage = lazy(() => import("./pages/app/FinancingsPage.tsx"));
+const GoalsPage = lazy(() => import("./pages/app/GoalsPage.tsx"));
+const InsightsPage = lazy(() => import("./pages/app/InsightsPage.tsx"));
+const AccountPage = lazy(() => import("./pages/app/AccountPage.tsx"));
 const ProfilesPage = lazy(() => import("./pages/app/ProfilesPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -177,7 +181,11 @@ if (!convex) {
                   <Route path="compras-cartao" element={<CardPurchasesPage />} />
                   <Route path="notificacoes" element={<NotificationsPage />} />
                   <Route path="reservas" element={<ReservesPage />} />
+                  <Route path="financiamentos" element={<FinancingsPage />} />
+                  <Route path="metas" element={<GoalsPage />} />
+                  <Route path="analise" element={<InsightsPage />} />
                   <Route path="pessoas" element={<PeoplePage />} />
+                  <Route path="conta" element={<AccountPage />} />
                   <Route path="perfis" element={<ProfilesPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

@@ -14,24 +14,24 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function TransactionsPage() {
-  const { categories, transactions } = useAppStore();
+  const { categories, visibleTransactions } = useAppStore();
 
   const allMonths = useMemo(
     () =>
-      [...new Set(transactions.map((t) => monthKey(t.date)))].sort((a, b) =>
-        b.localeCompare(a),
+      [...new Set(visibleTransactions.map((t) => monthKey(t.date)))].sort(
+        (a, b) => b.localeCompare(a),
       ),
-    [transactions],
+    [visibleTransactions],
   );
   const [month, setMonth] = useState<string>(allMonths[0]);
   const [category, setCategory] = useState<string>("todas");
 
   const filtered = useMemo(() => {
-    return transactions
+    return visibleTransactions
       .filter((t) => monthKey(t.date) === month)
       .filter((t) => category === "todas" || t.categoryId === category)
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [month, category, transactions]);
+  }, [month, category, visibleTransactions]);
 
   const expenseTotal = filtered
     .filter((t) => t.amount < 0)

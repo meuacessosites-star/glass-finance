@@ -59,6 +59,32 @@ export type AppReserve = {
 /** Notificação de banco que aguarda aprovação para virar transação. */
 export type AppNotification = BankNotification;
 
+/** Financiamento: parcelas mensais fixas (ex.: carro, casa, faculdade). */
+export type AppFinancing = {
+  id: string;
+  name: string;
+  totalAmount: number; // BRL (valor total financiado)
+  installments: number; // total de parcelas N
+  currentInstallment: number; // parcela atual (1-based)
+  installmentValue: number; // valor mensal da parcela
+  dueDay: number; // dia do vencimento (1-31)
+  startDate: string; // yyyy-mm-dd (primeira parcela)
+  categoryId?: string;
+  color: string;
+  createdAt: string;
+};
+
+/** Meta de economia: quanto quer guardar e quanto já guardou. */
+export type AppGoal = {
+  id: string;
+  name: string;
+  targetAmount: number; // BRL
+  savedAmount: number; // BRL já guardado
+  deadline?: string; // yyyy-mm-dd (opcional)
+  color: string;
+  createdAt: string;
+};
+
 /** Devolução vinculada a um valor emprestado a terceiros. */
 export type LoanReceivable = {
   id: string;
@@ -87,6 +113,10 @@ export type ProfileData = {
   /** true = reservas aparecem junto com o saldo na tela inicial. */
   reservesInBalance: boolean;
   notifications: AppNotification[];
+  financings: AppFinancing[];
+  /** true = parcelas dos financiamentos aparecem junto com as transações. */
+  financingsInFlow: boolean;
+  goals: AppGoal[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
@@ -134,6 +164,9 @@ function defaultData(): ProfileData {
     reserves: [],
     reservesInBalance: true,
     notifications: seedNotifications.map((n) => ({ ...n })),
+    financings: [],
+    financingsInFlow: false,
+    goals: [],
     pin: null,
   };
 }
@@ -142,6 +175,19 @@ function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+}
+
+/** Data da i-ésima parcela (1-based) a partir da data da primeira. */
+function financingDueDate(startDate: string, index: number): string {
+  const [year, month, day] = startDate.split("-").map(Number);
+  if (!year || !month || !day) return startDate;
+  const absolute = month - 1 + (index - 1);
+  const y = year + Math.floor(absolute / 12);
+  const m = ((absolute % 12) + 12) % 12;
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(
+    Math.min(day, lastDay),
+  ).padStart(2, "0")}`;
 }
 
 const str = (v: unknown, fallback: string) =>
@@ -271,6 +317,65 @@ function sanitizeNotifications(v: unknown): AppNotification[] {
           ? n.status
           : "pending",
     }));
+}
+
+function sanitizeFinancings(v: unknown): AppFinancing[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => {
+      const installments = num(f.installments, 12, 1, 480);
+      return {
+        id: str(f.id, uid("fin")),
+        name: str(f.name, "Financiamento"),
+        totalAmount: num(f.totalAmount, 10000, 0.01, 1e9),
+        installments,
+        currentInstallment: Math.min(
+          installments,
+          num(f.currentInstallment, 1, 1, 480),
+        ),
+        installmentValue: num(f.installmentValue, 100, 0.01, 1e7),
+        dueDay: Math.min(31, Math.max(1, num(f.dueDay, 5, 1, 31))),
+        startDate:
+          typeof f.startDate === "string" &&
+          /^\d{4}-\d{2}-\d{2}/.test(f.startDate)
+            ? f.startDate.slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+        categoryId:
+          typeof f.categoryId === "string" && f.categoryId.trim()
+            ? f.categoryId.trim().slice(0, 40)
+            : undefined,
+        color: str(f.color, "#2F6BFF"),
+        createdAt:
+          typeof f.createdAt === "string" &&
+          /^\d{4}-\d{2}-\d{2}/.test(f.createdAt)
+            ? f.createdAt.slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+      };
+    })
+    .filter((f) => f.name !== "Financiamento");
+}
+
+function sanitizeGoals(v: unknown): AppGoal[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((g): g is Record<string, unknown> => !!g && typeof g === "object")
+    .map((g) => ({
+      id: str(g.id, uid("goal")),
+      name: str(g.name, "Meta"),
+      targetAmount: num(g.targetAmount, 1000, 0.01, 1e9),
+      savedAmount: num(g.savedAmount, 0, 0, 1e9),
+      deadline:
+        typeof g.deadline === "string" && /^\d{4}-\d{2}-\d{2}/.test(g.deadline)
+          ? g.deadline.slice(0, 10)
+          : undefined,
+      color: str(g.color, "#FF9500"),
+      createdAt:
+        typeof g.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(g.createdAt)
+          ? g.createdAt.slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+    }))
+    .filter((g) => g.name !== "Meta");
 }
 
 function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
@@ -476,6 +581,12 @@ function buildProfiles(raw: unknown): AppProfile[] {
               ? nested.reservesInBalance
               : true,
           notifications: sanitizeNotifications(nested.notifications),
+          financings: sanitizeFinancings(nested.financings),
+          financingsInFlow:
+            typeof nested.financingsInFlow === "boolean"
+              ? nested.financingsInFlow
+              : false,
+          goals: sanitizeGoals(nested.goals),
           pin: pin4(nested.pin),
         },
       };
@@ -492,6 +603,9 @@ function buildProfiles(raw: unknown): AppProfile[] {
         reserves: [],
         reservesInBalance: true,
         notifications: seedNotifications.map((n) => ({ ...n })),
+        financings: [],
+        financingsInFlow: false,
+        goals: [],
         pin:
           legacy && base.id === parsed.activeProfileId
             ? pin4(parsed.pin)
@@ -555,6 +669,11 @@ type AppStoreValue = {
   reserves: AppReserve[];
   reservesInBalance: boolean;
   notifications: AppNotification[];
+  financings: AppFinancing[];
+  financingsInFlow: boolean;
+  goals: AppGoal[];
+  /** Transações reais + parcelas de financiamento quando integradas ao fluxo. */
+  visibleTransactions: Transaction[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   /** Creates a category on the active profile and returns its id. */
@@ -581,6 +700,41 @@ type AppStoreValue = {
   ignoreNotification: (id: string) => void;
   /** Restaura todas as notificações para "pendente" (demo). */
   resetNotifications: () => void;
+  addFinancing: (data: {
+    name: string;
+    totalAmount: number;
+    installments: number;
+    currentInstallment: number;
+    installmentValue: number;
+    dueDay: number;
+    startDate: string;
+    categoryId?: string;
+    color: string;
+  }) => void;
+  updateFinancing: (
+    id: string,
+    patch: Partial<Omit<AppFinancing, "id" | "createdAt">>,
+  ) => void;
+  deleteFinancing: (id: string) => void;
+  setFinancingsInFlow: (value: boolean) => void;
+  addGoal: (data: {
+    name: string;
+    targetAmount: number;
+    savedAmount: number;
+    deadline?: string;
+    color?: string;
+  }) => void;
+  updateGoal: (
+    id: string,
+    patch: Partial<
+      Pick<AppGoal, "name" | "targetAmount" | "savedAmount" | "deadline" | "color">
+    >,
+  ) => void;
+  deleteGoal: (id: string) => void;
+  /** Serializa o estado atual (perfis + dados) para exportar/compartilhar. */
+  exportState: () => string;
+  /** Substitui o estado local por um backup/código compartilhado. */
+  importState: (raw: string) => { ok: boolean; error?: string };
   addTransaction: (data: {
     title: string;
     categoryId: string;
@@ -649,6 +803,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         reserves: [] as AppReserve[],
         reservesInBalance: true,
         notifications: [] as AppNotification[],
+        financings: [] as AppFinancing[],
+        financingsInFlow: false,
+        goals: [] as AppGoal[],
         pin: null,
     };
 
@@ -664,6 +821,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         ),
       }));
 
+    // Parcelas de financiamento injetadas no fluxo quando "junto com as
+    // transações" está ativo: cada parcela vira uma despesa com data própria.
+    const financingTransactions: Transaction[] = [];
+    if (activeData.financingsInFlow) {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const f of activeData.financings) {
+        const total = Math.min(f.currentInstallment, f.installments);
+        for (let i = 1; i <= total; i++) {
+          const date = financingDueDate(f.startDate, i);
+          if (date > today) continue;
+          financingTransactions.push({
+            id: `fin-${f.id}-${i}`,
+            title: `${f.name} · Parcela ${i}/${f.installments}`,
+            categoryId: f.categoryId ?? "moradia",
+            amount: -Math.abs(f.installmentValue),
+            date,
+            note: "Parcela do financiamento",
+            paymentMethod: "boleto",
+          });
+        }
+      }
+    }
+    const visibleTransactions: Transaction[] = [
+      ...financingTransactions,
+      ...activeData.transactions,
+    ];
+
     return {
       profiles: state.profiles,
       activeProfileId: state.activeProfileId,
@@ -672,11 +856,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       categories: activeData.categories,
       cards: activeData.cards,
       transactions: activeData.transactions,
+      visibleTransactions,
       loanReceivables: activeData.loanReceivables,
       people: activeData.people,
       reserves: activeData.reserves,
       reservesInBalance: activeData.reservesInBalance,
       notifications: activeData.notifications,
+      financings: activeData.financings,
+      financingsInFlow: activeData.financingsInFlow,
+      goals: activeData.goals,
       pin: activeData.pin,
       categoryById,
       addCategory: (data) => {
@@ -811,6 +999,87 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             status: "pending" as const,
           })),
         })),
+      addFinancing: (data) =>
+        patchActiveData((d) => ({
+          ...d,
+          financings: [
+            {
+              id: uid("fin"),
+              createdAt: new Date().toISOString().slice(0, 10),
+              ...data,
+            },
+            ...d.financings,
+          ],
+        })),
+      updateFinancing: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          financings: d.financings.map((f) =>
+            f.id === id ? { ...f, ...patch } : f,
+          ),
+        })),
+      deleteFinancing: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          financings: d.financings.filter((f) => f.id !== id),
+        })),
+      setFinancingsInFlow: (value) =>
+        patchActiveData((d) => ({ ...d, financingsInFlow: value })),
+      addGoal: (data) =>
+        patchActiveData((d) => ({
+          ...d,
+          goals: [
+            {
+              id: uid("goal"),
+              name: data.name,
+              targetAmount: Math.max(0.01, data.targetAmount),
+              savedAmount: Math.max(0, data.savedAmount),
+              deadline: data.deadline,
+              color: data.color ?? "#FF9500",
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...d.goals,
+          ],
+        })),
+      updateGoal: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          goals: d.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+        })),
+      deleteGoal: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          goals: d.goals.filter((g) => g.id !== id),
+        })),
+      exportState: () => JSON.stringify(state),
+      importState: (raw) => {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          const profiles = buildProfiles(parsed);
+          if (profiles.length === 0) {
+            return { ok: false, error: "Nenhum perfil encontrado no arquivo." };
+          }
+          const p = (parsed ?? {}) as Record<string, unknown>;
+          const next: AppStoreState = {
+            profiles,
+            activeProfileId:
+              typeof p.activeProfileId === "string" &&
+              profiles.some((x) => x.id === p.activeProfileId)
+                ? p.activeProfileId
+                : profiles[0].id,
+            pinUsage: p.pinUsage === "switch" ? "switch" : "open",
+          };
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          } catch {
+            // storage unavailable — keep in-memory state only
+          }
+          setState(next);
+          return { ok: true };
+        } catch {
+          return { ok: false, error: "Código ou arquivo inválido." };
+        }
+      },
       addTransaction: (data) =>
         patchActiveData((d) => ({
           ...d,

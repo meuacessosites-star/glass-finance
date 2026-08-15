@@ -30,9 +30,9 @@ function GlassTooltip({ active, payload, label }: any) {
 }
 
 export default function ReportsPage() {
-  const { categoryById, transactions } = useAppStore();
+  const { categoryById, visibleTransactions } = useAppStore();
   const month = currentMonthKey;
-  const { list } = monthTotals(transactions, month);
+  const { list } = monthTotals(visibleTransactions, month);
   const monthName = monthShortLabel(month);
 
   const byCategory = useMemo(() => {
