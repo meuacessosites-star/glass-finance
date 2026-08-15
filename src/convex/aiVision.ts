@@ -1,6 +1,6 @@
 "use node";
 
-import { action, type ActionCtx } from "./_generated/server";
+import { action } from "./_generated/server";
 import { v } from "convex/values";
 
 // ---------------------------------------------------------------------------
@@ -475,7 +475,9 @@ async function callGemini(
  */
 export const extractReceipt = action({
   args: { image: v.string() },
-  handler: async (_ctx: ActionCtx, { image }: { image: string }): Promise<ReceiptResult> => {
+  // A tipagem ampla é intencional nesta action para compatibilidade com o codegen do deploy.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: async (_ctx: any, { image }: { image: any }): Promise<ReceiptResult> => {
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       return { ok: false, items: [], error: "no-gemini-key" };

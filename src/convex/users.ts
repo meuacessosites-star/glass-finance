@@ -8,7 +8,9 @@ import { query, QueryCtx } from "./_generated/server";
  */
 export const currentUser = query({
   args: {},
-  handler: async (ctx: QueryCtx) => {
+  // Compatibilidade temporária com a assinatura gerada pelo Convex no deploy.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: async (ctx: any) => {
     const user = await getCurrentUser(ctx);
 
     if (user === null) {
