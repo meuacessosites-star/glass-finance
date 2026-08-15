@@ -4,7 +4,6 @@ import { Link } from "react-router";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
-import { ProfileAvatar } from "@/components/app/ProfileAvatar";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore } from "@/lib/app-store";
 import {
@@ -28,7 +27,7 @@ export default function HomePage() {
   const name =
     activeProfile?.name?.trim().split(" ")[0] ||
     user?.name?.trim().split(" ")[0] ||
-    "Marina";
+    "pessoa";
   const savingsPct = 12;
 
   return (
@@ -40,11 +39,6 @@ export default function HomePage() {
         className="flex items-center gap-3"
       >
         <SidebarTrigger />
-        <ProfileAvatar
-          profile={activeProfile}
-          className="size-11 shadow-[0_6px_16px_-4px_rgba(47,107,255,0.5)]"
-          emojiClassName="text-lg"
-        />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] text-muted-foreground">Bem-vinda de volta</p>
           <p className="truncate text-[17px] font-bold tracking-tight text-foreground">

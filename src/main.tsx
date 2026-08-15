@@ -20,6 +20,7 @@ const LoansPage = lazy(() => import("./pages/app/LoansPage.tsx"));
 const ReportsPage = lazy(() => import("./pages/app/ReportsPage.tsx"));
 const CategoriesPage = lazy(() => import("./pages/app/CategoriesPage.tsx"));
 const CardsPage = lazy(() => import("./pages/app/CardsPage.tsx"));
+const PeoplePage = lazy(() => import("./pages/app/PeoplePage.tsx"));
 const ProfilesPage = lazy(() => import("./pages/app/ProfilesPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -170,6 +171,7 @@ if (!convex) {
                   <Route path="relatorios" element={<ReportsPage />} />
                   <Route path="categorias" element={<CategoriesPage />} />
                   <Route path="cartoes" element={<CardsPage />} />
+                  <Route path="pessoas" element={<PeoplePage />} />
                   <Route path="perfis" element={<ProfilesPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

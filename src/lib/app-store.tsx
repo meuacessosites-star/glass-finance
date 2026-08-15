@@ -36,6 +36,15 @@ export type AppCard = {
   color: string;
 };
 
+/** Contato pessoal — nome + número de WhatsApp/telefone para cobrança. */
+export type AppPerson = {
+  id: string;
+  name: string;
+  /** Número normalizado (só dígitos). Vazio = ainda não informado. */
+  phone: string;
+  createdAt: string;
+};
+
 /** Devolução vinculada a um valor emprestado a terceiros. */
 export type LoanReceivable = {
   id: string;
@@ -59,6 +68,7 @@ export type ProfileData = {
   cards: AppCard[];
   transactions: Transaction[];
   loanReceivables: LoanReceivable[];
+  people: AppPerson[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
@@ -102,6 +112,7 @@ function defaultData(): ProfileData {
     cards: DEFAULT_CARDS.map((c) => ({ ...c })),
     transactions: seedTransactions.map((t) => ({ ...t })),
     loanReceivables: [],
+    people: [],
     pin: null,
   };
 }
@@ -169,6 +180,25 @@ function sanitizeCards(v: unknown): AppCard[] {
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
+}
+
+function sanitizePeople(v: unknown): AppPerson[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === "object")
+    .map((p) => ({
+      id: str(p.id, uid("person")),
+      name: str(p.name, "Pessoa"),
+      phone:
+        typeof p.phone === "string"
+          ? p.phone.replace(/\D/g, "").slice(0, 15)
+          : "",
+      createdAt:
+        typeof p.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(p.createdAt)
+          ? p.createdAt.slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+    }))
+    .filter((p) => p.name !== "Pessoa" || p.phone.length > 0);
 }
 
 function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
@@ -367,6 +397,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
           cards: sanitizeCards(nested.cards),
           transactions: sanitizeTransactions(nested.transactions),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
+          people: sanitizePeople(nested.people),
           pin: pin4(nested.pin),
         },
       };
@@ -379,6 +410,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
         cards: sharedCards.map((c) => ({ ...c })),
         transactions: seedTransactions.map((t) => ({ ...t })),
         loanReceivables: [],
+        people: [],
         pin:
           legacy && base.id === parsed.activeProfileId
             ? pin4(parsed.pin)
@@ -438,6 +470,7 @@ type AppStoreValue = {
   cards: AppCard[];
   transactions: Transaction[];
   loanReceivables: LoanReceivable[];
+  people: AppPerson[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   /** Creates a category on the active profile and returns its id. */
@@ -446,6 +479,12 @@ type AppStoreValue = {
   deleteCategory: (id: string) => void;
   addCard: (data: { name: string; last4: string; color: string }) => void;
   deleteCard: (id: string) => void;
+  addPerson: (data: { name: string; phone?: string }) => void;
+  updatePerson: (
+    id: string,
+    patch: Partial<Pick<AppPerson, "name" | "phone">>,
+  ) => void;
+  deletePerson: (id: string) => void;
   addTransaction: (data: {
     title: string;
     categoryId: string;
@@ -510,6 +549,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       cards: [] as AppCard[],
         transactions: [] as Transaction[],
         loanReceivables: [] as LoanReceivable[],
+        people: [] as AppPerson[],
         pin: null,
     };
 
@@ -534,6 +574,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       cards: activeData.cards,
       transactions: activeData.transactions,
       loanReceivables: activeData.loanReceivables,
+      people: activeData.people,
       pin: activeData.pin,
       categoryById,
       addCategory: (data) => {
@@ -565,6 +606,31 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => ({
           ...d,
           cards: d.cards.filter((c) => c.id !== id),
+        })),
+      addPerson: (data) =>
+        patchActiveData((d) => ({
+          ...d,
+          people: [
+            {
+              id: uid("person"),
+              name: data.name,
+              phone: data.phone ?? "",
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...d.people,
+          ],
+        })),
+      updatePerson: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          people: d.people.map((p) =>
+            p.id === id ? { ...p, ...patch } : p,
+          ),
+        })),
+      deletePerson: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          people: d.people.filter((p) => p.id !== id),
         })),
       addTransaction: (data) =>
         patchActiveData((d) => ({

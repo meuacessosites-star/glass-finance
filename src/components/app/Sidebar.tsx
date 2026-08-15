@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   ChevronRight,
+  ContactRound,
   CreditCard,
   LockKeyhole,
   LogOut,
@@ -99,6 +100,13 @@ const items: {
     desc: "Adicione e gerencie cartões",
     icon: CreditCard,
     color: "#AF52DE",
+  },
+  {
+    to: "/dashboard/pessoas",
+    label: "Pessoas",
+    desc: "Contatos e cobrança no WhatsApp",
+    icon: ContactRound,
+    color: "#1FBF4F",
   },
   {
     to: "/dashboard/perfis",
