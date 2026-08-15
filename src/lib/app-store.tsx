@@ -8,7 +8,9 @@ import {
 } from "react";
 import {
   categories as seedCategories,
+  seedNotifications,
   transactions as seedTransactions,
+  type BankNotification,
   type Transaction,
 } from "./mock-data";
 
@@ -45,6 +47,18 @@ export type AppPerson = {
   createdAt: string;
 };
 
+/** Cofrinho/reserva: dinheiro guardado para um objetivo (viagem, investimento…). */
+export type AppReserve = {
+  id: string;
+  name: string;
+  amount: number; // BRL (positivo)
+  color: string;
+  createdAt: string;
+};
+
+/** Notificação de banco que aguarda aprovação para virar transação. */
+export type AppNotification = BankNotification;
+
 /** Devolução vinculada a um valor emprestado a terceiros. */
 export type LoanReceivable = {
   id: string;
@@ -69,6 +83,10 @@ export type ProfileData = {
   transactions: Transaction[];
   loanReceivables: LoanReceivable[];
   people: AppPerson[];
+  reserves: AppReserve[];
+  /** true = reservas aparecem junto com o saldo na tela inicial. */
+  reservesInBalance: boolean;
+  notifications: AppNotification[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
 
@@ -113,6 +131,9 @@ function defaultData(): ProfileData {
     transactions: seedTransactions.map((t) => ({ ...t })),
     loanReceivables: [],
     people: [],
+    reserves: [],
+    reservesInBalance: true,
+    notifications: seedNotifications.map((n) => ({ ...n })),
     pin: null,
   };
 }
@@ -199,6 +220,57 @@ function sanitizePeople(v: unknown): AppPerson[] {
           : new Date().toISOString().slice(0, 10),
     }))
     .filter((p) => p.name !== "Pessoa" || p.phone.length > 0);
+}
+
+function sanitizeReserves(v: unknown): AppReserve[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r) => ({
+      id: str(r.id, uid("reserve")),
+      name: str(r.name, "Reserva"),
+      amount:
+        typeof r.amount === "number" && Number.isFinite(r.amount)
+          ? Math.max(0.01, r.amount)
+          : 0.01,
+      color: str(r.color, "#2F6BFF"),
+      createdAt:
+        typeof r.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(r.createdAt)
+          ? r.createdAt.slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+    }))
+    .filter((r) => r.name !== "Reserva");
+}
+
+/** Notificações de banco. Quando o campo não existe no storage (migração),
+ * semente com as fictícias para o usuário ver o fluxo de aprovação. */
+function sanitizeNotifications(v: unknown): AppNotification[] {
+  if (!Array.isArray(v)) return seedNotifications.map((n) => ({ ...n }));
+  return v
+    .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
+    .map((n) => ({
+      id: str(n.id, uid("notif")),
+      bank: str(n.bank, "Banco"),
+      merchant: str(n.merchant, "Compra"),
+      amount:
+        typeof n.amount === "number" && Number.isFinite(n.amount)
+          ? Math.max(0.01, Math.abs(n.amount))
+          : 0.01,
+      date:
+        typeof n.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(n.date)
+          ? n.date.slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+      time:
+        typeof n.time === "string" && /^\d{2}:\d{2}/.test(n.time)
+          ? n.time.slice(0, 5)
+          : undefined,
+      categoryId: typeof n.categoryId === "string" ? n.categoryId : undefined,
+      cardId: typeof n.cardId === "string" ? n.cardId : undefined,
+      status:
+        n.status === "approved" || n.status === "ignored"
+          ? n.status
+          : "pending",
+    }));
 }
 
 function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
@@ -398,6 +470,12 @@ function buildProfiles(raw: unknown): AppProfile[] {
           transactions: sanitizeTransactions(nested.transactions),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
           people: sanitizePeople(nested.people),
+          reserves: sanitizeReserves(nested.reserves),
+          reservesInBalance:
+            typeof nested.reservesInBalance === "boolean"
+              ? nested.reservesInBalance
+              : true,
+          notifications: sanitizeNotifications(nested.notifications),
           pin: pin4(nested.pin),
         },
       };
@@ -411,6 +489,9 @@ function buildProfiles(raw: unknown): AppProfile[] {
         transactions: seedTransactions.map((t) => ({ ...t })),
         loanReceivables: [],
         people: [],
+        reserves: [],
+        reservesInBalance: true,
+        notifications: seedNotifications.map((n) => ({ ...n })),
         pin:
           legacy && base.id === parsed.activeProfileId
             ? pin4(parsed.pin)
@@ -471,6 +552,9 @@ type AppStoreValue = {
   transactions: Transaction[];
   loanReceivables: LoanReceivable[];
   people: AppPerson[];
+  reserves: AppReserve[];
+  reservesInBalance: boolean;
+  notifications: AppNotification[];
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   /** Creates a category on the active profile and returns its id. */
@@ -485,6 +569,18 @@ type AppStoreValue = {
     patch: Partial<Pick<AppPerson, "name" | "phone">>,
   ) => void;
   deletePerson: (id: string) => void;
+  addReserve: (data: { name: string; amount: number; color?: string }) => void;
+  updateReserve: (
+    id: string,
+    patch: Partial<Pick<AppReserve, "name" | "amount" | "color">>,
+  ) => void;
+  deleteReserve: (id: string) => void;
+  setReservesInBalance: (value: boolean) => void;
+  /** Aprova a notificação: cria a transação no cartão e marca como aprovada. */
+  approveNotification: (id: string) => void;
+  ignoreNotification: (id: string) => void;
+  /** Restaura todas as notificações para "pendente" (demo). */
+  resetNotifications: () => void;
   addTransaction: (data: {
     title: string;
     categoryId: string;
@@ -550,6 +646,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         transactions: [] as Transaction[],
         loanReceivables: [] as LoanReceivable[],
         people: [] as AppPerson[],
+        reserves: [] as AppReserve[],
+        reservesInBalance: true,
+        notifications: [] as AppNotification[],
         pin: null,
     };
 
@@ -575,6 +674,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       transactions: activeData.transactions,
       loanReceivables: activeData.loanReceivables,
       people: activeData.people,
+      reserves: activeData.reserves,
+      reservesInBalance: activeData.reservesInBalance,
+      notifications: activeData.notifications,
       pin: activeData.pin,
       categoryById,
       addCategory: (data) => {
@@ -631,6 +733,83 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => ({
           ...d,
           people: d.people.filter((p) => p.id !== id),
+        })),
+      addReserve: (data) =>
+        patchActiveData((d) => ({
+          ...d,
+          reserves: [
+            {
+              id: uid("reserve"),
+              name: data.name,
+              amount: Math.max(0.01, data.amount),
+              color: data.color ?? "#2F6BFF",
+              createdAt: new Date().toISOString().slice(0, 10),
+            },
+            ...d.reserves,
+          ],
+        })),
+      updateReserve: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          reserves: d.reserves.map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        })),
+      deleteReserve: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          reserves: d.reserves.filter((r) => r.id !== id),
+        })),
+      setReservesInBalance: (value) =>
+        patchActiveData((d) => ({ ...d, reservesInBalance: value })),
+      approveNotification: (id) =>
+        patchActiveData((d) => {
+          const n = d.notifications.find((x) => x.id === id);
+          if (!n || n.status !== "pending") return d;
+          const categoryId =
+            n.categoryId && d.categories.some((c) => c.id === n.categoryId)
+              ? n.categoryId
+              : "outros";
+          const cardId =
+            n.cardId && d.cards.some((c) => c.id === n.cardId)
+              ? n.cardId
+              : undefined;
+          const transaction: Transaction = {
+            id: uid("t"),
+            title: n.merchant,
+            categoryId,
+            amount: -Math.abs(n.amount),
+            date: n.date,
+            time: n.time,
+            note: `Aprovado da notificação do ${n.bank}`,
+            paymentMethod: "cartao",
+            cardId,
+            cardMode: "credito",
+          };
+          return {
+            ...d,
+            transactions: [transaction, ...d.transactions],
+            notifications: d.notifications.map((x) =>
+              x.id === id ? { ...x, status: "approved" as const } : x,
+            ),
+          };
+        }),
+      ignoreNotification: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          notifications: d.notifications.map((x) =>
+            x.id === id && x.status === "pending"
+              ? { ...x, status: "ignored" as const }
+              : x,
+          ),
+        })),
+      resetNotifications: () =>
+        patchActiveData((d) => ({
+          ...d,
+          notifications: d.notifications.map((x) => ({
+            ...x,
+            status: "pending" as const,
+          })),
         })),
       addTransaction: (data) =>
         patchActiveData((d) => ({

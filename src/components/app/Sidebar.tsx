@@ -7,6 +7,7 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Bell,
   Check,
   ChevronRight,
   ContactRound,
@@ -14,6 +15,8 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  PiggyBank,
+  ReceiptText,
   Settings,
   Tags,
   Users,
@@ -99,6 +102,27 @@ const items: {
     label: "Cartões",
     desc: "Adicione e gerencie cartões",
     icon: CreditCard,
+    color: "#AF52DE",
+  },
+  {
+    to: "/dashboard/compras-cartao",
+    label: "Compras no Cartão",
+    desc: "Só os gastos feitos no cartão",
+    icon: ReceiptText,
+    color: "#0A84FF",
+  },
+  {
+    to: "/dashboard/notificacoes",
+    label: "Notificações",
+    desc: "Aprove avisos dos bancos",
+    icon: Bell,
+    color: "#FF9500",
+  },
+  {
+    to: "/dashboard/reservas",
+    label: "Reservas",
+    desc: "Cofrinhos e objetivos",
+    icon: PiggyBank,
     color: "#AF52DE",
   },
   {

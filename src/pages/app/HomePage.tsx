@@ -17,10 +17,17 @@ import {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { activeProfile, transactions } = useAppStore();
+  const { activeProfile, transactions, reserves, reservesInBalance } =
+    useAppStore();
 
   const { income, expense } = monthTotals(transactions, currentMonthKey);
   const balance = openingBalance + income - expense;
+  const reservesTotal = reserves.reduce((s, r) => s + r.amount, 0);
+  // Reservas aparecem junto com o saldo (total) ou ficam só na aba Reservas
+  // (saldo disponível = total − reservado).
+  const shownBalance = reservesInBalance
+    ? balance
+    : Math.max(0, balance - reservesTotal);
   const recent = [...transactions]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
@@ -61,15 +68,20 @@ export default function HomePage() {
           <div className="relative">
             <div className="flex items-center justify-between">
               <p className="text-[13px] font-medium text-glass-sub">
-                Saldo atual
+                {reservesInBalance ? "Saldo atual" : "Saldo disponível"}
               </p>
               <span className="rounded-full bg-white/50 px-2.5 py-1 text-[11px] font-semibold text-glass-sub">
                 {monthShortLabel(currentMonthKey)} de 2026
               </span>
             </div>
             <p className="amount-tabular mt-2 text-[38px] font-bold leading-none tracking-tight text-glass-ink">
-              {formatCurrency(balance)}
+              {formatCurrency(shownBalance)}
             </p>
+            {!reservesInBalance && reservesTotal > 0 && (
+              <p className="mt-1.5 text-[12px] font-semibold text-[#17a443]">
+                {formatCurrency(reservesTotal)} guardados em reservas
+              </p>
+            )}
 
             <div className="mt-5 flex items-center gap-6 border-t border-white/40 pt-4">
               <div>

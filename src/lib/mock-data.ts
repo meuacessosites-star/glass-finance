@@ -94,24 +94,24 @@ export function recurrenceLabel(t: Transaction): string | null {
 
 export const transactions: Transaction[] = [
   // ---- Agosto de 2026 ----
-  { id: "t01", title: "iFood · Burguer", categoryId: "alimentacao", amount: -67.8, date: "2026-08-11" },
-  { id: "t02", title: "Pão de Açúcar", categoryId: "alimentacao", amount: -284.9, date: "2026-08-10" },
-  { id: "t03", title: "Uber · Centro", categoryId: "transporte", amount: -24.5, date: "2026-08-09" },
-  { id: "t04", title: "Netflix", categoryId: "assinaturas", amount: -55.9, date: "2026-08-08" },
+  { id: "t01", title: "iFood · Burguer", categoryId: "alimentacao", amount: -67.8, date: "2026-08-11", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
+  { id: "t02", title: "Pão de Açúcar", categoryId: "alimentacao", amount: -284.9, date: "2026-08-10", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
+  { id: "t03", title: "Uber · Centro", categoryId: "transporte", amount: -24.5, date: "2026-08-09", paymentMethod: "cartao", cardId: "card-1", cardMode: "debito" },
+  { id: "t04", title: "Netflix", categoryId: "assinaturas", amount: -55.9, date: "2026-08-08", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
   { id: "t05", title: "Freelance · Site da agência", categoryId: "freelance", amount: 1200, date: "2026-08-08" },
-  { id: "t06", title: "Bella Vista Trattoria", categoryId: "alimentacao", amount: -142, date: "2026-08-07" },
-  { id: "t07", title: "Droga Raia", categoryId: "saude", amount: -78.4, date: "2026-08-06" },
+  { id: "t06", title: "Bella Vista Trattoria", categoryId: "alimentacao", amount: -142, date: "2026-08-07", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
+  { id: "t07", title: "Droga Raia", categoryId: "saude", amount: -78.4, date: "2026-08-06", paymentMethod: "cartao", cardId: "card-1", cardMode: "debito" },
   { id: "t08", title: "Salário", categoryId: "salario", amount: 6800, date: "2026-08-05" },
-  { id: "t09", title: "Renner · Roupas", categoryId: "compras", amount: -185, date: "2026-08-05" },
+  { id: "t09", title: "Renner · Roupas", categoryId: "compras", amount: -185, date: "2026-08-05", paymentMethod: "cartao", cardId: "card-2", cardMode: "credito" },
   { id: "t10", title: "Energisa · Energia", categoryId: "moradia", amount: -189.35, date: "2026-08-04" },
   { id: "t11", title: "Aluguel", categoryId: "moradia", amount: -2100, date: "2026-08-03" },
-  { id: "t12", title: "Spotify", categoryId: "assinaturas", amount: -21.9, date: "2026-08-02" },
+  { id: "t12", title: "Spotify", categoryId: "assinaturas", amount: -21.9, date: "2026-08-02", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
   { id: "t13", title: "Smart Fit · Academia", categoryId: "saude", amount: -129.9, date: "2026-08-01" },
   // ---- Julho de 2026 ----
   { id: "t14", title: "Posto Shell", categoryId: "transporte", amount: -180, date: "2026-07-28" },
   { id: "t15", title: "Vó Maria · Restaurante", categoryId: "alimentacao", amount: -98, date: "2026-07-25" },
-  { id: "t16", title: "Amazon · Fone", categoryId: "compras", amount: -215.5, date: "2026-07-22" },
-  { id: "t17", title: "Cinema Kinoplex", categoryId: "lazer", amount: -72, date: "2026-07-20" },
+  { id: "t16", title: "Amazon · Fone", categoryId: "compras", amount: -215.5, date: "2026-07-22", paymentMethod: "cartao", cardId: "card-2", cardMode: "credito" },
+  { id: "t17", title: "Cinema Kinoplex", categoryId: "lazer", amount: -72, date: "2026-07-20", paymentMethod: "cartao", cardId: "card-1", cardMode: "credito" },
   { id: "t18", title: "Farmácia +", categoryId: "saude", amount: -42.9, date: "2026-07-15" },
   { id: "t19", title: "iFood · Pizza", categoryId: "alimentacao", amount: -54.3, date: "2026-07-12" },
   { id: "t20", title: "Supermercado Carrefour", categoryId: "alimentacao", amount: -312, date: "2026-07-10" },
@@ -157,6 +157,31 @@ export const cardLoans: CardLoan[] = [
   { id: "c2", name: "Carla Menezes", amount: 420, installments: 2, currentInstallment: 2, status: "ativo", nextDue: "2026-08-15" },
   { id: "c3", name: "Pedro Santos", amount: 150, installments: 1, currentInstallment: 1, status: "pago", nextDue: "2026-07-10" },
   { id: "c4", name: "Beatriz Lima", amount: 340, installments: 6, currentInstallment: 1, status: "ativo", nextDue: "2026-08-25" },
+];
+
+// ---------------------------------------------------------------------------
+// Notificações de banco — avisos de compra no cartão que o usuário filtra e
+// aprova para virar transação. Dados fictícios para ilustrar o fluxo.
+// ---------------------------------------------------------------------------
+export type BankNotification = {
+  id: string;
+  bank: string;
+  merchant: string;
+  amount: number; // BRL (sempre gasto positivo)
+  date: string; // yyyy-mm-dd
+  time?: string; // HH:MM
+  categoryId?: string;
+  cardId?: string;
+  status: "pending" | "approved" | "ignored";
+};
+
+export const seedNotifications: BankNotification[] = [
+  { id: "n01", bank: "Nubank", merchant: "iFood · Restaurante", amount: 84.9, date: "2026-08-15", time: "12:41", categoryId: "alimentacao", cardId: "card-1", status: "pending" },
+  { id: "n02", bank: "Nubank", merchant: "Uber · Viagem", amount: 32.5, date: "2026-08-15", time: "09:15", categoryId: "transporte", cardId: "card-1", status: "pending" },
+  { id: "n03", bank: "Inter", merchant: "Amazon.com.br", amount: 129.9, date: "2026-08-14", time: "21:02", categoryId: "compras", cardId: "card-2", status: "pending" },
+  { id: "n04", bank: "Nubank", merchant: "Cinema Kinoplex", amount: 58, date: "2026-08-14", time: "19:47", categoryId: "lazer", cardId: "card-1", status: "pending" },
+  { id: "n05", bank: "Inter", merchant: "Posto Shell", amount: 175, date: "2026-08-14", time: "08:20", categoryId: "transporte", cardId: "card-2", status: "pending" },
+  { id: "n06", bank: "Nubank", merchant: "Smart Fit", amount: 129.9, date: "2026-08-13", time: "07:00", categoryId: "saude", cardId: "card-1", status: "pending" },
 ];
 
 // ---------------------------------------------------------------------------
