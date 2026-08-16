@@ -386,7 +386,7 @@ export function AddTransactionSheet({
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 30, stiffness: 330 }}
-          className="glass glass-strong absolute inset-0 z-[55] flex flex-col"
+          className="glass glass-strong absolute inset-0 z-[55] flex flex-col bg-[#eef1fe] dark:bg-[#0a1122]"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
