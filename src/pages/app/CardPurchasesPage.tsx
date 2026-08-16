@@ -1,5 +1,6 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   Archive,
   CalendarClock,
@@ -115,6 +116,37 @@ function CardActionMenu({
   onDelete,
 }: CardActionMenuProps) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 224;
+      setMenuPosition({
+        top: rect.bottom + 8,
+        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth)),
+      });
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   const closeAndRun = (action: () => void) => {
     setOpen(false);
     action();
@@ -134,6 +166,7 @@ function CardActionMenu({
   return (
     <div className="relative" onClick={(event) => event.stopPropagation()}>
       <button
+        ref={triggerRef}
         type="button"
         aria-label={`Opções de ${card.name}`}
         aria-expanded={open}
@@ -142,46 +175,52 @@ function CardActionMenu({
       >
         <MoreVertical className="size-4" />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.14 }}
-            className="absolute right-0 top-10 z-30 min-w-56 overflow-hidden rounded-2xl border border-white/30 bg-[#f4f8ff] p-1.5 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:bg-[#0d1b3e] dark:text-white"
-          >
-            {options.map(({ label, icon: Icon, action }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => closeAndRun(action)}
-                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+      {menuPosition &&
+        createPortal(
+          <AnimatePresence>
+            {open && (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.14 }}
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+                className="fixed z-[200] max-h-[calc(100vh-1rem)] min-w-56 overflow-y-auto overflow-x-hidden rounded-2xl border border-white/30 bg-[#f4f8ff] p-1.5 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:bg-[#0d1b3e] dark:text-white"
+                onClick={(event) => event.stopPropagation()}
               >
-                <Icon className="size-3.5 text-primary" />
-                {label}
-              </button>
-            ))}
-            <div className="my-1 border-t border-black/5 dark:border-white/10" />
-            <button
-              type="button"
-              onClick={() => closeAndRun(onArchive)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <Archive className="size-3.5 text-primary" />
-              Arquivar cartão
-            </button>
-            <button
-              type="button"
-              onClick={() => closeAndRun(onDelete)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
-            >
-              <Trash2 className="size-3.5" />
-              Excluir cartão
-            </button>
-          </motion.div>
+                {options.map(({ label, icon: Icon, action }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => closeAndRun(action)}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <Icon className="size-3.5 text-primary" />
+                    {label}
+                  </button>
+                ))}
+                <div className="my-1 border-t border-black/5 dark:border-white/10" />
+                <button
+                  type="button"
+                  onClick={() => closeAndRun(onArchive)}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  <Archive className="size-3.5 text-primary" />
+                  Arquivar cartão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => closeAndRun(onDelete)}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
+                >
+                  <Trash2 className="size-3.5" />
+                  Excluir cartão
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 }
