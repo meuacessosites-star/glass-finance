@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
   CreditCard,
@@ -183,8 +184,7 @@ export default function CardPurchasesPage() {
   const selectedMonth = monthOptions.includes(month)
     ? month
     : monthOptions[0];
-  const selectedCard =
-    cards.find((card) => card.id === selectedCardId) ?? cards[0];
+  const selectedCard = cards.find((card) => card.id === selectedCardId);
 
   const openAmountByCard = useMemo(
     () =>
@@ -261,34 +261,77 @@ export default function CardPurchasesPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <p className="text-[12px] font-bold uppercase tracking-wide text-glass-sub">
-              Faturas por cartão
+              {selectedCard ? `Fatura ${selectedCard.name}` : "Faturas por cartão"}
             </p>
-            <p className="text-[11px] font-medium text-glass-faint">
-              {monthShortLabel(selectedMonth)}
-            </p>
+            <div className="flex items-center gap-2">
+              {selectedCard && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCardId("")}
+                  className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary transition-colors hover:text-primary/80 active:scale-95"
+                >
+                  Ver todos
+                </button>
+              )}
+              <p className="text-[11px] font-medium text-glass-faint">
+                {monthShortLabel(selectedMonth)}
+              </p>
+            </div>
           </div>
-          <div className="space-y-3">
-            {cards.map((card) => (
-              <InvoiceSummaryCard
-                key={card.id}
-                card={card}
-                openAmount={openAmountByCard[card.id] ?? 0}
-                selected={selectedCard?.id === card.id}
-                onSelect={() => setSelectedCardId(card.id)}
-                onToggleInvoice={() => {
-                  const nextPaid = card.invoicePaid !== true;
-                  updateCard(card.id, { invoicePaid: nextPaid });
-                  toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
-                }}
-              />
-            ))}
-          </div>
+          <AnimatePresence initial={false} mode="wait">
+            {selectedCard ? (
+              <motion.div
+                key={`focused-${selectedCard.id}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <InvoiceSummaryCard
+                  card={selectedCard}
+                  openAmount={openAmountByCard[selectedCard.id] ?? 0}
+                  selected
+                  onSelect={() => setSelectedCardId("")}
+                  onToggleInvoice={() => {
+                    const nextPaid = selectedCard.invoicePaid !== true;
+                    updateCard(selectedCard.id, { invoicePaid: nextPaid });
+                    toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
+                  }}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="all-cards"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                {cards.map((card) => (
+                  <InvoiceSummaryCard
+                    key={card.id}
+                    card={card}
+                    openAmount={openAmountByCard[card.id] ?? 0}
+                    selected={false}
+                    onSelect={() => setSelectedCardId(card.id)}
+                    onToggleInvoice={() => {
+                      const nextPaid = card.invoicePaid !== true;
+                      updateCard(card.id, { invoicePaid: nextPaid });
+                      toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
+                    }}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
       {selectedCard && (
         <div className="space-y-3">
-          <div className="flex items-end justify-between px-1">
+          <div className="glass flex items-center justify-between rounded-2xl px-4 py-3">
             <div>
               <p className="text-[12px] font-bold uppercase tracking-wide text-glass-sub">
                 Extrato da fatura
@@ -297,9 +340,14 @@ export default function CardPurchasesPage() {
                 {selectedCard.name} ····{selectedCard.last4}
               </p>
             </div>
-            <p className="amount-tabular text-[13px] font-bold text-[#FF3B30]">
-              −{formatCurrency(selectedCardTotal)}
-            </p>
+            <div className="text-right">
+              <p className="text-[9px] font-semibold uppercase tracking-wide text-glass-faint">
+                Total da fatura
+              </p>
+              <p className="amount-tabular mt-0.5 text-[18px] font-bold text-[#FF3B30]">
+                −{formatCurrency(selectedCardTotal)}
+              </p>
+            </div>
           </div>
 
           {selectedCardTransactions.length === 0 ? (
