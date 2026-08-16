@@ -43,7 +43,7 @@ export function PinLock({ onUnlocked }: { onUnlocked: () => void }) {
 
   return (
     <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-gradient-to-b from-[#dcebfe] via-[#eef1fe] to-white px-8 dark:from-[#0b1630] dark:via-[#111c3c] dark:to-[#0a1122]">
-      <div className="glass glass-strong flex size-16 items-center justify-center rounded-[1.4rem] shadow-[0_10px_30px_-10px_rgba(47,107,255,0.5)]">
+      <div className="glass glass-strong flex size-16 items-center justify-center rounded-[1.4rem] bg-white shadow-[0_10px_30px_-10px_rgba(47,107,255,0.5)] dark:bg-[#f4f8ff]">
         <LockKeyhole className="size-7 text-primary" strokeWidth={2.2} />
       </div>
       <h2 className="mt-5 text-[22px] font-bold tracking-tight text-glass-ink">

@@ -185,9 +185,11 @@ export function Sidebar() {
   const [gateProfile, setGateProfile] = useState<AppProfile | null>(null);
 
   // Collapse the profile list whenever the sidebar closes.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!isOpen) setShowProfiles(false);
   }, [isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const go = (to: string) => {
     close();
@@ -231,7 +233,7 @@ export function Sidebar() {
             animate={{ x: 0 }}
             exit={{ x: "-105%" }}
             transition={{ type: "spring", damping: 30, stiffness: 330 }}
-            className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] p-4"
+            className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] bg-white p-4 dark:bg-[#f4f8ff]"
           >
               {/* Header */}
               <div className="flex items-center justify-between">

@@ -37,6 +37,7 @@ import {
   Pill,
   Pizza,
   Plane,
+  ReceiptText,
   Shirt,
   ShoppingBag,
   Smartphone,
@@ -101,6 +102,7 @@ export const categoryIconOptions: { id: string; icon: LucideIcon }[] = [
   { id: "natureza", icon: Leaf },
   { id: "jardinagem", icon: Sprout },
   { id: "anotacoes", icon: Pencil },
+  { id: "assinaturas", icon: ReceiptText },
   { id: "outros", icon: Ellipsis },
 ];
 
