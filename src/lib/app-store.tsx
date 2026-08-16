@@ -29,6 +29,7 @@ export type AppCategory = {
   label: string;
   color: string;
   icon: string; // icon id (see categoryIconOptions in CategoryIcon.tsx)
+  image?: string; // optional data URL for a custom category image
 };
 
 export type AppCard = {
@@ -232,6 +233,10 @@ function sanitizeCategories(v: unknown): AppCategory[] {
       label: str(c.label, "Categoria"),
       color: str(c.color, "#8E8E93"),
       icon: str(c.icon, "outros"),
+      image:
+        typeof c.image === "string" && c.image.startsWith("data:image/")
+          ? c.image
+          : undefined,
     }));
   return list.length > 0 ? list : defaultData().categories;
 }
@@ -681,7 +686,12 @@ type AppStoreValue = {
   pin: string | null;
   categoryById: Record<string, AppCategory>;
   /** Creates a category on the active profile and returns its id. */
-  addCategory: (data: { label: string; color: string; icon: string }) => string;
+  addCategory: (data: {
+    label: string;
+    color: string;
+    icon: string;
+    image?: string;
+  }) => string;
   updateCategory: (id: string, patch: Partial<AppCategory>) => void;
   deleteCategory: (id: string) => void;
   addCard: (data: { name: string; last4: string; color: string }) => void;

@@ -7,6 +7,7 @@ export type Category = {
   label: string;
   color: string;
   icon: string;
+  image?: string;
 };
 
 export const categories: Category[] = [

@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils";
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => setMounted(true), []);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const dark = mounted && resolvedTheme === "dark";
 
   return (
@@ -35,12 +37,14 @@ export function SquircleIcon({
   color,
   size = "size-11",
   iconSize = "size-[19px]",
+  image,
   className,
 }: {
   icon: LucideIcon;
   color: string;
   size?: string;
   iconSize?: string;
+  image?: string;
   className?: string;
 }) {
   return (
@@ -52,7 +56,15 @@ export function SquircleIcon({
       )}
       style={{ backgroundColor: `${color}1f` }}
     >
-      <Icon className={iconSize} style={{ color }} strokeWidth={2.2} />
+      {image ? (
+        <img
+          src={image}
+          alt=""
+          className="size-full rounded-2xl object-cover"
+        />
+      ) : (
+        <Icon className={iconSize} style={{ color }} strokeWidth={2.2} />
+      )}
     </div>
   );
 }
