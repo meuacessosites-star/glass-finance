@@ -244,17 +244,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             Continuando, você concorda com nossos termos de uso e política de
             privacidade.
           </p>
-          <p className="mt-2 text-center text-[11.5px] text-muted-foreground/70">
-            Seguro por{" "}
-            <a
-              href="https://freebuff.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium underline decoration-muted-foreground/50 underline-offset-2 transition-colors hover:text-muted-foreground"
-            >
-              freebuff.com
-            </a>
-          </p>
         </div>
       </div>
     </div>
