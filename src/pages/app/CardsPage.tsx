@@ -25,6 +25,17 @@ const PALETTE = [
   "#0A84FF",
 ];
 
+const BANK_PRESETS = [
+  { aliases: ["nubank", "nu"], name: "Nubank", color: "#820AD1" },
+  { aliases: ["inter", "banco inter"], name: "Inter", color: "#FF7A00" },
+  { aliases: ["c6", "c6 bank", "c6bank"], name: "C6 Bank", color: "#111111" },
+  { aliases: ["itau", "itaú"], name: "Itaú", color: "#EC7000" },
+  { aliases: ["santander"], name: "Santander", color: "#EC0000" },
+  { aliases: ["bradesco"], name: "Bradesco", color: "#CC092F" },
+  { aliases: ["banco do brasil", "bb"], name: "Banco do Brasil", color: "#F8CC46" },
+  { aliases: ["caixa", "caixa economica"], name: "Caixa", color: "#005CA9" },
+];
+
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
@@ -47,6 +58,21 @@ const EMPTY_FORM: CardFormState = {
   dueDay: "",
   color: PALETTE[0],
 };
+
+function normalizeBankText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function findBankPreset(value: string) {
+  const normalized = normalizeBankText(value);
+  return BANK_PRESETS.find((preset) =>
+    preset.aliases.some((alias) => normalized === normalizeBankText(alias)),
+  );
+}
 
 function isHexColor(value: string): boolean {
   return /^#[0-9A-F]{6}$/i.test(value);
@@ -84,6 +110,7 @@ function CardVisual({
   onDelete?: () => void;
 }) {
   const limit = card.totalLimit ?? 0;
+  const safeColor = isHexColor(card.color) ? card.color : PALETTE[0];
   const details = [
     card.closingDay ? `Fecha ${card.closingDay}` : "Fecha —",
     card.dueDay ? `Vence ${card.dueDay}` : "Vence —",
@@ -92,15 +119,16 @@ function CardVisual({
   return (
     <div className="relative">
       <div
-        className="relative overflow-hidden rounded-[1.7rem] p-5 text-white shadow-[0_18px_40px_-16px_rgba(15,40,90,0.5)]"
+        className="group relative overflow-hidden rounded-[1.7rem] border border-white/30 p-5 text-white shadow-[0_28px_55px_-18px_rgba(15,40,90,0.72),inset_0_1px_0_rgba(255,255,255,0.42),inset_0_-1px_0_rgba(0,0,0,0.18)] transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-[0_34px_64px_-18px_rgba(15,40,90,0.78),inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(0,0,0,0.22)] [transform:perspective(1000px)_rotateX(2deg)]"
         style={{
-          background: `linear-gradient(135deg, ${card.color}, ${card.color}bb)`,
+          background: `linear-gradient(145deg, ${safeColor} 0%, ${safeColor}e6 48%, ${safeColor}b8 100%)`,
         }}
       >
-        <div className="pointer-events-none absolute -right-10 -top-14 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-16 -left-8 h-32 w-32 rounded-full bg-black/10 blur-2xl" />
+        <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 blur-[0.5px]" />
+        <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 -left-8 h-36 w-36 rounded-full bg-black/15 blur-3xl" />
 
-        <div className="relative flex items-center justify-between">
+        <div className="relative flex items-center justify-between pr-20">
           <div>
             <span className="text-[12.5px] font-bold tracking-widest">
               {card.name.toUpperCase()}
@@ -111,6 +139,31 @@ function CardVisual({
           </div>
           <Wifi className="size-5 rotate-90 opacity-80" strokeWidth={2.2} />
         </div>
+
+        {(onEdit || onDelete) && (
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
+            {onEdit && (
+              <button
+                type="button"
+                aria-label={`Editar ${card.name}`}
+                onClick={onEdit}
+                className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-90"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                aria-label={`Excluir ${card.name}`}
+                onClick={onDelete}
+                className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-[#FF3B30]/80 active:scale-90"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         <p className="amount-tabular relative mt-8 text-[18px] font-semibold tracking-[0.18em]">
           •••• •••• •••• {card.last4 || "0000"}
         </p>
@@ -126,29 +179,6 @@ function CardVisual({
         </div>
       </div>
 
-      {onEdit && (
-        <button
-          type="button"
-          aria-label={`Editar ${card.name}`}
-          onClick={onEdit}
-          className="absolute -right-2.5 -top-2.5 flex size-8 items-center justify-center rounded-full bg-white/90 text-primary shadow-md backdrop-blur transition-transform active:scale-90 dark:bg-[#111c3c]"
-        >
-          <Pencil className="size-3.5" />
-        </button>
-      )}
-      {onDelete && (
-        <button
-          type="button"
-          aria-label={`Excluir ${card.name}`}
-          onClick={onDelete}
-          className={cn(
-            "absolute -top-2.5 flex size-8 items-center justify-center rounded-full bg-white/90 text-[#FF3B30] shadow-md backdrop-blur transition-transform active:scale-90 dark:bg-[#111c3c]",
-            onEdit ? "right-11" : "right-2.5",
-          )}
-        >
-          <Trash2 className="size-4" />
-        </button>
-      )}
     </div>
   );
 }
@@ -187,6 +217,15 @@ export default function CardsPage() {
     value: CardFormState[K],
   ) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleInstitutionChange = (value: string) => {
+    const preset = findBankPreset(value);
+    setForm((current) => ({
+      ...current,
+      institution: preset ? preset.name : value,
+      ...(preset ? { color: preset.color } : {}),
+    }));
   };
 
   const resetForm = () => {
@@ -324,11 +363,17 @@ export default function CardsPage() {
         />
         <input
           value={form.institution}
-          onChange={(e) => updateField("institution", e.target.value)}
+          onChange={(e) => handleInstitutionChange(e.target.value)}
           placeholder="Banco / instituição (ex.: Nubank)"
           maxLength={32}
+          list="bank-presets"
           className={cn(inputClass, "mt-2.5")}
         />
+        <datalist id="bank-presets">
+          {BANK_PRESETS.map((preset) => (
+            <option key={preset.name} value={preset.name} />
+          ))}
+        </datalist>
         <input
           value={form.last4}
           onChange={(e) =>
