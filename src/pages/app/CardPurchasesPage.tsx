@@ -3,7 +3,12 @@ import { CreditCard, ReceiptText } from "lucide-react";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import { useAppStore } from "@/lib/app-store";
-import { formatCurrency, monthKey, monthShortLabel } from "@/lib/mock-data";
+import {
+  currentMonthKey,
+  formatCurrency,
+  monthKey,
+  monthShortLabel,
+} from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export default function CardPurchasesPage() {
@@ -13,7 +18,10 @@ export default function CardPurchasesPage() {
     () =>
       transactions
         .filter(
-          (t) => t.amount < 0 && (t.paymentMethod === "cartao" || t.cardId),
+          (t) =>
+            t.amount < 0 &&
+            t.cardMode === "credito" &&
+            Boolean(t.cardId),
         )
         .sort((a, b) => b.date.localeCompare(a.date)),
     [transactions],
@@ -26,24 +34,22 @@ export default function CardPurchasesPage() {
       ),
     [cardTransactions],
   );
-  const [month, setMonth] = useState<string>(allMonths[0]);
+  const [month, setMonth] = useState<string>("");
   const [cardFilter, setCardFilter] = useState<string>("todas");
-
-  const cardById = useMemo(
-    () => Object.fromEntries(cards.map((c) => [c.id, c])),
-    [cards],
-  );
+  const selectedMonth = allMonths.includes(month)
+    ? month
+    : allMonths[0] ?? currentMonthKey;
 
   const filtered = useMemo(
     () =>
       cardTransactions
-        .filter((t) => monthKey(t.date) === month)
+        .filter((t) => monthKey(t.date) === selectedMonth)
         .filter((t) => {
           if (cardFilter === "todas") return true;
           if (cardFilter === "sem") return !t.cardId;
           return t.cardId === cardFilter;
         }),
-    [cardTransactions, month, cardFilter],
+    [cardTransactions, selectedMonth, cardFilter],
   );
 
   const monthTotal = filtered.reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -64,7 +70,7 @@ export default function CardPurchasesPage() {
             onClick={() => setMonth(key)}
             className={cn(
               "shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
-              month === key
+              selectedMonth === key
                 ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
                 : "glass text-glass-sub",
             )}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  CheckCircle2,
   CreditCard,
   Pencil,
   Plus,
@@ -11,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
-import { formatCurrency } from "@/lib/mock-data";
+import { currentMonthKey, formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const PALETTE = [
@@ -102,18 +103,28 @@ function parseDay(value: string): number | undefined {
 
 function CardVisual({
   card,
+  openAmount = 0,
   onEdit,
   onDelete,
+  onToggleInvoice,
 }: {
   card: AppCard;
+  openAmount?: number;
   onEdit?: () => void;
   onDelete?: () => void;
+  onToggleInvoice?: () => void;
 }) {
-  const limit = card.totalLimit ?? 0;
+  const limit = card.totalLimit;
+  const availableLimit =
+    typeof limit === "number" ? Math.max(0, limit - openAmount) : undefined;
+  const usagePercent =
+    typeof limit === "number" && limit > 0
+      ? Math.min(100, Math.max(0, (openAmount / limit) * 100))
+      : 0;
   const safeColor = isHexColor(card.color) ? card.color : PALETTE[0];
   const details = [
-    card.closingDay ? `Fecha ${card.closingDay}` : "Fecha —",
-    card.dueDay ? `Vence ${card.dueDay}` : "Vence —",
+    card.closingDay ? `Fechamento: Dia ${card.closingDay}` : "Fechamento: —",
+    card.dueDay ? `Vencimento: Dia ${card.dueDay}` : "Vencimento: —",
   ].join(" · ");
 
   return (
@@ -168,9 +179,51 @@ function CardVisual({
           •••• •••• •••• {card.last4 || "0000"}
         </p>
         <div className="relative mt-5 grid grid-cols-2 gap-2 text-[10px] font-medium text-white/75">
-          <span>Limite {formatCurrency(limit)}</span>
+          <span>
+            Limite total {typeof limit === "number" ? formatCurrency(limit) : "—"}
+          </span>
           <span className="text-right">{details}</span>
         </div>
+        <div className="relative mt-3 grid grid-cols-2 gap-2 text-[11px] font-semibold">
+          <span>
+            <span className="block text-[9px] font-medium uppercase tracking-wide text-white/65">
+              Em aberto
+            </span>
+            {formatCurrency(openAmount)}
+          </span>
+          <span className="text-right">
+            <span className="block text-[9px] font-medium uppercase tracking-wide text-white/65">
+              Disponível
+            </span>
+            {typeof availableLimit === "number"
+              ? formatCurrency(availableLimit)
+              : "—"}
+          </span>
+        </div>
+        <div className="relative mt-3">
+          <div className="h-1.5 overflow-hidden rounded-full bg-black/15">
+            <div
+              className="h-full rounded-full bg-white/85 transition-[width] duration-300"
+              style={{ width: `${usagePercent}%` }}
+            />
+          </div>
+          <p className="mt-1 text-right text-[9px] font-medium text-white/65">
+            {typeof limit === "number" && limit > 0
+              ? `${Math.round(usagePercent)}% utilizado`
+              : "Limite não informado"}
+          </p>
+        </div>
+        {onToggleInvoice && (
+          <button
+            type="button"
+            onClick={onToggleInvoice}
+            aria-pressed={card.invoicePaid === true}
+            className="relative mt-2 flex items-center gap-1.5 rounded-full border border-white/25 bg-black/10 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
+          >
+            <CheckCircle2 className="size-3.5" />
+            Fatura {card.invoicePaid === true ? "paga" : "em aberto"}
+          </button>
+        )}
         <div className="relative mt-4 flex items-center justify-between">
           <span className="text-[11px] font-medium text-white/75">
             GranaScan · Cartão pessoal
@@ -204,11 +257,28 @@ function FormCardPreview({ form }: { form: CardFormState }) {
 export default function CardsPage() {
   const {
     cards,
+    transactions,
     activeProfile,
     addCard,
     updateCard,
     deleteCard,
   } = useAppStore();
+
+  const openAmountByCard = transactions.reduce<Record<string, number>>(
+    (totals, transaction) => {
+      if (
+        transaction.amount < 0 &&
+        transaction.cardMode === "credito" &&
+        transaction.cardId &&
+        transaction.date.startsWith(currentMonthKey)
+      ) {
+        totals[transaction.cardId] =
+          (totals[transaction.cardId] ?? 0) + Math.abs(transaction.amount);
+      }
+      return totals;
+    },
+    {},
+  );
   const [form, setForm] = useState<CardFormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -323,14 +393,20 @@ export default function CardsPage() {
         )}
 
         {cards.map((card) => (
-          <CardVisual
+            <CardVisual
             key={card.id}
             card={card}
+            openAmount={openAmountByCard[card.id] ?? 0}
             onEdit={() => handleEdit(card)}
             onDelete={() => {
               deleteCard(card.id);
               if (editingId === card.id) resetForm();
               toast("Cartão removido");
+            }}
+            onToggleInvoice={() => {
+              const nextPaid = card.invoicePaid !== true;
+              updateCard(card.id, { invoicePaid: nextPaid });
+              toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
             }}
           />
         ))}

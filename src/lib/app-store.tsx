@@ -40,6 +40,8 @@ export type AppCard = {
   totalLimit?: number;
   closingDay?: number;
   dueDay?: number;
+  /** Status manual da fatura atual: true = paga, false/undefined = em aberto. */
+  invoicePaid?: boolean;
   color: string;
 };
 
@@ -266,6 +268,7 @@ function sanitizeCards(v: unknown): AppCard[] {
         typeof c.dueDay === "number" && Number.isFinite(c.dueDay)
           ? Math.min(31, Math.max(1, Math.round(c.dueDay)))
           : undefined,
+      invoicePaid: c.invoicePaid === true,
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
@@ -718,6 +721,7 @@ type AppStoreValue = {
     totalLimit?: number;
     closingDay?: number;
     dueDay?: number;
+    invoicePaid?: boolean;
     color: string;
   }) => void;
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
