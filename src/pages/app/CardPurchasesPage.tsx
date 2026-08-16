@@ -1,9 +1,11 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  CheckCheck,
   CheckCircle2,
   CreditCard,
   ReceiptText,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
@@ -22,28 +24,37 @@ function isHexColor(value: string): boolean {
   return /^#[0-9A-F]{6}$/i.test(value);
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
 function isRegularCreditPurchase(transaction: Transaction): boolean {
   if (
     transaction.amount >= 0 ||
     !transaction.cardId ||
     transaction.cardMode !== "credito" ||
     (transaction.paymentMethod !== "cartao" &&
-      transaction.paymentMethod !== "credito")
+      transaction.paymentMethod !== "credito") ||
+    transaction.source === "loan"
   ) {
     return false;
   }
 
-  const searchableText = `${transaction.title} ${transaction.note ?? ""}`.toLocaleLowerCase("pt-BR");
-  const externalCategory = /emprestim|conta.?a.?receber|divida/.test(
-    transaction.categoryId.toLocaleLowerCase("pt-BR"),
+  const searchableText = normalizeSearchText(
+    `${transaction.title} ${transaction.note ?? ""} ${transaction.categoryId}`,
   );
   const externalLoanRecord =
-    /emprestei para|conta a receber|divida em aberto|cobranca:|referencia: loan-/.test(
+    /\b(?:emprestimo|emprestei|emprestado|emprestada|loan|cartao emprestado|cartao cedido|conta a receber|divida|cobranca)\b/.test(
       searchableText,
     );
 
-  return !externalCategory && !externalLoanRecord;
+  return !externalLoanRecord;
 }
+
+type InvoiceStatusFilter = "all" | "open" | "paid";
 
 function invoiceIsPaid(card: AppCard, month: string): boolean {
   return (
@@ -195,9 +206,16 @@ function InvoiceSummaryCard({
 }
 
 export default function CardPurchasesPage() {
-  const { transactions, cards, setCardInvoiceStatus } = useAppStore();
+  const {
+    transactions,
+    cards,
+    setCardInvoiceStatus,
+    setAllCardInvoiceStatus,
+  } = useAppStore();
   const [month, setMonth] = useState<string>("");
   const [selectedCardId, setSelectedCardId] = useState<string>("");
+  const [invoiceStatusFilter, setInvoiceStatusFilter] =
+    useState<InvoiceStatusFilter>("all");
 
   const cardTransactions = useMemo(
     () =>
@@ -208,16 +226,35 @@ export default function CardPurchasesPage() {
   );
 
   const monthOptions = useMemo(() => {
+    const invoiceHistoryMonths = cards.flatMap((card) =>
+      Object.keys(card.invoicePaidByMonth ?? {}).filter((key) =>
+        /^\d{4}-\d{2}$/.test(key),
+      ),
+    );
     const months = [
-      ...new Set(cardTransactions.map((transaction) => monthKey(transaction.date))),
+      ...new Set([
+        ...cardTransactions.map((transaction) => monthKey(transaction.date)),
+        ...invoiceHistoryMonths,
+      ]),
     ].sort((a, b) => b.localeCompare(a));
     return months.length > 0 ? months : [currentMonthKey];
-  }, [cardTransactions]);
+  }, [cardTransactions, cards]);
 
   const selectedMonth = monthOptions.includes(month)
     ? month
     : monthOptions[0];
-  const selectedCard = cards.find((card) => card.id === selectedCardId);
+  const visibleCards = useMemo(
+    () =>
+      cards.filter((card) => {
+        const paid = invoiceIsPaid(card, selectedMonth);
+        return (
+          invoiceStatusFilter === "all" ||
+          (invoiceStatusFilter === "paid" ? paid : !paid)
+        );
+      }),
+    [cards, invoiceStatusFilter, selectedMonth],
+  );
+  const selectedCard = visibleCards.find((card) => card.id === selectedCardId);
 
   const openAmountByCard = useMemo(
     () =>
@@ -250,6 +287,10 @@ export default function CardPurchasesPage() {
     (total, transaction) => total + Math.abs(transaction.amount),
     0,
   );
+  const handleBulkInvoiceStatus = (paid: boolean) => {
+    setAllCardInvoiceStatus(selectedMonth, paid);
+    toast(paid ? "Faturas do mês marcadas como pagas" : "Faturas do mês reabertas");
+  };
 
   return (
     <div className="space-y-4">
@@ -276,6 +317,31 @@ export default function CardPurchasesPage() {
         ))}
       </div>
 
+      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5">
+        {(["all", "open", "paid"] as const).map((status) => {
+          const labels: Record<InvoiceStatusFilter, string> = {
+            all: "Todas",
+            open: "Abertas",
+            paid: "Pagas",
+          };
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setInvoiceStatusFilter(status)}
+              className={cn(
+                "shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
+                invoiceStatusFilter === status
+                  ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+                  : "glass text-glass-sub",
+              )}
+            >
+              {labels[status]}
+            </button>
+          );
+        })}
+      </div>
+
       {cards.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
@@ -287,6 +353,20 @@ export default function CardPurchasesPage() {
             </p>
             <p className="mt-1 max-w-[260px] text-[13px] leading-relaxed text-glass-sub">
               Cadastre um cartão para acompanhar limite, fatura e compras separadamente.
+            </p>
+          </div>
+        </div>
+      ) : visibleCards.length === 0 ? (
+        <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
+            <ReceiptText className="size-6 text-glass-faint" />
+          </div>
+          <div>
+            <p className="text-[15px] font-semibold text-glass-ink">
+              Nenhuma fatura encontrada
+            </p>
+            <p className="mt-1 max-w-[260px] text-[13px] leading-relaxed text-glass-sub">
+              Não há faturas {invoiceStatusFilter === "paid" ? "pagas" : "abertas"} em {monthShortLabel(selectedMonth)}.
             </p>
           </div>
         </div>
@@ -310,6 +390,26 @@ export default function CardPurchasesPage() {
                 {monthShortLabel(selectedMonth)}
               </p>
             </div>
+          </div>
+          <div className="no-scrollbar flex gap-2 overflow-x-auto px-1 pb-0.5">
+            <button
+              type="button"
+              onClick={() => handleBulkInvoiceStatus(true)}
+              disabled={visibleCards.length === 0}
+              className="glass flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold text-glass-sub transition-colors hover:text-primary active:scale-95 disabled:opacity-50"
+            >
+              <CheckCheck className="size-3.5 text-[#34C759]" />
+              Marcar todas pagas
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBulkInvoiceStatus(false)}
+              disabled={visibleCards.length === 0}
+              className="glass flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold text-glass-sub transition-colors hover:text-primary active:scale-95 disabled:opacity-50"
+            >
+              <RotateCcw className="size-3.5 text-primary" />
+              Reabrir todas
+            </button>
           </div>
           <AnimatePresence initial={false} mode="wait">
             {selectedCard ? (
@@ -343,7 +443,7 @@ export default function CardPurchasesPage() {
                 transition={{ duration: 0.2 }}
                 className="space-y-3"
               >
-                {cards.map((card) => (
+                {visibleCards.map((card) => (
                   <InvoiceSummaryCard
                     key={card.id}
                     card={card}

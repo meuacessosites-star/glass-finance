@@ -741,6 +741,7 @@ type AppStoreValue = {
   }) => void;
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
   setCardInvoiceStatus: (cardId: string, month: string, paid: boolean) => void;
+  setAllCardInvoiceStatus: (month: string, paid: boolean) => void;
   deleteCard: (id: string) => void;
   addPerson: (data: { name: string; phone?: string }) => void;
   updatePerson: (
@@ -977,10 +978,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             };
           }),
         })),
+      setAllCardInvoiceStatus: (month, paid) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) => {
+            if (!/^\d{4}-\d{2}$/.test(month)) return card;
+            const invoicePaidByMonth = {
+              ...(card.invoicePaidByMonth ?? {}),
+              [month]: paid,
+            };
+            return {
+              ...card,
+              invoicePaidByMonth,
+              invoicePaid:
+                month === currentMonthKey ? paid : card.invoicePaid,
+            };
+          }),
+        })),
       deleteCard: (id) =>
         patchActiveData((d) => ({
           ...d,
-          cards: d.cards.filter((c) => c.id !== id),
+          cards: d.cards.filter((card) => card.id !== id),
         })),
       addPerson: (data) =>
         patchActiveData((d) => ({
