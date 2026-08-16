@@ -4,10 +4,16 @@ import {
   CheckCheck,
   CheckCircle2,
   CreditCard,
+  History,
+  MoreVertical,
+  Pencil,
   ReceiptText,
   RotateCcw,
+  SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import { useAppStore, type AppCard } from "@/lib/app-store";
@@ -63,14 +69,270 @@ function invoiceIsPaid(card: AppCard, month: string): boolean {
   );
 }
 
+type CardActionMenuProps = {
+  card: AppCard;
+  onEdit: () => void;
+  onRecalculate: () => void;
+  onHistory: () => void;
+  onExpenses: () => void;
+  onDelete: () => void;
+};
+
+function CardActionMenu({
+  card,
+  onEdit,
+  onRecalculate,
+  onHistory,
+  onExpenses,
+  onDelete,
+}: CardActionMenuProps) {
+  const [open, setOpen] = useState(false);
+  const closeAndRun = (action: () => void) => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label={`Opções de ${card.name}`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex size-8 items-center justify-center rounded-full border border-white/30 bg-black/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
+      >
+        <MoreVertical className="size-4" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.14 }}
+            className="absolute right-0 top-10 z-30 min-w-52 overflow-hidden rounded-2xl border border-white/30 bg-[#f4f8ff] p-1.5 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:bg-[#0d1b3e] dark:text-white"
+          >
+            <button
+              type="button"
+              onClick={() => closeAndRun(onEdit)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <Pencil className="size-3.5 text-primary" />
+              Editar cartão
+            </button>
+            <button
+              type="button"
+              onClick={() => closeAndRun(onRecalculate)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <SlidersHorizontal className="size-3.5 text-primary" />
+              Reajustar fatura
+            </button>
+            <button
+              type="button"
+              onClick={() => closeAndRun(onHistory)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <History className="size-3.5 text-primary" />
+              Histórico de faturas
+            </button>
+            <button
+              type="button"
+              onClick={() => closeAndRun(onExpenses)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <ReceiptText className="size-3.5 text-primary" />
+              Despesas associadas
+            </button>
+            <div className="my-1 border-t border-black/5 dark:border-white/10" />
+            <button
+              type="button"
+              onClick={() => closeAndRun(onDelete)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
+            >
+              <Trash2 className="size-3.5" />
+              Excluir cartão
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 type InvoiceSummaryCardProps = {
   card: AppCard;
   openAmount: number;
   invoicePaid: boolean;
   selected: boolean;
   onSelect: () => void;
-  onToggleInvoice: () => void;
+  onRequestPayment: () => void;
+  onReopenInvoice: () => void;
+  onEdit: () => void;
+  onRecalculate: () => void;
+  onHistory: () => void;
+  onExpenses: () => void;
+  onDelete: () => void;
 };
+
+function invoiceDueLabel(card: AppCard, month: string): string {
+  if (!card.dueDay) return "Vencimento não informado";
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return `Dia ${card.dueDay}`;
+  const monthLabel = new Intl.DateTimeFormat("pt-BR", {
+    month: "short",
+    timeZone: "UTC",
+  })
+    .format(new Date(Date.UTC(year, monthNumber - 1, 1)))
+    .replace(".", "")
+    .toUpperCase();
+  return `${String(card.dueDay).padStart(2, "0")}/${monthLabel}`;
+}
+
+type InvoicePaymentModalProps = {
+  card: AppCard;
+  month: string;
+  amount: number;
+  onClose: () => void;
+  onConfirm: () => void;
+  onInstallments: () => void;
+};
+
+function InvoicePaymentModal({
+  card,
+  month,
+  amount,
+  onClose,
+  onConfirm,
+  onInstallments,
+}: InvoicePaymentModalProps) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invoice-payment-title"
+          className="glass glass-strong w-full max-w-md rounded-3xl bg-[#f4f8ff] p-5 text-glass-ink shadow-[0_24px_70px_-24px_rgba(15,40,90,0.65)] dark:bg-[#0d1b3e] dark:text-white"
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 24, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                Pagamento da fatura
+              </p>
+              <h2 id="invoice-payment-title" className="mt-1 text-[20px] font-bold">
+                Quanto você quer pagar?
+              </h2>
+              <p className="mt-1 text-[13px] text-glass-sub">
+                {card.name} ····{card.last4} · {monthShortLabel(month)}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Fechar pagamento da fatura"
+              onClick={onClose}
+              className="rounded-full px-2 py-1 text-[18px] leading-none text-glass-faint transition-colors hover:text-glass-ink dark:hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="glass glass-soft mt-5 rounded-2xl px-4 py-4 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-glass-faint">
+              Valor total da fatura
+            </p>
+            <p className="amount-tabular mt-1 text-[28px] font-bold text-[#FF3B30]">
+              {formatCurrency(amount)}
+            </p>
+            <p className="mt-1 text-[12px] font-medium text-glass-sub">
+              Vencimento: {invoiceDueLabel(card, month)}
+            </p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-glass-ink/10 px-4 py-3 text-[13px] font-semibold text-glass-sub transition-colors hover:text-glass-ink dark:border-white/10 dark:hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
+            >
+              Continuar
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onInstallments}
+            className="mt-3 w-full rounded-full px-4 py-2 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/5"
+          >
+            Parcelar fatura
+          </button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+type EmptyInvoiceModalProps = {
+  card: AppCard;
+  onClose: () => void;
+};
+
+function EmptyInvoiceModal({ card, onClose }: EmptyInvoiceModalProps) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          role="alertdialog"
+          aria-modal="true"
+          className="glass glass-strong w-full max-w-md rounded-3xl bg-[#f4f8ff] p-5 text-glass-ink shadow-[0_24px_70px_-24px_rgba(15,40,90,0.65)] dark:bg-[#0d1b3e] dark:text-white"
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 24, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
+            Atenção
+          </p>
+          <h2 className="mt-1 text-[20px] font-bold">Fatura sem lançamentos</h2>
+          <p className="mt-3 text-[13px] leading-relaxed text-glass-sub">
+            Não é possível registrar um pagamento para {card.name} porque não há compras normais de crédito vinculadas a esta fatura.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-5 w-full rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
+          >
+            OK
+          </button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
 function InvoiceSummaryCard({
   card,
@@ -78,7 +340,13 @@ function InvoiceSummaryCard({
   invoicePaid,
   selected,
   onSelect,
-  onToggleInvoice,
+  onRequestPayment,
+  onReopenInvoice,
+  onEdit,
+  onRecalculate,
+  onHistory,
+  onExpenses,
+  onDelete,
 }: InvoiceSummaryCardProps) {
   const safeColor = isHexColor(card.color) ? card.color : "#2F6BFF";
   const limit = card.totalLimit;
@@ -115,6 +383,7 @@ function InvoiceSummaryCard({
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
+
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/30 bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
             <CreditCard className="size-4" />
           </div>
@@ -127,9 +396,19 @@ function InvoiceSummaryCard({
             </p>
           </div>
         </div>
-        <span className="shrink-0 rounded-full border border-white/25 bg-black/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white/85">
-          Fatura
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-full border border-white/25 bg-black/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white/85">
+            Fatura
+          </span>
+          <CardActionMenu
+            card={card}
+            onEdit={onEdit}
+            onRecalculate={onRecalculate}
+            onHistory={onHistory}
+            onExpenses={onExpenses}
+            onDelete={onDelete}
+          />
+        </div>
       </div>
 
       <div className="relative mt-4 grid grid-cols-3 gap-2">
@@ -193,7 +472,8 @@ function InvoiceSummaryCard({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onToggleInvoice();
+            if (invoicePaid) onReopenInvoice();
+            else onRequestPayment();
           }}
           aria-pressed={invoicePaid}
           className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[10px] font-bold text-white transition-colors hover:bg-white/25 active:scale-95"
@@ -206,16 +486,20 @@ function InvoiceSummaryCard({
 }
 
 export default function CardPurchasesPage() {
+  const navigate = useNavigate();
   const {
     transactions,
     cards,
     setCardInvoiceStatus,
     setAllCardInvoiceStatus,
+    deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>("");
   const [selectedCardId, setSelectedCardId] = useState<string>("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<InvoiceStatusFilter>("all");
+  const [paymentCard, setPaymentCard] = useState<AppCard | null>(null);
+  const [zeroInvoiceCard, setZeroInvoiceCard] = useState<AppCard | null>(null);
 
   const cardTransactions = useMemo(
     () =>
@@ -291,6 +575,65 @@ export default function CardPurchasesPage() {
     setAllCardInvoiceStatus(selectedMonth, paid);
     toast(paid ? "Faturas do mês marcadas como pagas" : "Faturas do mês reabertas");
   };
+
+  const handleRequestPayment = (card: AppCard) => {
+    const amount = openAmountByCard[card.id] ?? 0;
+    if (amount <= 0) {
+      setZeroInvoiceCard(card);
+      return;
+    }
+    setPaymentCard(card);
+  };
+
+  const handleConfirmPayment = () => {
+    if (!paymentCard) return;
+    setCardInvoiceStatus(paymentCard.id, selectedMonth, true);
+    setPaymentCard(null);
+    toast(`Fatura de ${paymentCard.name} paga integralmente`);
+  };
+
+  const handleReopenInvoice = (card: AppCard) => {
+    setCardInvoiceStatus(card.id, selectedMonth, false);
+    toast("Fatura reaberta");
+  };
+
+  const handleDeleteCard = (card: AppCard) => {
+    if (!window.confirm(`Excluir o cartão ${card.name}?`)) return;
+    deleteCard(card.id);
+    if (selectedCardId === card.id) setSelectedCardId("");
+    toast("Cartão removido");
+  };
+
+  const handleSelectCard = (card: AppCard) => {
+    setSelectedCardId(card.id);
+  };
+
+  const handleAssociatedExpenses = (card: AppCard) => {
+    setSelectedCardId(card.id);
+    window.setTimeout(() => {
+      document.getElementById("card-invoice-extract")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  };
+
+  const cardActions = (card: AppCard) => ({
+    onRequestPayment: () => handleRequestPayment(card),
+    onReopenInvoice: () => handleReopenInvoice(card),
+    onEdit: () => navigate("/dashboard/cartoes", { state: { editCardId: card.id } }),
+    onRecalculate: () => {
+      setSelectedCardId(card.id);
+      toast("Fatura selecionada para reajuste");
+    },
+    onHistory: () => {
+      setInvoiceStatusFilter("all");
+      setSelectedCardId(card.id);
+      toast("Histórico de faturas selecionado");
+    },
+    onExpenses: () => handleAssociatedExpenses(card),
+    onDelete: () => handleDeleteCard(card),
+  });
 
   return (
     <div className="space-y-4">
@@ -427,11 +770,7 @@ export default function CardPurchasesPage() {
                   invoicePaid={invoiceIsPaid(selectedCard, selectedMonth)}
                   selected
                   onSelect={() => setSelectedCardId("")}
-                  onToggleInvoice={() => {
-                    const nextPaid = !invoiceIsPaid(selectedCard, selectedMonth);
-                    setCardInvoiceStatus(selectedCard.id, selectedMonth, nextPaid);
-                    toast(nextPaid ? "Fatura paga" : "Fatura reaberta");
-                  }}
+                  {...cardActions(selectedCard)}
                 />
               </motion.div>
             ) : (
@@ -450,12 +789,8 @@ export default function CardPurchasesPage() {
                     openAmount={openAmountByCard[card.id] ?? 0}
                     invoicePaid={invoiceIsPaid(card, selectedMonth)}
                     selected={false}
-                    onSelect={() => setSelectedCardId(card.id)}
-                    onToggleInvoice={() => {
-                      const nextPaid = !invoiceIsPaid(card, selectedMonth);
-                      setCardInvoiceStatus(card.id, selectedMonth, nextPaid);
-                      toast(nextPaid ? "Fatura paga" : "Fatura reaberta");
-                    }}
+                    onSelect={() => handleSelectCard(card)}
+                    {...cardActions(card)}
                   />
                 ))}
               </motion.div>
@@ -465,7 +800,7 @@ export default function CardPurchasesPage() {
       )}
 
       {selectedCard && (
-        <div className="space-y-3">
+        <div id="card-invoice-extract" className="space-y-3">
           <div className="glass flex items-center justify-between rounded-2xl px-4 py-3">
             <div>
               <p className="text-[12px] font-bold uppercase tracking-wide text-glass-sub">
@@ -513,6 +848,26 @@ export default function CardPurchasesPage() {
             </p>
           )}
         </div>
+      )}
+
+      {paymentCard && (
+        <InvoicePaymentModal
+          card={paymentCard}
+          month={selectedMonth}
+          amount={openAmountByCard[paymentCard.id] ?? 0}
+          onClose={() => setPaymentCard(null)}
+          onConfirm={handleConfirmPayment}
+          onInstallments={() => {
+            setPaymentCard(null);
+            toast("Parcelamento de fatura ficará disponível em breve");
+          }}
+        />
+      )}
+      {zeroInvoiceCard && (
+        <EmptyInvoiceModal
+          card={zeroInvoiceCard}
+          onClose={() => setZeroInvoiceCard(null)}
+        />
       )}
     </div>
   );

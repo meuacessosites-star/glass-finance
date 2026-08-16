@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   CreditCard,
@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation } from "react-router";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import { currentMonthKey, formatCurrency } from "@/lib/mock-data";
@@ -255,6 +256,8 @@ function FormCardPreview({ form }: { form: CardFormState }) {
 }
 
 export default function CardsPage() {
+  const location = useLocation();
+  const requestedEditId = (location.state as { editCardId?: string } | null)?.editCardId;
   const {
     cards,
     transactions,
@@ -279,8 +282,30 @@ export default function CardsPage() {
     },
     {},
   );
-  const [form, setForm] = useState<CardFormState>(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const initialEditingCard = cards.find((card) => card.id === requestedEditId);
+  const [form, setForm] = useState<CardFormState>(() =>
+    initialEditingCard
+      ? {
+          name: initialEditingCard.name,
+          institution: initialEditingCard.institution ?? "",
+          last4: initialEditingCard.last4,
+          totalLimit:
+            typeof initialEditingCard.totalLimit === "number"
+              ? initialEditingCard.totalLimit.toFixed(2).replace(".", ",")
+              : "",
+          closingDay: initialEditingCard.closingDay
+            ? String(initialEditingCard.closingDay)
+            : "",
+          dueDay: initialEditingCard.dueDay
+            ? String(initialEditingCard.dueDay)
+            : "",
+          color: initialEditingCard.color,
+        }
+      : EMPTY_FORM,
+  );
+  const [editingId, setEditingId] = useState<string | null>(
+    initialEditingCard?.id ?? null,
+  );
 
   const updateField = <K extends keyof CardFormState>(
     field: K,
@@ -319,6 +344,13 @@ export default function CardsPage() {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // O menu da fatura entrega o cartão a ser editado via estado de navegação.
+  useEffect(() => {
+    if (!requestedEditId) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.history.replaceState({}, "", window.location.href);
+  }, [requestedEditId]);
 
   const handleSave = () => {
     const trimmedName = form.name.trim();
