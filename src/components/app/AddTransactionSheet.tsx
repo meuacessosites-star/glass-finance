@@ -890,7 +890,7 @@ export function AddTransactionSheet({
                   animate={{ y: 0 }}
                   exit={{ y: "100%" }}
                   transition={{ type: "spring", damping: 30, stiffness: 330 }}
-                  className="glass glass-strong absolute inset-x-0 bottom-0 z-50 flex max-h-[74%] flex-col rounded-t-[2.2rem] px-5 pb-8 pt-3"
+                  className="glass glass-strong absolute inset-x-0 bottom-0 z-50 flex max-h-[74%] flex-col rounded-t-[2.2rem] bg-white px-5 pb-8 pt-3 dark:bg-[#f4f8ff]"
                 >
                   <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15 dark:bg-black/25" />
                   <div className="mb-4 flex items-center justify-between">

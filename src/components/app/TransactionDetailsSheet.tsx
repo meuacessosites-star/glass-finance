@@ -83,7 +83,7 @@ export function TransactionDetailsSheet({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ type: "spring", damping: 26, stiffness: 320 }}
             onClick={(e) => e.stopPropagation()}
-            className="glass glass-strong no-scrollbar max-h-[85%] w-full max-w-[320px] overflow-y-auto rounded-[2rem] p-5"
+            className="glass glass-strong no-scrollbar max-h-[85%] w-full max-w-[320px] overflow-y-auto rounded-[2rem] bg-white p-5 dark:bg-[#f4f8ff]"
           >
             <div className="flex items-center justify-between">
               <p className="text-[15px] font-bold tracking-tight text-glass-ink">

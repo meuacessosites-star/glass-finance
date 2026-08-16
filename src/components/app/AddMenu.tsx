@@ -121,7 +121,7 @@ export function AddMenu({
           onDragEnd={(_, info) => {
             if (info.offset.y > 90 || info.velocity.y > 500) onClose();
           }}
-          className="glass glass-strong absolute inset-x-0 bottom-0 z-50 rounded-t-[2.2rem] px-5 pb-8 pt-3"
+          className="glass glass-strong absolute inset-x-0 bottom-0 z-50 rounded-t-[2.2rem] bg-white px-5 pb-8 pt-3 dark:bg-[#f4f8ff]"
         >
             <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15 dark:bg-black/25" />
             <div className="mb-4 flex items-center justify-between">

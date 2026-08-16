@@ -54,7 +54,7 @@ export function ProfilePinGate({
         initial={{ opacity: 0, scale: 0.92, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: "spring", damping: 26, stiffness: 320 }}
-        className="glass glass-strong w-full max-w-[300px] rounded-[2rem] p-5 text-center"
+        className="glass glass-strong w-full max-w-[300px] rounded-[2rem] bg-white p-5 text-center dark:bg-[#f4f8ff]"
       >
         <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary/10">
           <LockKeyhole className="size-5 text-primary" strokeWidth={2.2} />

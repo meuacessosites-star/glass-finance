@@ -119,7 +119,7 @@ export function PersonSelector({
           <PopoverContent
             align="start"
             style={{ zIndex: 70 }}
-            className="glass glass-strong w-[min(22rem,calc(100vw-2rem))] p-2"
+            className="glass glass-strong w-[min(22rem,calc(100vw-2rem))] bg-white p-2 dark:bg-[#f4f8ff]"
           >
             <div className="mb-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-glass-sub">
               Pessoas cadastradas

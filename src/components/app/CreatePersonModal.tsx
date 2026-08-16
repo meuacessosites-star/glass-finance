@@ -69,7 +69,7 @@ export function CreatePersonModal({
 
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
-      <DialogContent className="glass glass-strong border-0">
+      <DialogContent className="glass glass-strong border-0 bg-white dark:bg-[#f4f8ff]">
         <DialogHeader>
           <div className="mx-auto mb-2">
             <PersonAvatar name={name || "Nova pessoa"} size="lg" />

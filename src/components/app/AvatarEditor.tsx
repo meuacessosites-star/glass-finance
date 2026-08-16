@@ -105,6 +105,7 @@ export function AvatarEditor({
   } | null>(null);
 
   // Sync the form whenever the editor opens (create resets, edit pre-fills).
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open) return;
     const av = profile?.avatar;
@@ -117,6 +118,7 @@ export function AvatarEditor({
     setPanX(av?.crop.panX ?? 0);
     setPanY(av?.crop.panY ?? 0);
   }, [open, profile]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFile = async (file: File | undefined) => {
     if (!file || !file.type.startsWith("image/") || busy) return;
@@ -193,7 +195,7 @@ export function AvatarEditor({
         animate={{ y: 0 }}
         transition={{ type: "spring", damping: 30, stiffness: 320 }}
         onClick={(e) => e.stopPropagation()}
-        className="glass glass-strong max-h-[90%] w-full overflow-y-auto no-scrollbar rounded-t-[2rem] p-5 pb-7"
+        className="glass glass-strong max-h-[90%] w-full overflow-y-auto no-scrollbar rounded-t-[2rem] bg-white p-5 pb-7 dark:bg-[#f4f8ff]"
       >
         {/* Grab handle */}
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-black/10" />

@@ -337,7 +337,7 @@ export function VoiceCommandSheet({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 330 }}
             className={cn(
-              "glass glass-strong absolute inset-0 flex flex-col",
+              "glass glass-strong absolute inset-0 flex flex-col bg-white dark:bg-[#f4f8ff]",
               reviewOpen ? "hidden" : "flex",
             )}
           >
