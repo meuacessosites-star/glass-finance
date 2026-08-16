@@ -35,7 +35,11 @@ export type AppCategory = {
 export type AppCard = {
   id: string;
   name: string;
+  institution?: string;
   last4: string;
+  totalLimit?: number;
+  closingDay?: number;
+  dueDay?: number;
   color: string;
 };
 
@@ -248,7 +252,20 @@ function sanitizeCards(v: unknown): AppCard[] {
     .map((c) => ({
       id: str(c.id, uid("card")),
       name: str(c.name, "Cartão"),
+      institution: str(c.institution, ""),
       last4: /^\d{4}$/.test(String(c.last4 ?? "")) ? String(c.last4) : "0000",
+      totalLimit:
+        typeof c.totalLimit === "number" && Number.isFinite(c.totalLimit)
+          ? Math.max(0, c.totalLimit)
+          : undefined,
+      closingDay:
+        typeof c.closingDay === "number" && Number.isFinite(c.closingDay)
+          ? Math.min(31, Math.max(1, Math.round(c.closingDay)))
+          : undefined,
+      dueDay:
+        typeof c.dueDay === "number" && Number.isFinite(c.dueDay)
+          ? Math.min(31, Math.max(1, Math.round(c.dueDay)))
+          : undefined,
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
@@ -694,7 +711,16 @@ type AppStoreValue = {
   }) => string;
   updateCategory: (id: string, patch: Partial<AppCategory>) => void;
   deleteCategory: (id: string) => void;
-  addCard: (data: { name: string; last4: string; color: string }) => void;
+  addCard: (data: {
+    name: string;
+    institution?: string;
+    last4: string;
+    totalLimit?: number;
+    closingDay?: number;
+    dueDay?: number;
+    color: string;
+  }) => void;
+  updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
   deleteCard: (id: string) => void;
   addPerson: (data: { name: string; phone?: string }) => void;
   updatePerson: (
@@ -906,6 +932,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => ({
           ...d,
           cards: [...d.cards, { id: uid("card"), ...data }],
+        })),
+      updateCard: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) =>
+            card.id === id ? { ...card, ...patch } : card,
+          ),
         })),
       deleteCard: (id) =>
         patchActiveData((d) => ({
