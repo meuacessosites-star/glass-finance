@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   categories as seedCategories,
+  currentMonthKey,
   seedNotifications,
   transactions as seedTransactions,
   type BankNotification,
@@ -40,8 +41,10 @@ export type AppCard = {
   totalLimit?: number;
   closingDay?: number;
   dueDay?: number;
-  /** Status manual da fatura atual: true = paga, false/undefined = em aberto. */
+  /** Status legado da fatura atual: true = paga, false/undefined = em aberto. */
   invoicePaid?: boolean;
+  /** Status persistido por mês, indexado como YYYY-MM. */
+  invoicePaidByMonth?: Record<string, boolean>;
   color: string;
 };
 
@@ -247,6 +250,15 @@ function sanitizeCategories(v: unknown): AppCategory[] {
   return list.length > 0 ? list : defaultData().categories;
 }
 
+function sanitizeInvoicePaidByMonth(v: unknown): Record<string, boolean> {
+  if (!v || typeof v !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(v as Record<string, unknown>)
+      .filter(([key, value]) => /^\d{4}-\d{2}$/.test(key) && typeof value === "boolean")
+      .map(([key, value]) => [key, value as boolean]),
+  );
+}
+
 function sanitizeCards(v: unknown): AppCard[] {
   if (!Array.isArray(v)) return defaultData().cards;
   const list = v
@@ -269,6 +281,7 @@ function sanitizeCards(v: unknown): AppCard[] {
           ? Math.min(31, Math.max(1, Math.round(c.dueDay)))
           : undefined,
       invoicePaid: c.invoicePaid === true,
+      invoicePaidByMonth: sanitizeInvoicePaidByMonth(c.invoicePaidByMonth),
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
@@ -542,6 +555,7 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.personId === "string" && t.personId.trim()
           ? t.personId.trim().slice(0, 80)
           : undefined,
+      source: t.source === "loan" ? "loan" : undefined,
       };
     })
     .filter((t) => t.amount !== 0);
@@ -722,9 +736,11 @@ type AppStoreValue = {
     closingDay?: number;
     dueDay?: number;
     invoicePaid?: boolean;
+    invoicePaidByMonth?: Record<string, boolean>;
     color: string;
   }) => void;
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
+  setCardInvoiceStatus: (cardId: string, month: string, paid: boolean) => void;
   deleteCard: (id: string) => void;
   addPerson: (data: { name: string; phone?: string }) => void;
   updatePerson: (
@@ -944,6 +960,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             card.id === id ? { ...card, ...patch } : card,
           ),
         })),
+      setCardInvoiceStatus: (cardId, month, paid) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) => {
+            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
+            const invoicePaidByMonth = {
+              ...(card.invoicePaidByMonth ?? {}),
+              [month]: paid,
+            };
+            return {
+              ...card,
+              invoicePaidByMonth,
+              invoicePaid:
+                month === currentMonthKey ? paid : card.invoicePaid,
+            };
+          }),
+        })),
       deleteCard: (id) =>
         patchActiveData((d) => ({
           ...d,
@@ -1161,6 +1194,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             date: data.date,
             note: originalNote,
             paymentMethod: data.paymentMethod,
+            source: "loan" as const,
           };
 
           if (data.collectionMode === "open") {
@@ -1212,6 +1246,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               paymentMethod: data.paymentMethod,
               recurrence: "parcelada" as const,
               installments: item.installments,
+              source: "loan" as const,
               currentInstallment: item.installment,
             } };
           });

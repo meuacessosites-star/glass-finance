@@ -79,6 +79,8 @@ export type Transaction = {
   cardMode?: string;
   /** Convex people record linked to this transaction, when applicable. */
   personId?: string;
+  /** Origem estrutural de lançamentos que não pertencem ao extrato normal. */
+  source?: "loan";
 };
 
 /** Short human label for the transaction's recurrence, or null when única. */

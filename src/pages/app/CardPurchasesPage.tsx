@@ -14,6 +14,7 @@ import {
   formatCurrency,
   monthKey,
   monthShortLabel,
+  type Transaction,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -21,9 +22,40 @@ function isHexColor(value: string): boolean {
   return /^#[0-9A-F]{6}$/i.test(value);
 }
 
+function isRegularCreditPurchase(transaction: Transaction): boolean {
+  if (
+    transaction.amount >= 0 ||
+    !transaction.cardId ||
+    transaction.cardMode !== "credito" ||
+    (transaction.paymentMethod !== "cartao" &&
+      transaction.paymentMethod !== "credito")
+  ) {
+    return false;
+  }
+
+  const searchableText = `${transaction.title} ${transaction.note ?? ""}`.toLocaleLowerCase("pt-BR");
+  const externalCategory = /emprestim|conta.?a.?receber|divida/.test(
+    transaction.categoryId.toLocaleLowerCase("pt-BR"),
+  );
+  const externalLoanRecord =
+    /emprestei para|conta a receber|divida em aberto|cobranca:|referencia: loan-/.test(
+      searchableText,
+    );
+
+  return !externalCategory && !externalLoanRecord;
+}
+
+function invoiceIsPaid(card: AppCard, month: string): boolean {
+  return (
+    card.invoicePaidByMonth?.[month] ??
+    (month === currentMonthKey && card.invoicePaid === true)
+  );
+}
+
 type InvoiceSummaryCardProps = {
   card: AppCard;
   openAmount: number;
+  invoicePaid: boolean;
   selected: boolean;
   onSelect: () => void;
   onToggleInvoice: () => void;
@@ -32,6 +64,7 @@ type InvoiceSummaryCardProps = {
 function InvoiceSummaryCard({
   card,
   openAmount,
+  invoicePaid,
   selected,
   onSelect,
   onToggleInvoice,
@@ -140,36 +173,36 @@ function InvoiceSummaryCard({
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleInvoice();
-        }}
-        aria-pressed={card.invoicePaid === true}
-        className="relative mt-3 flex items-center gap-1.5 rounded-full border border-white/25 bg-black/10 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
-      >
-        <CheckCircle2 className="size-3.5" />
-        Fatura {card.invoicePaid === true ? "paga" : "em aberto"}
-      </button>
+      <div className="relative mt-3 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/10 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-md">
+          <CheckCircle2 className="size-3.5" />
+          Fatura {invoicePaid ? "paga" : "aberta"}
+        </span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleInvoice();
+          }}
+          aria-pressed={invoicePaid}
+          className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[10px] font-bold text-white transition-colors hover:bg-white/25 active:scale-95"
+        >
+          {invoicePaid ? "Reabrir fatura" : "Pagar fatura"}
+        </button>
+      </div>
     </div>
   );
 }
 
 export default function CardPurchasesPage() {
-  const { transactions, cards, updateCard } = useAppStore();
+  const { transactions, cards, setCardInvoiceStatus } = useAppStore();
   const [month, setMonth] = useState<string>("");
   const [selectedCardId, setSelectedCardId] = useState<string>("");
 
   const cardTransactions = useMemo(
     () =>
       transactions
-        .filter(
-          (transaction) =>
-            transaction.amount < 0 &&
-            transaction.cardMode === "credito" &&
-            Boolean(transaction.cardId),
-        )
+        .filter(isRegularCreditPurchase)
         .sort((a, b) => b.date.localeCompare(a.date)),
     [transactions],
   );
@@ -291,12 +324,13 @@ export default function CardPurchasesPage() {
                 <InvoiceSummaryCard
                   card={selectedCard}
                   openAmount={openAmountByCard[selectedCard.id] ?? 0}
+                  invoicePaid={invoiceIsPaid(selectedCard, selectedMonth)}
                   selected
                   onSelect={() => setSelectedCardId("")}
                   onToggleInvoice={() => {
-                    const nextPaid = selectedCard.invoicePaid !== true;
-                    updateCard(selectedCard.id, { invoicePaid: nextPaid });
-                    toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
+                    const nextPaid = !invoiceIsPaid(selectedCard, selectedMonth);
+                    setCardInvoiceStatus(selectedCard.id, selectedMonth, nextPaid);
+                    toast(nextPaid ? "Fatura paga" : "Fatura reaberta");
                   }}
                 />
               </motion.div>
@@ -314,12 +348,13 @@ export default function CardPurchasesPage() {
                     key={card.id}
                     card={card}
                     openAmount={openAmountByCard[card.id] ?? 0}
+                    invoicePaid={invoiceIsPaid(card, selectedMonth)}
                     selected={false}
                     onSelect={() => setSelectedCardId(card.id)}
                     onToggleInvoice={() => {
-                      const nextPaid = card.invoicePaid !== true;
-                      updateCard(card.id, { invoicePaid: nextPaid });
-                      toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
+                      const nextPaid = !invoiceIsPaid(card, selectedMonth);
+                      setCardInvoiceStatus(card.id, selectedMonth, nextPaid);
+                      toast(nextPaid ? "Fatura paga" : "Fatura reaberta");
                     }}
                   />
                 ))}
