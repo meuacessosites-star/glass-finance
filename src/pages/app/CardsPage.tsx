@@ -128,42 +128,42 @@ function CardVisual({
         <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-16 -left-8 h-36 w-36 rounded-full bg-black/15 blur-3xl" />
 
-        <div className="relative flex items-center justify-between pr-20">
-          <div>
-            <span className="text-[12.5px] font-bold tracking-widest">
-              {card.name.toUpperCase()}
-            </span>
-            <p className="mt-0.5 text-[11px] font-medium text-white/75">
-              {card.institution || "Banco / instituição"}
-            </p>
-          </div>
-          <Wifi className="size-5 rotate-90 opacity-80" strokeWidth={2.2} />
+        <div className="relative flex items-center justify-between">
+          {(onEdit || onDelete) && (
+            <div className="flex items-center gap-1.5">
+              {onEdit && (
+                <button
+                  type="button"
+                  aria-label={`Editar ${card.name}`}
+                  onClick={onEdit}
+                  className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-90"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label={`Excluir ${card.name}`}
+                  onClick={onDelete}
+                  className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-[#FF3B30]/80 active:scale-90"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+          <Wifi className="ml-auto size-5 rotate-90 opacity-80" strokeWidth={2.2} />
         </div>
 
-        {(onEdit || onDelete) && (
-          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
-            {onEdit && (
-              <button
-                type="button"
-                aria-label={`Editar ${card.name}`}
-                onClick={onEdit}
-                className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-90"
-              >
-                <Pencil className="size-3.5" />
-              </button>
-            )}
-            {onDelete && (
-              <button
-                type="button"
-                aria-label={`Excluir ${card.name}`}
-                onClick={onDelete}
-                className="flex size-7 items-center justify-center rounded-lg border border-white/25 bg-black/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-md transition-colors hover:bg-[#FF3B30]/80 active:scale-90"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="relative mt-5">
+          <span className="text-[12.5px] font-bold tracking-widest">
+            {card.name.toUpperCase()}
+          </span>
+          <p className="mt-0.5 text-[11px] font-medium text-white/75">
+            {card.institution || "Banco / instituição"}
+          </p>
+        </div>
         <p className="amount-tabular relative mt-8 text-[18px] font-semibold tracking-[0.18em]">
           •••• •••• •••• {card.last4 || "0000"}
         </p>
