@@ -1,16 +1,22 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Archive,
+  CalendarClock,
+  ChartNoAxesColumn,
   CheckCheck,
-  CheckCircle2,
   CreditCard,
+  Handshake,
   History,
+  LockKeyhole,
+  LockOpen,
   MoreVertical,
   Pencil,
   ReceiptText,
   RotateCcw,
   SlidersHorizontal,
   Trash2,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
@@ -24,6 +30,7 @@ import {
   monthShortLabel,
   type Transaction,
 } from "@/lib/mock-data";
+import type { InvoicePaymentRecord } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 
 function isHexColor(value: string): boolean {
@@ -69,12 +76,28 @@ function invoiceIsPaid(card: AppCard, month: string): boolean {
   );
 }
 
+function invoicePaymentFor(card: AppCard, month: string): InvoicePaymentRecord | undefined {
+  return card.invoicePaymentsByMonth?.[month];
+}
+
+function invoiceTotalFor(card: AppCard, month: string, grossAmount: number): number {
+  const override = card.invoiceOverrideByMonth?.[month];
+  return typeof override === "number" && Number.isFinite(override)
+    ? Math.max(0, override)
+    : grossAmount;
+}
+
 type CardActionMenuProps = {
   card: AppCard;
   onEdit: () => void;
   onRecalculate: () => void;
+  onReconcile: () => void;
+  onEditClosingDay: () => void;
   onHistory: () => void;
   onExpenses: () => void;
+  onCategoryChart: () => void;
+  onMonthlyTrend: () => void;
+  onArchive: () => void;
   onDelete: () => void;
 };
 
@@ -82,8 +105,13 @@ function CardActionMenu({
   card,
   onEdit,
   onRecalculate,
+  onReconcile,
+  onEditClosingDay,
   onHistory,
   onExpenses,
+  onCategoryChart,
+  onMonthlyTrend,
+  onArchive,
   onDelete,
 }: CardActionMenuProps) {
   const [open, setOpen] = useState(false);
@@ -91,6 +119,17 @@ function CardActionMenu({
     setOpen(false);
     action();
   };
+
+  const options = [
+    { label: "Editar", icon: Pencil, action: onEdit },
+    { label: "Reajustar fatura", icon: SlidersHorizontal, action: onRecalculate },
+    { label: "Realizar conciliação", icon: Handshake, action: onReconcile },
+    { label: "Editar dia fechamento", icon: CalendarClock, action: onEditClosingDay },
+    { label: "Histórico de faturas", icon: History, action: onHistory },
+    { label: "Despesas associadas", icon: ReceiptText, action: onExpenses },
+    { label: "Gráfico por categorias", icon: ChartNoAxesColumn, action: onCategoryChart },
+    { label: "Evolução mensal", icon: TrendingUp, action: onMonthlyTrend },
+  ];
 
   return (
     <div className="relative" onClick={(event) => event.stopPropagation()}>
@@ -110,41 +149,28 @@ function CardActionMenu({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.14 }}
-            className="absolute right-0 top-10 z-30 min-w-52 overflow-hidden rounded-2xl border border-white/30 bg-[#f4f8ff] p-1.5 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:bg-[#0d1b3e] dark:text-white"
+            className="absolute right-0 top-10 z-30 min-w-56 overflow-hidden rounded-2xl border border-white/30 bg-[#f4f8ff] p-1.5 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:bg-[#0d1b3e] dark:text-white"
           >
-            <button
-              type="button"
-              onClick={() => closeAndRun(onEdit)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <Pencil className="size-3.5 text-primary" />
-              Editar cartão
-            </button>
-            <button
-              type="button"
-              onClick={() => closeAndRun(onRecalculate)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <SlidersHorizontal className="size-3.5 text-primary" />
-              Reajustar fatura
-            </button>
-            <button
-              type="button"
-              onClick={() => closeAndRun(onHistory)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <History className="size-3.5 text-primary" />
-              Histórico de faturas
-            </button>
-            <button
-              type="button"
-              onClick={() => closeAndRun(onExpenses)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              <ReceiptText className="size-3.5 text-primary" />
-              Despesas associadas
-            </button>
+            {options.map(({ label, icon: Icon, action }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => closeAndRun(action)}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <Icon className="size-3.5 text-primary" />
+                {label}
+              </button>
+            ))}
             <div className="my-1 border-t border-black/5 dark:border-white/10" />
+            <button
+              type="button"
+              onClick={() => closeAndRun(onArchive)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <Archive className="size-3.5 text-primary" />
+              Arquivar cartão
+            </button>
             <button
               type="button"
               onClick={() => closeAndRun(onDelete)}
@@ -163,6 +189,8 @@ function CardActionMenu({
 type InvoiceSummaryCardProps = {
   card: AppCard;
   openAmount: number;
+  invoiceTotal: number;
+  paidAmount: number;
   invoicePaid: boolean;
   selected: boolean;
   onSelect: () => void;
@@ -170,8 +198,13 @@ type InvoiceSummaryCardProps = {
   onReopenInvoice: () => void;
   onEdit: () => void;
   onRecalculate: () => void;
+  onReconcile: () => void;
+  onEditClosingDay: () => void;
   onHistory: () => void;
   onExpenses: () => void;
+  onCategoryChart: () => void;
+  onMonthlyTrend: () => void;
+  onArchive: () => void;
   onDelete: () => void;
 };
 
@@ -192,20 +225,61 @@ function invoiceDueLabel(card: AppCard, month: string): string {
 type InvoicePaymentModalProps = {
   card: AppCard;
   month: string;
-  amount: number;
+  totalAmount: number;
+  alreadyPaidAmount: number;
   onClose: () => void;
-  onConfirm: () => void;
-  onInstallments: () => void;
+  onConfirm: (payment: InvoicePaymentRecord) => void;
 };
+
+type PaymentMode = "full" | "partial" | "installments";
+
+function parseMoneyInput(value: string): number {
+  const normalized = value.replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
 
 function InvoicePaymentModal({
   card,
   month,
-  amount,
+  totalAmount,
+  alreadyPaidAmount,
   onClose,
   onConfirm,
-  onInstallments,
 }: InvoicePaymentModalProps) {
+  const outstandingAmount = Math.max(
+    0,
+    totalAmount - Math.min(totalAmount, Math.max(0, alreadyPaidAmount)),
+  );
+  const [mode, setMode] = useState<PaymentMode>("full");
+  const [partialValue, setPartialValue] = useState(outstandingAmount.toFixed(2));
+  const [installmentCount, setInstallmentCount] = useState("3");
+  const [step, setStep] = useState<"form" | "confirmation">("form");
+
+  const count = Math.min(48, Math.max(2, Math.round(Number(installmentCount) || 3)));
+  const selectedAmount =
+    mode === "full"
+      ? outstandingAmount
+      : mode === "partial"
+        ? Math.min(outstandingAmount, parseMoneyInput(partialValue))
+        : outstandingAmount / count;
+  const isValid = selectedAmount > 0 && outstandingAmount > 0;
+
+  const handleContinue = () => {
+    if (!isValid) return;
+    setStep("confirmation");
+  };
+
+  const handleConfirm = () => {
+    if (!isValid) return;
+    onConfirm({
+      totalAmount,
+      paidAmount: Math.min(totalAmount, alreadyPaidAmount + selectedAmount),
+      paymentDate: new Date().toISOString().slice(0, 10),
+      installments: mode === "installments" ? count : undefined,
+    });
+  };
+
   return (
     <AnimatePresence>
       <motion.div
@@ -232,7 +306,7 @@ function InvoicePaymentModal({
                 Pagamento da fatura
               </p>
               <h2 id="invoice-payment-title" className="mt-1 text-[20px] font-bold">
-                Quanto você quer pagar?
+                {step === "form" ? "Como deseja pagar?" : "Confirmar pagamento"}
               </h2>
               <p className="mt-1 text-[13px] text-glass-sub">
                 {card.name} ····{card.last4} · {monthShortLabel(month)}
@@ -250,16 +324,188 @@ function InvoicePaymentModal({
 
           <div className="glass glass-soft mt-5 rounded-2xl px-4 py-4 text-center">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-glass-faint">
-              Valor total da fatura
+              {step === "form" ? "Saldo em aberto" : "Valor a registrar"}
             </p>
             <p className="amount-tabular mt-1 text-[28px] font-bold text-[#FF3B30]">
-              {formatCurrency(amount)}
+              {formatCurrency(step === "form" ? outstandingAmount : selectedAmount)}
             </p>
             <p className="mt-1 text-[12px] font-medium text-glass-sub">
-              Vencimento: {invoiceDueLabel(card, month)}
+              Total da fatura: {formatCurrency(totalAmount)} · Vencimento: {invoiceDueLabel(card, month)}
             </p>
           </div>
 
+          {step === "form" ? (
+            <>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {(["full", "partial", "installments"] as const).map((option) => {
+                  const labels: Record<PaymentMode, string> = {
+                    full: "Tudo",
+                    partial: "Parcial",
+                    installments: "Parcelar",
+                  };
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setMode(option)}
+                      className={cn(
+                        "rounded-full px-3 py-2 text-[11px] font-bold transition-colors",
+                        mode === option
+                          ? "bg-primary text-white"
+                          : "glass text-glass-sub hover:text-glass-ink dark:hover:text-white",
+                      )}
+                    >
+                      {labels[option]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {mode === "partial" && (
+                <label className="mt-4 block text-[11px] font-semibold text-glass-sub">
+                  Valor do pagamento
+                  <input
+                    value={partialValue}
+                    onChange={(event) => setPartialValue(event.target.value)}
+                    inputMode="decimal"
+                    className="mt-1 w-full rounded-2xl border border-glass-ink/10 bg-white/60 px-4 py-3 text-[15px] font-bold text-glass-ink outline-none focus:border-primary dark:border-white/10 dark:bg-white/5 dark:text-white"
+                    aria-label="Valor do pagamento parcial"
+                  />
+                </label>
+              )}
+
+              {mode === "installments" && (
+                <div className="mt-4 rounded-2xl bg-primary/5 px-4 py-3">
+                  <label className="block text-[11px] font-semibold text-glass-sub">
+                    Quantidade de parcelas
+                    <input
+                      value={installmentCount}
+                      onChange={(event) => setInstallmentCount(event.target.value)}
+                      type="number"
+                      min={2}
+                      max={48}
+                      className="mt-1 w-full rounded-2xl border border-glass-ink/10 bg-white/60 px-4 py-3 text-[15px] font-bold text-glass-ink outline-none focus:border-primary dark:border-white/10 dark:bg-white/5 dark:text-white"
+                      aria-label="Quantidade de parcelas da fatura"
+                    />
+                  </label>
+                  <p className="mt-2 text-[12px] text-glass-sub">
+                    Primeira parcela: <strong>{formatCurrency(selectedAmount)}</strong>
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-5 grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full border border-glass-ink/10 px-4 py-3 text-[13px] font-semibold text-glass-sub transition-colors hover:text-glass-ink dark:border-white/10 dark:hover:text-white"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  disabled={!isValid}
+                  className="rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+                >
+                  Continuar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-5 rounded-2xl bg-primary/5 px-4 py-4 text-[13px] leading-relaxed text-glass-sub">
+                Você está registrando {formatCurrency(selectedAmount)}{mode === "installments" ? ` como a 1ª de ${count} parcelas` : ""}. O extrato original não será apagado.
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setStep("form")}
+                  className="rounded-full border border-glass-ink/10 px-4 py-3 text-[13px] font-semibold text-glass-sub transition-colors hover:text-glass-ink dark:border-white/10 dark:hover:text-white"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+type InvoiceNumberModalProps = {
+  card: AppCard;
+  month: string;
+  kind: "amount" | "closingDay";
+  initialValue: number;
+  onClose: () => void;
+  onConfirm: (value: number) => void;
+};
+
+function InvoiceNumberModal({
+  card,
+  month,
+  kind,
+  initialValue,
+  onClose,
+  onConfirm,
+}: InvoiceNumberModalProps) {
+  const [value, setValue] = useState(String(initialValue || ""));
+  const isAmount = kind === "amount";
+  const parsedValue = isAmount ? parseMoneyInput(value) : Math.round(Number(value));
+  const valid = isAmount
+    ? parsedValue >= 0
+    : Number.isInteger(parsedValue) && parsedValue >= 1 && parsedValue <= 31;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          className="glass glass-strong w-full max-w-md rounded-3xl bg-[#f4f8ff] p-5 text-glass-ink shadow-[0_24px_70px_-24px_rgba(15,40,90,0.65)] dark:bg-[#0d1b3e] dark:text-white"
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 24, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
+            {isAmount ? "Reajuste de fatura" : "Dia de fechamento"}
+          </p>
+          <h2 className="mt-1 text-[20px] font-bold">
+            {isAmount ? "Qual será o novo total?" : "Quando a fatura fecha?"}
+          </h2>
+          <p className="mt-1 text-[13px] text-glass-sub">
+            {card.name} ····{card.last4} · {monthShortLabel(month)}
+          </p>
+          <label className="mt-5 block text-[11px] font-semibold text-glass-sub">
+            {isAmount ? "Valor da fatura" : "Dia do mês (1 a 31)"}
+            <input
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              type={isAmount ? "text" : "number"}
+              inputMode={isAmount ? "decimal" : "numeric"}
+              min={isAmount ? 0 : 1}
+              max={isAmount ? undefined : 31}
+              className="mt-1 w-full rounded-2xl border border-glass-ink/10 bg-white/60 px-4 py-3 text-[18px] font-bold text-glass-ink outline-none focus:border-primary dark:border-white/10 dark:bg-white/5 dark:text-white"
+              aria-label={isAmount ? "Novo valor da fatura" : "Dia de fechamento"}
+            />
+          </label>
           <div className="mt-5 grid grid-cols-2 gap-2.5">
             <button
               type="button"
@@ -270,19 +516,13 @@ function InvoicePaymentModal({
             </button>
             <button
               type="button"
-              onClick={onConfirm}
-              className="rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
+              disabled={!valid}
+              onClick={() => onConfirm(parsedValue)}
+              className="rounded-full bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
             >
-              Continuar
+              Salvar
             </button>
           </div>
-          <button
-            type="button"
-            onClick={onInstallments}
-            className="mt-3 w-full rounded-full px-4 py-2 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/5"
-          >
-            Parcelar fatura
-          </button>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -337,6 +577,8 @@ function EmptyInvoiceModal({ card, onClose }: EmptyInvoiceModalProps) {
 function InvoiceSummaryCard({
   card,
   openAmount,
+  invoiceTotal,
+  paidAmount,
   invoicePaid,
   selected,
   onSelect,
@@ -344,8 +586,13 @@ function InvoiceSummaryCard({
   onReopenInvoice,
   onEdit,
   onRecalculate,
+  onReconcile,
+  onEditClosingDay,
   onHistory,
   onExpenses,
+  onCategoryChart,
+  onMonthlyTrend,
+  onArchive,
   onDelete,
 }: InvoiceSummaryCardProps) {
   const safeColor = isHexColor(card.color) ? card.color : "#2F6BFF";
@@ -400,12 +647,17 @@ function InvoiceSummaryCard({
           <span className="rounded-full border border-white/25 bg-black/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-white/85">
             Fatura
           </span>
-          <CardActionMenu
+            <CardActionMenu
             card={card}
             onEdit={onEdit}
             onRecalculate={onRecalculate}
+            onReconcile={onReconcile}
+            onEditClosingDay={onEditClosingDay}
             onHistory={onHistory}
             onExpenses={onExpenses}
+            onCategoryChart={onCategoryChart}
+            onMonthlyTrend={onMonthlyTrend}
+            onArchive={onArchive}
             onDelete={onDelete}
           />
         </div>
@@ -463,10 +715,15 @@ function InvoiceSummaryCard({
         </span>
       </div>
 
+      <div className="relative mt-2 flex items-center justify-between text-[9px] font-medium text-white/65">
+        <span>Total da fatura: {formatCurrency(invoiceTotal)}</span>
+        {paidAmount > 0 && !invoicePaid && <span>Pago: {formatCurrency(paidAmount)}</span>}
+      </div>
+
       <div className="relative mt-3 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/10 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-md">
-          <CheckCircle2 className="size-3.5" />
-          Fatura {invoicePaid ? "paga" : "aberta"}
+          {invoicePaid ? <LockKeyhole className="size-3.5" /> : <LockOpen className="size-3.5" />}
+          Fatura {invoicePaid ? "fechada" : paidAmount > 0 ? "parcial" : "aberta"}
         </span>
         <button
           type="button"
@@ -478,7 +735,7 @@ function InvoiceSummaryCard({
           aria-pressed={invoicePaid}
           className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[10px] font-bold text-white transition-colors hover:bg-white/25 active:scale-95"
         >
-          {invoicePaid ? "Reabrir fatura" : "Pagar fatura"}
+          {invoicePaid ? "Reabrir fatura" : "Registrar pagamento"}
         </button>
       </div>
     </div>
@@ -490,8 +747,11 @@ export default function CardPurchasesPage() {
   const {
     transactions,
     cards,
+    updateCard,
     setCardInvoiceStatus,
-    setAllCardInvoiceStatus,
+    setCardInvoicePayment,
+    setCardInvoiceOverride,
+    setCardInvoiceReconciled,
     deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>("");
@@ -500,6 +760,8 @@ export default function CardPurchasesPage() {
     useState<InvoiceStatusFilter>("all");
   const [paymentCard, setPaymentCard] = useState<AppCard | null>(null);
   const [zeroInvoiceCard, setZeroInvoiceCard] = useState<AppCard | null>(null);
+  const [utilityCard, setUtilityCard] = useState<AppCard | null>(null);
+  const [utilityKind, setUtilityKind] = useState<"amount" | "closingDay" | null>(null);
 
   const cardTransactions = useMemo(
     () =>
@@ -530,6 +792,7 @@ export default function CardPurchasesPage() {
   const visibleCards = useMemo(
     () =>
       cards.filter((card) => {
+        if (card.archived) return false;
         const paid = invoiceIsPaid(card, selectedMonth);
         return (
           invoiceStatusFilter === "all" ||
@@ -571,29 +834,72 @@ export default function CardPurchasesPage() {
     (total, transaction) => total + Math.abs(transaction.amount),
     0,
   );
+  const invoiceMetricsFor = (card: AppCard) => {
+    const openAmount = openAmountByCard[card.id] ?? 0;
+    const invoiceTotal = invoiceTotalFor(card, selectedMonth, openAmount);
+    const paidAmount = Math.min(
+      invoiceTotal,
+      Math.max(0, invoicePaymentFor(card, selectedMonth)?.paidAmount ?? 0),
+    );
+    return {
+      openAmount,
+      invoiceTotal,
+      paidAmount,
+    };
+  };
   const handleBulkInvoiceStatus = (paid: boolean) => {
-    setAllCardInvoiceStatus(selectedMonth, paid);
+    visibleCards.forEach((card) => {
+      const totalAmount = invoiceMetricsFor(card).invoiceTotal;
+      if (totalAmount <= 0) {
+        setCardInvoiceStatus(card.id, selectedMonth, paid);
+        return;
+      }
+      setCardInvoicePayment(card.id, selectedMonth, {
+        totalAmount,
+        paidAmount: paid ? totalAmount : 0,
+        paymentDate: new Date().toISOString().slice(0, 10),
+      });
+    });
     toast(paid ? "Faturas do mês marcadas como pagas" : "Faturas do mês reabertas");
   };
 
   const handleRequestPayment = (card: AppCard) => {
-    const amount = openAmountByCard[card.id] ?? 0;
-    if (amount <= 0) {
+    const grossAmount = openAmountByCard[card.id] ?? 0;
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount);
+    if (totalAmount <= 0) {
       setZeroInvoiceCard(card);
       return;
     }
     setPaymentCard(card);
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = (payment: InvoicePaymentRecord) => {
     if (!paymentCard) return;
-    setCardInvoiceStatus(paymentCard.id, selectedMonth, true);
+    setCardInvoicePayment(paymentCard.id, selectedMonth, payment);
     setPaymentCard(null);
-    toast(`Fatura de ${paymentCard.name} paga integralmente`);
+    toast(
+      payment.installments && payment.installments > 1
+        ? `Pagamento parcelado registrado em ${payment.installments}x`
+        : payment.paidAmount >= payment.totalAmount
+          ? `Fatura de ${paymentCard.name} paga integralmente`
+          : `Pagamento parcial de ${formatCurrency(payment.paidAmount)} registrado`,
+    );
   };
 
   const handleReopenInvoice = (card: AppCard) => {
-    setCardInvoiceStatus(card.id, selectedMonth, false);
+    const grossAmount = openAmountByCard[card.id] ?? 0;
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount);
+    const payment = invoicePaymentFor(card, selectedMonth);
+    if (payment && payment.paidAmount >= totalAmount) {
+      setCardInvoicePayment(card.id, selectedMonth, {
+        ...payment,
+        totalAmount,
+        paidAmount: 0,
+        paymentDate: new Date().toISOString().slice(0, 10),
+      });
+    } else {
+      setCardInvoiceStatus(card.id, selectedMonth, false);
+    }
     toast("Fatura reaberta");
   };
 
@@ -606,6 +912,12 @@ export default function CardPurchasesPage() {
 
   const handleSelectCard = (card: AppCard) => {
     setSelectedCardId(card.id);
+  };
+
+  const handleArchiveCard = (card: AppCard) => {
+    updateCard(card.id, { archived: true });
+    if (selectedCardId === card.id) setSelectedCardId("");
+    toast(`${card.name} arquivado`);
   };
 
   const handleAssociatedExpenses = (card: AppCard) => {
@@ -624,14 +936,32 @@ export default function CardPurchasesPage() {
     onEdit: () => navigate("/dashboard/cartoes", { state: { editCardId: card.id } }),
     onRecalculate: () => {
       setSelectedCardId(card.id);
-      toast("Fatura selecionada para reajuste");
+      setUtilityCard(card);
+      setUtilityKind("amount");
+    },
+    onReconcile: () => {
+      const nextValue = !card.invoiceReconciledByMonth?.[selectedMonth];
+      setCardInvoiceReconciled(card.id, selectedMonth, nextValue);
+      toast(nextValue ? "Fatura conciliada" : "Conciliação removida");
+    },
+    onEditClosingDay: () => {
+      setUtilityCard(card);
+      setUtilityKind("closingDay");
     },
     onHistory: () => {
       setInvoiceStatusFilter("all");
       setSelectedCardId(card.id);
-      toast("Histórico de faturas selecionado");
     },
     onExpenses: () => handleAssociatedExpenses(card),
+    onCategoryChart: () => {
+      setSelectedCardId(card.id);
+      toast("Gráfico por categorias selecionado no extrato");
+    },
+    onMonthlyTrend: () => {
+      setSelectedCardId(card.id);
+      toast("Evolução mensal selecionada no histórico");
+    },
+    onArchive: () => handleArchiveCard(card),
     onDelete: () => handleDeleteCard(card),
   });
 
@@ -766,7 +1096,7 @@ export default function CardPurchasesPage() {
               >
                 <InvoiceSummaryCard
                   card={selectedCard}
-                  openAmount={openAmountByCard[selectedCard.id] ?? 0}
+                  {...invoiceMetricsFor(selectedCard)}
                   invoicePaid={invoiceIsPaid(selectedCard, selectedMonth)}
                   selected
                   onSelect={() => setSelectedCardId("")}
@@ -786,7 +1116,7 @@ export default function CardPurchasesPage() {
                   <InvoiceSummaryCard
                     key={card.id}
                     card={card}
-                    openAmount={openAmountByCard[card.id] ?? 0}
+                    {...invoiceMetricsFor(card)}
                     invoicePaid={invoiceIsPaid(card, selectedMonth)}
                     selected={false}
                     onSelect={() => handleSelectCard(card)}
@@ -854,19 +1184,43 @@ export default function CardPurchasesPage() {
         <InvoicePaymentModal
           card={paymentCard}
           month={selectedMonth}
-          amount={openAmountByCard[paymentCard.id] ?? 0}
+          totalAmount={invoiceMetricsFor(paymentCard).invoiceTotal}
+          alreadyPaidAmount={invoiceMetricsFor(paymentCard).paidAmount}
           onClose={() => setPaymentCard(null)}
           onConfirm={handleConfirmPayment}
-          onInstallments={() => {
-            setPaymentCard(null);
-            toast("Parcelamento de fatura ficará disponível em breve");
-          }}
         />
       )}
       {zeroInvoiceCard && (
         <EmptyInvoiceModal
           card={zeroInvoiceCard}
           onClose={() => setZeroInvoiceCard(null)}
+        />
+      )}
+      {utilityCard && utilityKind && (
+        <InvoiceNumberModal
+          card={utilityCard}
+          month={selectedMonth}
+          kind={utilityKind}
+          initialValue={
+            utilityKind === "amount"
+              ? invoiceMetricsFor(utilityCard).invoiceTotal
+              : utilityCard.closingDay ?? 1
+          }
+          onClose={() => {
+            setUtilityCard(null);
+            setUtilityKind(null);
+          }}
+          onConfirm={(value) => {
+            if (utilityKind === "amount") {
+              setCardInvoiceOverride(utilityCard.id, selectedMonth, value);
+              toast("Total da fatura reajustado");
+            } else {
+              updateCard(utilityCard.id, { closingDay: value });
+              toast("Dia de fechamento atualizado");
+            }
+            setUtilityCard(null);
+            setUtilityKind(null);
+          }}
         />
       )}
     </div>

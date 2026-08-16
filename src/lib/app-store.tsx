@@ -33,6 +33,13 @@ export type AppCategory = {
   image?: string; // optional data URL for a custom category image
 };
 
+export type InvoicePaymentRecord = {
+  totalAmount: number;
+  paidAmount: number;
+  paymentDate: string;
+  installments?: number;
+};
+
 export type AppCard = {
   id: string;
   name: string;
@@ -45,6 +52,14 @@ export type AppCard = {
   invoicePaid?: boolean;
   /** Status persistido por mês, indexado como YYYY-MM. */
   invoicePaidByMonth?: Record<string, boolean>;
+  /** Pagamentos parciais/totais por fatura mensal. */
+  invoicePaymentsByMonth?: Record<string, InvoicePaymentRecord>;
+  /** Reajuste manual do total da fatura, indexado como YYYY-MM. */
+  invoiceOverrideByMonth?: Record<string, number>;
+  /** Conciliação concluída por fatura mensal. */
+  invoiceReconciledByMonth?: Record<string, boolean>;
+  /** Cartão arquivado, oculto das listas operacionais. */
+  archived?: boolean;
   color: string;
 };
 
@@ -259,6 +274,65 @@ function sanitizeInvoicePaidByMonth(v: unknown): Record<string, boolean> {
   );
 }
 
+function sanitizeInvoiceAmountByMonth(v: unknown): Record<string, number> {
+  if (!v || typeof v !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(v as Record<string, unknown>)
+      .filter(
+        ([key, value]) =>
+          /^\d{4}-\d{2}$/.test(key) &&
+          typeof value === "number" &&
+          Number.isFinite(value) &&
+          value >= 0,
+      )
+      .map(([key, value]) => [key, value as number]),
+  );
+}
+
+function sanitizeInvoicePaymentsByMonth(
+  v: unknown,
+): Record<string, InvoicePaymentRecord> {
+  if (!v || typeof v !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(v as Record<string, unknown>)
+      .filter(([key, value]) => {
+        if (!/^\d{4}-\d{2}$/.test(key) || !value || typeof value !== "object") {
+          return false;
+        }
+        const payment = value as Record<string, unknown>;
+        return (
+          typeof payment.totalAmount === "number" &&
+          Number.isFinite(payment.totalAmount) &&
+          payment.totalAmount >= 0 &&
+          typeof payment.paidAmount === "number" &&
+          Number.isFinite(payment.paidAmount) &&
+          payment.paidAmount >= 0
+        );
+      })
+      .map(([key, value]) => {
+        const payment = value as Record<string, unknown>;
+        return [
+          key,
+          {
+            totalAmount: Math.max(0, Number(payment.totalAmount)),
+            paidAmount: Math.max(0, Number(payment.paidAmount)),
+            paymentDate:
+              typeof payment.paymentDate === "string" &&
+              /^\d{4}-\d{2}-\d{2}$/.test(payment.paymentDate)
+                ? payment.paymentDate
+                : new Date().toISOString().slice(0, 10),
+            installments:
+              typeof payment.installments === "number" &&
+              Number.isFinite(payment.installments) &&
+              payment.installments > 1
+                ? Math.min(48, Math.round(payment.installments))
+                : undefined,
+          } satisfies InvoicePaymentRecord,
+        ];
+      }),
+  );
+}
+
 function sanitizeCards(v: unknown): AppCard[] {
   if (!Array.isArray(v)) return defaultData().cards;
   const list = v
@@ -282,6 +356,10 @@ function sanitizeCards(v: unknown): AppCard[] {
           : undefined,
       invoicePaid: c.invoicePaid === true,
       invoicePaidByMonth: sanitizeInvoicePaidByMonth(c.invoicePaidByMonth),
+      invoicePaymentsByMonth: sanitizeInvoicePaymentsByMonth(c.invoicePaymentsByMonth),
+      invoiceOverrideByMonth: sanitizeInvoiceAmountByMonth(c.invoiceOverrideByMonth),
+      invoiceReconciledByMonth: sanitizeInvoicePaidByMonth(c.invoiceReconciledByMonth),
+      archived: c.archived === true,
       color: str(c.color, "#2F6BFF"),
     }));
   return list;
@@ -742,6 +820,17 @@ type AppStoreValue = {
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
   setCardInvoiceStatus: (cardId: string, month: string, paid: boolean) => void;
   setAllCardInvoiceStatus: (month: string, paid: boolean) => void;
+  setCardInvoicePayment: (
+    cardId: string,
+    month: string,
+    payment: InvoicePaymentRecord,
+  ) => void;
+  setCardInvoiceOverride: (
+    cardId: string,
+    month: string,
+    amount: number | undefined,
+  ) => void;
+  setCardInvoiceReconciled: (cardId: string, month: string, reconciled: boolean) => void;
   deleteCard: (id: string) => void;
   addPerson: (data: { name: string; phone?: string }) => void;
   updatePerson: (
@@ -994,6 +1083,57 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 month === currentMonthKey ? paid : card.invoicePaid,
             };
           }),
+        })),
+      setCardInvoicePayment: (cardId, month, payment) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) => {
+            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
+            const totalAmount = Math.max(0, payment.totalAmount);
+            const paidAmount = Math.min(totalAmount, Math.max(0, payment.paidAmount));
+            const invoicePaid = paidAmount >= totalAmount && totalAmount > 0;
+            return {
+              ...card,
+              invoicePaymentsByMonth: {
+                ...(card.invoicePaymentsByMonth ?? {}),
+                [month]: { ...payment, totalAmount, paidAmount },
+              },
+              invoicePaidByMonth: {
+                ...(card.invoicePaidByMonth ?? {}),
+                [month]: invoicePaid,
+              },
+              invoicePaid: month === currentMonthKey ? invoicePaid : card.invoicePaid,
+            };
+          }),
+        })),
+      setCardInvoiceOverride: (cardId, month, amount) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) => {
+            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
+            const invoiceOverrideByMonth = { ...(card.invoiceOverrideByMonth ?? {}) };
+            if (typeof amount === "number" && Number.isFinite(amount) && amount >= 0) {
+              invoiceOverrideByMonth[month] = amount;
+            } else {
+              delete invoiceOverrideByMonth[month];
+            }
+            return { ...card, invoiceOverrideByMonth };
+          }),
+        })),
+      setCardInvoiceReconciled: (cardId, month, reconciled) =>
+        patchActiveData((d) => ({
+          ...d,
+          cards: d.cards.map((card) =>
+            card.id === cardId && /^\d{4}-\d{2}$/.test(month)
+              ? {
+                  ...card,
+                  invoiceReconciledByMonth: {
+                    ...(card.invoiceReconciledByMonth ?? {}),
+                    [month]: reconciled,
+                  },
+                }
+              : card,
+          ),
         })),
       deleteCard: (id) =>
         patchActiveData((d) => ({
