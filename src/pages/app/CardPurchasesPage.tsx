@@ -16,6 +16,7 @@ import {
   MoreVertical,
   Pencil,
   ReceiptText,
+  Search,
   SlidersHorizontal,
   Trash2,
   TrendingUp,
@@ -267,6 +268,7 @@ function isRegularCreditPurchase(transaction: Transaction): boolean {
 }
 
 type InvoiceStatusFilter = "all" | "open" | "paid";
+type TransactionSearchScope = "month" | "all";
 
 function invoiceIsPaid(card: AppCard, month: string): boolean {
   return (
@@ -999,6 +1001,7 @@ export default function CardPurchasesPage() {
   const {
     transactions,
     cards,
+    categoryById,
     updateCard,
     setCardInvoiceStatus,
     setCardInvoicePayment,
@@ -1009,6 +1012,10 @@ export default function CardPurchasesPage() {
   const [month, setMonth] = useState<string>(currentMonthKey);
   const [untilDate, setUntilDate] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
+  const [transactionSearch, setTransactionSearch] = useState("");
+  const [transactionSearchScope, setTransactionSearchScope] =
+    useState<TransactionSearchScope>("month");
+  const [transactionCategory, setTransactionCategory] = useState("todas");
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<InvoiceStatusFilter>("all");
   const [paymentCard, setPaymentCard] = useState<AppCard | null>(null);
@@ -1105,6 +1112,49 @@ export default function CardPurchasesPage() {
     [cardTransactions, selectedCard, selectedMonth, untilDate],
   );
 
+  const selectedCardHistoryTransactions = useMemo(
+    () =>
+      selectedCard
+        ? cardTransactions.filter((transaction) => transaction.cardId === selectedCard.id)
+        : [],
+    [cardTransactions, selectedCard],
+  );
+  const transactionCategoryOptions = useMemo(() => {
+    const ids = new Set(selectedCardHistoryTransactions.map((transaction) => transaction.categoryId));
+    return [...ids]
+      .map((id) => ({ id, label: categoryById[id]?.label ?? id }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [categoryById, selectedCardHistoryTransactions]);
+  const visibleSelectedCardTransactions = useMemo(() => {
+    if (!selectedCard) return [];
+    const source = transactionSearchScope === "all"
+      ? selectedCardHistoryTransactions
+      : selectedCardTransactions;
+    const query = normalizeSearchText(transactionSearch.trim());
+    return source.filter((transaction) => {
+      const categoryLabel = categoryById[transaction.categoryId]?.label ?? transaction.categoryId;
+      const searchableText = normalizeSearchText(
+        `${transaction.title} ${transaction.note ?? ""} ${categoryLabel}`,
+      );
+      return (
+        (!query || searchableText.includes(query)) &&
+        (transactionCategory === "todas" || transaction.categoryId === transactionCategory)
+      );
+    });
+  }, [
+    categoryById,
+    selectedCard,
+    selectedCardHistoryTransactions,
+    selectedCardTransactions,
+    transactionCategory,
+    transactionSearch,
+    transactionSearchScope,
+  ]);
+  const hasTransactionFilters = Boolean(
+    transactionSearch.trim() ||
+      transactionCategory !== "todas" ||
+      transactionSearchScope === "all",
+  );
   const selectedCardTotal = selectedCardTransactions.reduce(
     (total, transaction) => total + Math.abs(transaction.amount),
     0,
@@ -1173,6 +1223,9 @@ export default function CardPurchasesPage() {
 
   const handleSelectCard = (card: AppCard) => {
     setSelectedCardId(card.id);
+    setTransactionSearch("");
+    setTransactionSearchScope("month");
+    setTransactionCategory("todas");
   };
 
   const handleArchiveCard = (card: AppCard) => {
@@ -1417,31 +1470,96 @@ export default function CardPurchasesPage() {
             </div>
           </div>
 
-          {selectedCardTransactions.length === 0 ? (
+          <div className="glass rounded-2xl px-3 py-3">
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint" />
+                <label htmlFor="card-transaction-search" className="sr-only">
+                  Buscar no extrato do cartão
+                </label>
+                <input
+                  id="card-transaction-search"
+                  type="search"
+                  value={transactionSearch}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setTransactionSearch(value);
+                    if (!value.trim()) setTransactionSearchScope("month");
+                  }}
+                  placeholder="Buscar compra ou categoria"
+                  className="h-10 w-full rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-3 text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+              </div>
+              <label htmlFor="card-transaction-category" className="sr-only">
+                Filtrar por categoria
+              </label>
+              <select
+                id="card-transaction-category"
+                value={transactionCategory}
+                onChange={(event) => setTransactionCategory(event.target.value)}
+                className="h-10 max-w-[10.5rem] rounded-xl border border-glass-ink/10 bg-white/50 px-2.5 text-[11px] font-semibold text-glass-ink outline-none transition-colors focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
+              >
+                <option value="todas">Todas as categorias</option>
+                {transactionCategoryOptions.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {transactionSearch.trim() && (
+              <div className="mt-2 flex items-center gap-1.5 border-t border-glass-ink/5 pt-2 dark:border-white/10">
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-glass-faint">
+                  Pesquisar em
+                </span>
+                {(["month", "all"] as const).map((scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setTransactionSearchScope(scope)}
+                    className={cn(
+                      "rounded-full px-2.5 py-1.5 text-[10px] font-semibold transition-all active:scale-95",
+                      transactionSearchScope === scope
+                        ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+                        : "glass-soft text-glass-sub",
+                    )}
+                  >
+                    {scope === "month" ? "Mês selecionado" : "Todos os meses"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {visibleSelectedCardTransactions.length === 0 ? (
             <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
                 <ReceiptText className="size-6 text-glass-faint" />
               </div>
               <div>
                 <p className="text-[15px] font-semibold text-glass-ink">
-                  Nenhuma compra nesta fatura
+                  {hasTransactionFilters ? "Nenhuma compra encontrada" : "Nenhuma compra nesta fatura"}
                 </p>
                 <p className="mt-1 max-w-[260px] text-[13px] leading-relaxed text-glass-sub">
-                  As compras de crédito de {monthShortLabel(selectedMonth)} para este cartão aparecerão aqui.
+                  {hasTransactionFilters
+                    ? "Tente outro termo, categoria ou escopo de busca."
+                    : `As compras de crédito de ${monthShortLabel(selectedMonth)} para este cartão aparecerão aqui.`}
                 </p>
               </div>
             </div>
           ) : (
             <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
-              {selectedCardTransactions.map((transaction) => (
+              {visibleSelectedCardTransactions.map((transaction) => (
                 <TransactionRow key={transaction.id} transaction={transaction} />
               ))}
             </div>
           )}
 
-          {selectedCardTransactions.length > 0 && (
+          {visibleSelectedCardTransactions.length > 0 && (
             <p className="px-2 text-[12px] leading-relaxed text-glass-faint">
-              Extrato exclusivo de compras de crédito em {monthShortLabel(selectedMonth)}. Toque em uma compra para ver os detalhes.
+              {hasTransactionFilters
+                ? `Exibindo ${visibleSelectedCardTransactions.length} compra(s) encontradas no escopo ${transactionSearchScope === "all" ? "de todo o histórico" : "do mês selecionado"}.`
+                : `Extrato exclusivo de compras de crédito em ${monthShortLabel(selectedMonth)}. Toque em uma compra para ver os detalhes.`}
             </p>
           )}
         </div>
