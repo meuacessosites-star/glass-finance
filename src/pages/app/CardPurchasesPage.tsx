@@ -44,23 +44,11 @@ function shiftMonth(key: string, offset: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function daysInMonth(key: string): number {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(year, month, 0).getDate();
-}
-
 function transactionInPeriod(
   transaction: Transaction,
   selectedMonth: string,
-  startDay: number,
-  endDay: number,
 ): boolean {
-  const day = Number(transaction.date.slice(8, 10));
-  return (
-    monthKey(transaction.date) === selectedMonth &&
-    day >= startDay &&
-    day <= endDay
-  );
+  return monthKey(transaction.date) === selectedMonth;
 }
 
 function normalizeSearchText(value: string): string {
@@ -819,8 +807,6 @@ export default function CardPurchasesPage() {
     deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>(currentMonthKey);
-  const [rangeStartDay, setRangeStartDay] = useState<"all" | string>("all");
-  const [rangeEndDay, setRangeEndDay] = useState<"all" | string>("all");
   const [selectedCardId, setSelectedCardId] = useState<string>("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<InvoiceStatusFilter>("all");
@@ -862,25 +848,13 @@ export default function CardPurchasesPage() {
       : monthOptions[0];
   const visibleMonthOptions = useMemo(() => {
     const selectedIndex = Math.max(0, monthOptions.indexOf(selectedMonth));
-    const windowSize = Math.min(9, monthOptions.length);
+    const windowSize = Math.min(5, monthOptions.length);
     const start = Math.max(
       0,
       Math.min(selectedIndex - Math.floor(windowSize / 2), monthOptions.length - windowSize),
     );
     return monthOptions.slice(start, start + windowSize);
   }, [monthOptions, selectedMonth]);
-  const selectedMonthDays = daysInMonth(selectedMonth);
-  const periodStartDay =
-    rangeStartDay === "all"
-      ? 1
-      : Math.min(selectedMonthDays, Math.max(1, Number(rangeStartDay)));
-  const periodEndDay =
-    rangeEndDay === "all"
-      ? selectedMonthDays
-      : Math.max(
-          periodStartDay,
-          Math.min(selectedMonthDays, Math.max(1, Number(rangeEndDay))),
-        );
   const visibleCards = useMemo(
     () =>
       cards.filter((card) => {
@@ -902,17 +876,12 @@ export default function CardPurchasesPage() {
           .filter(
             (transaction) =>
               transaction.cardId === card.id &&
-              transactionInPeriod(
-                transaction,
-                selectedMonth,
-                periodStartDay,
-                periodEndDay,
-              ),
+              transactionInPeriod(transaction, selectedMonth),
           )
           .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
         return totals;
       }, {}),
-    [cards, cardTransactions, periodEndDay, periodStartDay, selectedMonth],
+    [cards, cardTransactions, selectedMonth],
   );
 
   const selectedCardTransactions = useMemo(
@@ -921,21 +890,10 @@ export default function CardPurchasesPage() {
         ? cardTransactions.filter(
             (transaction) =>
               transaction.cardId === selectedCard.id &&
-              transactionInPeriod(
-                transaction,
-                selectedMonth,
-                periodStartDay,
-                periodEndDay,
-              ),
+              transactionInPeriod(transaction, selectedMonth),
           )
         : [],
-    [
-      cardTransactions,
-      periodEndDay,
-      periodStartDay,
-      selectedCard,
-      selectedMonth,
-    ],
+    [cardTransactions, selectedCard, selectedMonth],
   );
 
   const selectedCardTotal = selectedCardTransactions.reduce(
@@ -1064,8 +1022,8 @@ export default function CardPurchasesPage() {
         Acompanhe cada fatura e veja o extrato separado por cartão.
       </p>
 
-      <div className="glass rounded-2xl p-2">
-        <div className="flex items-center gap-1.5">
+      <div className="glass rounded-2xl p-3">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             aria-label="Mês anterior"
@@ -1074,14 +1032,14 @@ export default function CardPurchasesPage() {
           >
             <ChevronLeft className="size-4" />
           </button>
-          <div className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto px-0.5 py-0.5">
+          <div className="no-scrollbar flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto px-0.5 py-0.5">
             {visibleMonthOptions.map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setMonth(key)}
                 className={cn(
-                  "shrink-0 rounded-full px-3.5 py-2 text-[12px] font-semibold transition-all",
+                  "min-w-[78px] shrink-0 snap-center whitespace-nowrap rounded-full px-3 py-2 text-center text-[12px] font-semibold transition-all",
                   selectedMonth === key
                     ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
                     : "glass text-glass-sub",
@@ -1101,79 +1059,29 @@ export default function CardPurchasesPage() {
           </button>
         </div>
 
-        <div className="mt-2 flex items-center gap-2 overflow-x-auto px-1 pb-0.5">
-          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-glass-faint">
-            Dias
-          </span>
-          <select
-            aria-label="Dia inicial"
-            value={rangeStartDay}
-            onChange={(event) => {
-              const nextStart = event.target.value;
-              setRangeStartDay(nextStart);
-              if (
-                nextStart !== "all" &&
-                rangeEndDay !== "all" &&
-                Number(rangeEndDay) < Number(nextStart)
-              ) {
-                setRangeEndDay(nextStart);
-              }
-            }}
-            className="glass shrink-0 rounded-full px-3 py-2 text-[12px] font-semibold text-glass-sub outline-none"
-          >
-            <option value="all">Todos</option>
-            {Array.from({ length: selectedMonthDays }, (_, index) => index + 1).map(
-              (day) => (
-                <option key={day} value={day}>
-                  Dia {day}
-                </option>
-              ),
-            )}
-          </select>
-          <span className="shrink-0 text-[11px] font-medium text-glass-faint">até</span>
-          <select
-            aria-label="Dia final"
-            value={rangeEndDay}
-            onChange={(event) => setRangeEndDay(event.target.value)}
-            className="glass shrink-0 rounded-full px-3 py-2 text-[12px] font-semibold text-glass-sub outline-none"
-          >
-            <option value="all">fim do mês</option>
-            {Array.from({ length: selectedMonthDays }, (_, index) => index + 1).map(
-              (day) => (
-                <option
-                  key={day}
-                  value={day}
-                  disabled={rangeStartDay !== "all" && day < Number(rangeStartDay)}
-                >
-                  Dia {day}
-                </option>
-              ),
-            )}
-          </select>
-          <div className="ml-auto flex shrink-0 gap-1.5">
-            {(["all", "open", "paid"] as const).map((status) => {
-              const labels: Record<InvoiceStatusFilter, string> = {
-                all: "Todas",
-                open: "Abertas",
-                paid: "Pagas",
-              };
-              return (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setInvoiceStatusFilter(status)}
-                  className={cn(
-                    "shrink-0 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
-                    invoiceStatusFilter === status
-                      ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
-                      : "glass text-glass-sub",
-                  )}
-                >
-                  {labels[status]}
-                </button>
-              );
-            })}
-          </div>
+        <div className="mt-3 flex w-full items-center gap-1.5 overflow-x-auto border-t border-glass-ink/5 px-1 pt-3">
+          {(["all", "open", "paid"] as const).map((status) => {
+            const labels: Record<InvoiceStatusFilter, string> = {
+              all: "Todas",
+              open: "Abertas",
+              paid: "Pagas",
+            };
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setInvoiceStatusFilter(status)}
+                className={cn(
+                  "min-w-[88px] flex-1 shrink-0 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
+                  invoiceStatusFilter === status
+                    ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+                    : "glass text-glass-sub",
+                )}
+              >
+                {labels[status]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1222,7 +1130,7 @@ export default function CardPurchasesPage() {
                 </button>
               )}
               <p className="text-[11px] font-medium text-glass-faint">
-                {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)} · {rangeStartDay === "all" && rangeEndDay === "all" ? "mês inteiro" : `dias ${periodStartDay}–${periodEndDay}`}
+                {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)} · mês inteiro
               </p>
             </div>
           </div>
