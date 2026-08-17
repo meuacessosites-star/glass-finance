@@ -1493,9 +1493,20 @@ export default function CardPurchasesPage() {
   return (
     <div className="space-y-4">
       <SettingsHeader title="Compras no Cartão" />
-      <p className="px-1 text-[12px] font-medium text-glass-faint">
-        Acompanhe cada fatura e veja o extrato separado por cartão.
-      </p>
+      <div className="flex items-center justify-between gap-3 px-1">
+        <p className="text-[12px] font-medium text-glass-faint">
+          Acompanhe cada fatura e veja o extrato separado por cartão.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard/cartoes")}
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
+          aria-label="Abrir Cartões Arquivados"
+        >
+          <Archive className="size-3.5" />
+          Arquivados
+        </button>
+      </div>
 
       <div className="glass rounded-2xl p-3">
         <div className="flex items-center gap-2">
