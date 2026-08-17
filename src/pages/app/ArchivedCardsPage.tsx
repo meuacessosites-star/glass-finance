@@ -39,19 +39,20 @@ export default function ArchivedCardsPage() {
         titleClassName="mx-auto whitespace-nowrap text-center text-[17px]"
       />
 
-      <div className="flex min-w-0 items-center justify-between gap-3 px-1">
-        <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-glass-faint">
-          Consulte e restaure cartões que não fazem parte do dia a dia.
-        </p>
+      <div className="flex justify-end px-1">
         <button
           type="button"
           onClick={() => navigate("/dashboard/compras-cartao")}
-          className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
+          className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
         >
           <ArrowLeft className="size-3.5" />
           Voltar
         </button>
       </div>
+
+      <p className="px-1 text-[12px] font-medium text-glass-faint">
+        Consulte e restaure cartões que não fazem parte do dia a dia.
+      </p>
 
       <div className="flex items-center gap-2 px-1">
         <Archive className="size-4 shrink-0 text-glass-sub" />
