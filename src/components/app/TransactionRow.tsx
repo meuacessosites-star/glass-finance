@@ -50,6 +50,7 @@ export function TransactionRow({
   const category = categoryById[transaction.categoryId] ?? fallback;
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
+  const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const leftActionOpacity = useTransform(
     x,
     [0, SWIPE_THRESHOLD, SWIPE_DISTANCE],
@@ -81,6 +82,13 @@ export function TransactionRow({
       return;
     }
     setOpen(true);
+  };
+
+  const handlePaymentAction = () => {
+    if (!onPaymentAction) return;
+    onPaymentAction();
+    closeSwipe();
+    toast.success("Status atualizado");
   };
 
   const handleDelete = () => {
@@ -144,19 +152,7 @@ export function TransactionRow({
               )}
               {paymentLabel}
             </span>
-            {paymentActionLabel && onPaymentAction && (
-              <button
-                type="button"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPaymentAction();
-                }}
-                className="truncate rounded-full px-1.5 py-0.5 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
-              >
-                {paymentActionLabel}
-              </button>
-            )}
+
           </div>
         )}
       </div>
@@ -185,14 +181,14 @@ export function TransactionRow({
           <div className="absolute inset-0 flex items-stretch justify-between">
             <motion.button
               type="button"
-              aria-label="Abrir detalhes da transação"
-              onClick={handleRowActivate}
+              aria-label={hasPaymentAction ? paymentActionLabel : "Abrir detalhes da transação"}
+              onClick={hasPaymentAction ? handlePaymentAction : handleRowActivate}
               style={{ opacity: leftActionOpacity, scale: leftActionScale }}
               whileTap={{ scale: 0.96 }}
               className="flex w-[104px] shrink-0 items-center justify-center gap-1.5 rounded-l-2xl bg-[#2F6BFF] px-2 text-[11px] font-bold text-white"
             >
-              <Eye className="size-3.5" />
-              Detalhes
+              {hasPaymentAction ? <Check className="size-3.5" /> : <Eye className="size-3.5" />}
+              {hasPaymentAction ? paymentActionLabel : "Detalhes"}
             </motion.button>
             <motion.button
               type="button"

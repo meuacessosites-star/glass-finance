@@ -406,8 +406,8 @@ export default function TransactionsPage() {
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
-  const [summaryExpanded, setSummaryExpanded] = useState(true);
-  const [categoryChartExpanded, setCategoryChartExpanded] = useState(true);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
