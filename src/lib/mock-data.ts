@@ -73,6 +73,8 @@ export type Transaction = {
   currentInstallment?: number;
   /** Payment method id: pix | dinheiro | cartao | boleto | transferencia */
   paymentMethod?: string;
+  /** Status manual de pagamento para transações comuns. */
+  paymentStatus?: "paid" | "pending";
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */

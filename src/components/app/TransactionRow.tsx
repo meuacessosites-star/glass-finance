@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
-import { Eye, Layers, MoveHorizontal, Paperclip, Repeat, Trash2 } from "lucide-react";
+import {
+  Check,
+  Clock3,
+  Eye,
+  Layers,
+  MoveHorizontal,
+  Paperclip,
+  Repeat,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   formatCurrency,
@@ -21,10 +30,18 @@ export function TransactionRow({
   transaction,
   showDate = true,
   swipeable = false,
+  paymentLabel,
+  paymentStatus,
+  paymentActionLabel,
+  onPaymentAction,
 }: {
   transaction: Transaction;
   showDate?: boolean;
   swipeable?: boolean;
+  paymentLabel?: "Fatura paga" | "Pago" | "Pendente";
+  paymentStatus?: "paid" | "pending";
+  paymentActionLabel?: string;
+  onPaymentAction?: () => void;
 }) {
   const { categoryById, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
@@ -110,6 +127,38 @@ export function TransactionRow({
             </span>
           )}
         </p>
+        {paymentLabel && paymentStatus && (
+          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+            <span
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                paymentStatus === "paid"
+                  ? "bg-[#1FBF4F]/10 text-[#168A39]"
+                  : "bg-[#FF9F0A]/10 text-[#B56B00]",
+              )}
+            >
+              {paymentStatus === "paid" ? (
+                <Check className="size-2.5" strokeWidth={2.8} />
+              ) : (
+                <Clock3 className="size-2.5" strokeWidth={2.8} />
+              )}
+              {paymentLabel}
+            </span>
+            {paymentActionLabel && onPaymentAction && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPaymentAction();
+                }}
+                className="truncate rounded-full px-1.5 py-0.5 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
+              >
+                {paymentActionLabel}
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {swipeable && (
         <MoveHorizontal
@@ -161,8 +210,7 @@ export function TransactionRow({
             </motion.button>
           </div>
 
-          <motion.button
-            type="button"
+          <motion.div
             drag="x"
             dragConstraints={{ left: -SWIPE_DISTANCE, right: SWIPE_DISTANCE }}
             dragElastic={0.12}
@@ -179,19 +227,34 @@ export function TransactionRow({
               }
             }}
             onTap={handleRowActivate}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleRowActivate();
+              }
+            }}
             className="relative z-10 flex w-full items-center gap-3.5 bg-transparent py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50"
           >
             {rowContent}
-          </motion.button>
+          </motion.div>
         </div>
       ) : (
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
           className="flex w-full items-center gap-3.5 py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50"
         >
           {rowContent}
-        </button>
+        </div>
       )}
 
       <TransactionDetailsSheet

@@ -620,6 +620,7 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.paymentMethod === "string" && t.paymentMethod.trim()
           ? t.paymentMethod.trim().slice(0, 20)
           : undefined,
+      paymentStatus: t.paymentStatus === "pending" ? "pending" : "paid",
       cardId:
         typeof t.cardId === "string" && t.cardId.trim()
           ? t.cardId.trim().slice(0, 40)
@@ -903,7 +904,9 @@ type AppStoreValue = {
     cardId?: string;
     cardMode?: "credito" | "debito";
     personId?: string;
+    paymentStatus?: "paid" | "pending";
   }) => void;
+  setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
   deleteTransaction: (id: string) => void;
   markLoanReceivablesPaid: (ids: string[]) => void;
   createLoanRecord: (data: {
@@ -1329,7 +1332,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       addTransaction: (data) =>
         patchActiveData((d) => ({
           ...d,
-          transactions: [{ id: uid("t"), ...data }, ...d.transactions],
+          transactions: [
+            {
+              ...data,
+              id: uid("t"),
+              paymentStatus: data.paymentStatus ?? "paid",
+            },
+            ...d.transactions,
+          ],
+        })),
+      setTransactionPaymentStatus: (id, status) =>
+        patchActiveData((d) => ({
+          ...d,
+          transactions: d.transactions.map((transaction) =>
+            transaction.id === id && transaction.source !== "loan"
+              ? { ...transaction, paymentStatus: status }
+              : transaction,
+          ),
         })),
       deleteTransaction: (id) =>
         patchActiveData((d) => ({

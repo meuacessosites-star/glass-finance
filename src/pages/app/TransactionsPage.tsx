@@ -77,6 +77,13 @@ function transactionInPeriod(
 type PeriodMode = "current" | "month" | "custom";
 type PaymentStatusFilter = "all" | "paid" | "pending";
 
+function isCreditCardTransaction(transaction: Transaction): boolean {
+  return (
+    Boolean(transaction.cardId) &&
+    (transaction.cardMode === "credito" || transaction.paymentMethod === "credito")
+  );
+}
+
 function getTransactionPaymentStatus(
   transaction: Transaction,
   cards: AppCard[],
@@ -88,10 +95,9 @@ function getTransactionPaymentStatus(
     return receivable?.status === "open" ? "pending" : "paid";
   }
 
-  const isCreditCardTransaction =
-    Boolean(transaction.cardId) &&
-    (transaction.cardMode === "credito" || transaction.paymentMethod === "credito");
-  if (!isCreditCardTransaction) return "paid";
+  if (!isCreditCardTransaction(transaction)) {
+    return transaction.paymentStatus === "pending" ? "pending" : "paid";
+  }
 
   const card = cards.find((item) => item.id === transaction.cardId);
   const transactionMonth = monthKey(transaction.date);
@@ -387,6 +393,7 @@ export default function TransactionsPage() {
     loanReceivables,
     cards,
     setCardInvoiceStatus,
+    setTransactionPaymentStatus,
     markLoanReceivablesPaid,
   } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -589,7 +596,7 @@ export default function TransactionsPage() {
     const invoiceKeys = new Set<string>();
     return pendingTransactions.reduce<Array<{ cardId: string; month: string }>>(
       (invoices, transaction) => {
-        if (!transaction.cardId) return invoices;
+        if (!isCreditCardTransaction(transaction) || !transaction.cardId) return invoices;
         const month = monthKey(transaction.date);
         const key = `${transaction.cardId}:${month}`;
         if (!invoiceKeys.has(key)) {
@@ -606,6 +613,17 @@ export default function TransactionsPage() {
       pendingTransactions
         .filter((transaction) => transaction.id.startsWith("loan-receivable-"))
         .map((transaction) => transaction.id.replace("loan-receivable-", "")),
+    [pendingTransactions],
+  );
+  const pendingRegularTransactionIds = useMemo(
+    () =>
+      pendingTransactions
+        .filter(
+          (transaction) =>
+            !transaction.id.startsWith("loan-receivable-") &&
+            !isCreditCardTransaction(transaction),
+        )
+        .map((transaction) => transaction.id),
     [pendingTransactions],
   );
   const categoryChartData = useMemo(() => {
@@ -650,6 +668,9 @@ export default function TransactionsPage() {
     setIsMarkingPending(true);
     for (const invoice of pendingCardInvoices) {
       setCardInvoiceStatus(invoice.cardId, invoice.month, true);
+    }
+    for (const transactionId of pendingRegularTransactionIds) {
+      setTransactionPaymentStatus(transactionId, "paid");
     }
     markLoanReceivablesPaid(pendingLoanReceivableIds);
     setPaymentStatus("all");
@@ -1007,14 +1028,67 @@ export default function TransactionsPage() {
               {label}
             </p>
             <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
-              {list.map((transaction) => (
-                <TransactionRow
-                  key={transaction.id}
-                  transaction={transaction}
-                  showDate={false}
-                  swipeable
-                />
-              ))}
+              {list.map((transaction) => {
+                const status = getTransactionPaymentStatus(
+                  transaction,
+                  cards,
+                  loanReceivables,
+                );
+                const creditCardPurchase = isCreditCardTransaction(transaction);
+                const isLoanReceivable = transaction.id.startsWith("loan-receivable-");
+                const paymentLabel =
+                  creditCardPurchase && status === "paid"
+                    ? "Fatura paga"
+                    : status === "paid"
+                      ? "Pago"
+                      : "Pendente";
+                const paymentActionLabel = isLoanReceivable
+                  ? status === "pending"
+                    ? "Marcar recebido"
+                    : undefined
+                  : creditCardPurchase
+                    ? status === "paid"
+                      ? "Reabrir fatura"
+                      : "Pagar fatura"
+                    : status === "paid"
+                      ? "Marcar pendente"
+                      : "Marcar como pago";
+                const handlePaymentAction = () => {
+                  if (isLoanReceivable) {
+                    if (status === "pending") {
+                      markLoanReceivablesPaid([
+                        transaction.id.replace("loan-receivable-", ""),
+                      ]);
+                    }
+                    return;
+                  }
+                  if (creditCardPurchase && transaction.cardId) {
+                    setCardInvoiceStatus(
+                      transaction.cardId,
+                      monthKey(transaction.date),
+                      status !== "paid",
+                    );
+                    return;
+                  }
+                  setTransactionPaymentStatus(
+                    transaction.id,
+                    status === "paid" ? "pending" : "paid",
+                  );
+                };
+
+                return (
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                    showDate={false}
+                    swipeable
+                    paymentLabel={paymentLabel}
+                    paymentStatus={status}
+                    paymentActionLabel={paymentActionLabel}
+                    onPaymentAction={handlePaymentAction}
+                  />
+                );
+              })}
             </div>
           </motion.section>
         ))
