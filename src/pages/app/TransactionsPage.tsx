@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { useNavigate } from "react-router";
 import {
   CalendarDays,
   Check,
@@ -16,9 +17,7 @@ import {
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
-import { AddTransactionSheet, type TransactionFormValues } from "@/components/app/AddTransactionSheet";
 import { TransactionRow } from "@/components/app/TransactionRow";
-import { normalizePaymentMethod } from "@/components/app/PaymentMethodSelector";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -391,41 +390,8 @@ function normalizeSearchText(value: string): string {
     .toLocaleLowerCase("pt-BR");
 }
 
-function transactionToFormValues(transaction: Transaction): TransactionFormValues {
-  const payment = normalizePaymentMethod(transaction.paymentMethod);
-  const cardMode =
-    transaction.cardMode === "credito" || transaction.cardMode === "debito"
-      ? transaction.cardMode
-      : payment.cardMode;
-  return {
-    type: transaction.amount >= 0 ? "income" : "expense",
-    cents: Math.round(Math.abs(transaction.amount) * 100),
-    title: transaction.title,
-    categoryId: transaction.categoryId,
-    date: transaction.date,
-    time: transaction.time ?? "",
-    note: transaction.note ?? "",
-    attachments: (transaction.attachments ?? []).map((src, index) => ({
-      src,
-      isImage: src.startsWith("data:image"),
-      name: src.startsWith("data:image")
-        ? `Imagem ${index + 1}`
-        : `Arquivo ${index + 1}`,
-    })),
-    recurrence: transaction.recurrence ?? "unica",
-    frequency: transaction.frequency ?? "mensal",
-    daysInterval: transaction.frequencyInterval ?? 15,
-    installments: transaction.installments ?? 2,
-    currentInstallment: transaction.currentInstallment ?? 1,
-    paymentMethod: payment.method,
-    cardMode,
-    cardId: transaction.cardId ?? null,
-    personId: transaction.personId ?? null,
-    paymentStatus: transaction.paymentStatus ?? "paid",
-  };
-}
-
 export default function TransactionsPage() {
+  const navigate = useNavigate();
   const {
     categories,
     visibleTransactions,
@@ -449,7 +415,6 @@ export default function TransactionsPage() {
   const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -794,7 +759,7 @@ export default function TransactionsPage() {
       toast.info("Movimentações de empréstimos são gerenciadas em Empréstimos.");
       return;
     }
-    setEditingTransaction(transaction);
+    navigate(`/dashboard/transacoes/${encodeURIComponent(transaction.id)}/editar`);
   };
 
   const emptyDescription = searchQuery.trim()
@@ -1289,12 +1254,6 @@ export default function TransactionsPage() {
         )}
       </AnimatePresence>
 
-      <AddTransactionSheet
-        open={Boolean(editingTransaction)}
-        onClose={() => setEditingTransaction(null)}
-        initial={editingTransaction ? transactionToFormValues(editingTransaction) : null}
-        editTransactionId={editingTransaction?.id ?? null}
-      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
 import { AddMenu } from "@/components/app/AddMenu";
@@ -23,6 +23,9 @@ function DashboardShell() {
   const [scanOpen, setScanOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [loanOpen, setLoanOpen] = useState(false);
+  const { pathname } = useLocation();
+  const isTransactionEdit =
+    pathname.startsWith("/dashboard/transacoes/") && pathname.endsWith("/editar");
   const { activeProfile, pinUsage } = useAppStore();
 
   // Lock on app open only when the active profile has a PIN AND the "Uso do
@@ -37,50 +40,65 @@ function DashboardShell() {
       {/* Device bezel (desktop only) */}
       <div className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col md:h-[840px] md:max-h-[92vh] md:rounded-[3.2rem] md:bg-[#0b1220] md:p-[11px] md:shadow-[0_60px_140px_-40px_rgba(15,40,90,0.55)]">
         {/* Screen */}
-        <div id="app-screen" className="relative flex-1 overflow-hidden md:rounded-[2.55rem]">
-          <AppBackground />
+        <div
+          id="app-screen"
+          className="relative flex-1 overflow-hidden md:rounded-[2.55rem]"
+        >
+          {!isTransactionEdit && <AppBackground />}
 
           {/* Scrollable content */}
           <main className="no-scrollbar relative z-10 h-full overflow-y-auto overflow-x-hidden">
-            <div className="px-5 pb-52 pt-16">
+            <div className={isTransactionEdit ? "h-full" : "px-5 pb-52 pt-16"}>
               <Outlet />
             </div>
           </main>
 
-          <StatusBar />
-          <DueTodayAlerts />
-          <BottomNav
-            addOpen={addOpen}
-            onToggleAdd={() => setAddOpen((open) => !open)}
-          />
-          <HomeIndicator />
-          <AddMenu
-            open={addOpen}
-            onClose={() => setAddOpen(false)}
-            onManual={() => setManualOpen(true)}
-            onScan={() => setScanOpen(true)}
-            onVoice={() => setVoiceOpen(true)}
-            onLoan={() => setLoanOpen(true)}
-          />
-          <AddTransactionSheet
-            open={manualOpen}
-            onClose={() => setManualOpen(false)}
-          />
-          <ScanReceiptSheet
-            open={scanOpen}
-            onClose={() => setScanOpen(false)}
-          />
-          <VoiceCommandSheet
-            open={voiceOpen}
-            onClose={() => setVoiceOpen(false)}
-          />
-          <LoanTransactionSheet
-            open={loanOpen}
-            onClose={() => setLoanOpen(false)}
-          />
+          {!isTransactionEdit && <StatusBar />}
+          {!isTransactionEdit && <DueTodayAlerts />}
+          {!isTransactionEdit && (
+            <BottomNav
+              addOpen={addOpen}
+              onToggleAdd={() => setAddOpen((open) => !open)}
+            />
+          )}
+          {!isTransactionEdit && <HomeIndicator />}
+          {!isTransactionEdit && (
+            <AddMenu
+              open={addOpen}
+              onClose={() => setAddOpen(false)}
+              onManual={() => setManualOpen(true)}
+              onScan={() => setScanOpen(true)}
+              onVoice={() => setVoiceOpen(true)}
+              onLoan={() => setLoanOpen(true)}
+            />
+          )}
+          {!isTransactionEdit && (
+            <AddTransactionSheet
+              open={manualOpen}
+              onClose={() => setManualOpen(false)}
+            />
+          )}
+          {!isTransactionEdit && (
+            <ScanReceiptSheet
+              open={scanOpen}
+              onClose={() => setScanOpen(false)}
+            />
+          )}
+          {!isTransactionEdit && (
+            <VoiceCommandSheet
+              open={voiceOpen}
+              onClose={() => setVoiceOpen(false)}
+            />
+          )}
+          {!isTransactionEdit && (
+            <LoanTransactionSheet
+              open={loanOpen}
+              onClose={() => setLoanOpen(false)}
+            />
+          )}
 
           {/* Sidebar + PIN lock (on top of everything) */}
-          <Sidebar />
+          {!isTransactionEdit && <Sidebar />}
           {appLock && !appUnlocked && (
             <PinLock onUnlocked={() => setAppUnlocked(true)} />
           )}

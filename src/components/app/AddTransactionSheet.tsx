@@ -160,6 +160,7 @@ export function AddTransactionSheet({
   onExitComplete,
   initial,
   editTransactionId,
+  fullScreen = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -172,6 +173,8 @@ export function AddTransactionSheet({
   initial?: TransactionFormValues | null;
   /** ID da transação persistida quando o formulário está em modo de edição. */
   editTransactionId?: string | null;
+  /** Faz o sheet ocupar o conteúdo inteiro da rota dedicada de edição. */
+  fullScreen?: boolean;
 }) {
   const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
   const [type, setType] = useState<TxType>("expense");
@@ -403,7 +406,10 @@ export function AddTransactionSheet({
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 30, stiffness: 330 }}
-          className="glass glass-strong absolute inset-0 z-[55] flex flex-col bg-[#eef1fe] dark:bg-[#0a1122]"
+          className={cn(
+            "glass glass-strong absolute inset-0 z-[55] flex flex-col bg-[#eef1fe] dark:bg-[#0a1122]",
+            fullScreen && "z-[70]",
+          )}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
@@ -417,7 +423,7 @@ export function AddTransactionSheet({
             </div>
             <button
               type="button"
-              aria-label="Fechar"
+              aria-label={editTransactionId ? "Cancelar edição" : "Fechar"}
               onClick={onClose}
               className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
             >
@@ -881,9 +887,18 @@ export function AddTransactionSheet({
             >
               <Check className="size-[18px]" strokeWidth={2.6} />
               {editTransactionId
-                ? "Salvar alterações"
+                ? "Salvar edição"
                 : `Adicionar ${type === "expense" ? "despesa" : "receita"}`}
             </button>
+            {editTransactionId && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-3 flex w-full items-center justify-center rounded-full py-2.5 text-[14px] font-semibold text-glass-sub transition-colors hover:text-glass-ink"
+              >
+                Cancelar
+              </button>
+            )}
           </div>
 
           {/* Seletor completo de categorias — bottom sheet com busca. NENHUM

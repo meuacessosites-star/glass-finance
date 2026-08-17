@@ -16,6 +16,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const HomePage = lazy(() => import("./pages/app/HomePage.tsx"));
 const TransactionsPage = lazy(() => import("./pages/app/TransactionsPage.tsx"));
+const TransactionEditPage = lazy(() => import("./pages/app/TransactionEditPage.tsx"));
 const LoansPage = lazy(() => import("./pages/app/LoansPage.tsx"));
 const ReportsPage = lazy(() => import("./pages/app/ReportsPage.tsx"));
 const CategoriesPage = lazy(() => import("./pages/app/CategoriesPage.tsx"));
@@ -175,6 +176,10 @@ if (!convex) {
                 >
                   <Route index element={<HomePage />} />
                   <Route path="transacoes" element={<TransactionsPage />} />
+                  <Route
+                    path="transacoes/:transactionId/editar"
+                    element={<TransactionEditPage />}
+                  />
                   <Route path="emprestimos" element={<LoansPage />} />
                   <Route path="relatorios" element={<ReportsPage />} />
                   <Route path="categorias" element={<CategoriesPage />} />
