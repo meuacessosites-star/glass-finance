@@ -903,6 +903,7 @@ type AppStoreValue = {
     cardMode?: "credito" | "debito";
     personId?: string;
   }) => void;
+  deleteTransaction: (id: string) => void;
   createLoanRecord: (data: {
     contact: string;
     description?: string;
@@ -1327,6 +1328,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => ({
           ...d,
           transactions: [{ id: uid("t"), ...data }, ...d.transactions],
+        })),
+      deleteTransaction: (id) =>
+        patchActiveData((d) => ({
+          ...d,
+          transactions: d.transactions.filter((transaction) => transaction.id !== id),
         })),
       createLoanRecord: (data) =>
         patchActiveData((d) => {

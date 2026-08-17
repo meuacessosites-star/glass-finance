@@ -748,7 +748,12 @@ export default function TransactionsPage() {
             </p>
             <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
               {list.map((transaction) => (
-                <TransactionRow key={transaction.id} transaction={transaction} showDate={false} />
+                <TransactionRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  showDate={false}
+                  swipeable
+                />
               ))}
             </div>
           </motion.section>
