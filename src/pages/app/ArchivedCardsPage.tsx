@@ -39,7 +39,7 @@ export default function ArchivedCardsPage() {
         titleClassName="mx-auto whitespace-nowrap text-center text-[17px]"
       />
 
-      <div className="flex justify-end px-1">
+      <div className="flex justify-start px-1">
         <button
           type="button"
           onClick={() => navigate("/dashboard/compras-cartao")}
