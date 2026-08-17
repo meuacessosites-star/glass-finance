@@ -36,18 +36,13 @@ export default function ArchivedCardsPage() {
     <div className="space-y-4">
       <SettingsHeader
         title="Cartões Arquivados"
-        titleClassName="whitespace-nowrap text-[17px]"
+        titleClassName="mx-auto whitespace-nowrap text-center text-[17px]"
       />
 
       <div className="flex min-w-0 items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Archive className="size-4 shrink-0 text-glass-sub" />
-          <p className="truncate text-[12px] font-medium text-glass-faint">
-            {archivedCards.length === 1
-              ? "1 cartão arquivado"
-              : `${archivedCards.length} cartões arquivados`}
-          </p>
-        </div>
+        <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-glass-faint">
+          Consulte e restaure cartões que não fazem parte do dia a dia.
+        </p>
         <button
           type="button"
           onClick={() => navigate("/dashboard/compras-cartao")}
@@ -56,6 +51,15 @@ export default function ArchivedCardsPage() {
           <ArrowLeft className="size-3.5" />
           Voltar
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 px-1">
+        <Archive className="size-4 shrink-0 text-glass-sub" />
+        <p className="text-[12px] font-bold uppercase tracking-wide text-glass-sub">
+          {archivedCards.length === 1
+            ? "1 CARTÃO ARQUIVADO"
+            : `${archivedCards.length} CARTÕES ARQUIVADOS`}
+        </p>
       </div>
 
       {archivedCards.length === 0 ? (
