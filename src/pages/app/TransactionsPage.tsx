@@ -538,6 +538,38 @@ export default function TransactionsPage() {
     selectedMonth,
   ]);
 
+  const summaryTransactions = useMemo(
+    () =>
+      consolidatedTransactions.filter((transaction) =>
+        selectedMonths.length > 0
+          ? selectedMonths.includes(monthKey(transaction.date))
+          : transactionInPeriod(
+              transaction,
+              selectedMonth,
+              activeRangeEnd,
+              activeRangeStart,
+            ),
+      ),
+    [
+      activeRangeEnd,
+      activeRangeStart,
+      consolidatedTransactions,
+      selectedMonth,
+      selectedMonths,
+    ],
+  );
+  const paidTotal = summaryTransactions
+    .filter(
+      (transaction) =>
+        getTransactionPaymentStatus(transaction, cards, loanReceivables) === "paid",
+    )
+    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+  const pendingTotal = summaryTransactions
+    .filter(
+      (transaction) =>
+        getTransactionPaymentStatus(transaction, cards, loanReceivables) === "pending",
+    )
+    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
   const expenseTotal = filtered
     .filter((transaction) => transaction.amount < 0)
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
@@ -590,6 +622,31 @@ export default function TransactionsPage() {
         </div>
         <ThemeToggle />
       </header>
+
+      <section className="glass rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[13px] font-bold text-glass-ink dark:text-white">
+            Resumo do período
+          </p>
+          <p className="truncate text-right text-[11px] font-semibold text-glass-faint">
+            {selectedPeriodLabel}
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-[#1FBF4F]/10 px-3 py-2.5">
+            <p className="text-[11px] font-semibold text-[#168A39]">Total pago</p>
+            <p className="mt-1 amount-tabular text-[17px] font-bold text-[#168A39]">
+              {formatCurrency(paidTotal)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-[#FF9F0A]/10 px-3 py-2.5">
+            <p className="text-[11px] font-semibold text-[#B56B00]">Total pendente</p>
+            <p className="mt-1 amount-tabular text-[17px] font-bold text-[#B56B00]">
+              {formatCurrency(pendingTotal)}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* Month and period filter */}
       <div className="glass rounded-2xl p-3">
