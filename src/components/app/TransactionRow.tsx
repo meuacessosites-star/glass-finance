@@ -5,6 +5,7 @@ import {
   Clock3,
   Eye,
   Layers,
+  Pencil,
   MoveHorizontal,
   Paperclip,
   Repeat,
@@ -23,7 +24,7 @@ import { CategoryIcon } from "./CategoryIcon";
 import { TransactionDetailsSheet } from "./TransactionDetailsSheet";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
-const SWIPE_DISTANCE = 104;
+const SWIPE_DISTANCE = 208;
 const SWIPE_THRESHOLD = 52;
 
 export function TransactionRow({
@@ -61,23 +62,17 @@ export function TransactionRow({
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const leftActionOpacity = useTransform(
     x,
-    [0, SWIPE_THRESHOLD, SWIPE_DISTANCE],
-    [0, 0.65, 1],
+    [0, -SWIPE_THRESHOLD, -SWIPE_DISTANCE],
+    [0, 0.7, 1],
   );
-  const rightActionOpacity = useTransform(
-    x,
-    [-SWIPE_DISTANCE, -SWIPE_THRESHOLD, 0],
-    [1, 0.65, 0],
-  );
-  const leftActionScale = useTransform(x, [0, SWIPE_DISTANCE], [0.94, 1]);
-  const rightActionScale = useTransform(x, [-SWIPE_DISTANCE, 0], [1, 0.94]);
+  const leftActionScale = useTransform(x, [0, -SWIPE_DISTANCE], [0.96, 1]);
 
   const closeSwipe = () => {
     animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
   };
 
-  const snapSwipe = (direction: "left" | "right") => {
-    animate(x, direction === "left" ? -SWIPE_DISTANCE : SWIPE_DISTANCE, {
+  const snapSwipe = () => {
+    animate(x, -SWIPE_DISTANCE, {
       type: "spring",
       stiffness: 420,
       damping: 32,
@@ -112,6 +107,26 @@ export function TransactionRow({
     deleteTransaction(transaction.id);
     toast.success("Transação excluída");
   };
+
+  const handlePrimaryAction = () => {
+    if (onEdit) {
+      onEdit();
+      closeSwipe();
+      return;
+    }
+    handleRowActivate();
+  };
+
+  const handleSecondaryAction = () => {
+    if (hasPaymentAction) {
+      handlePaymentAction();
+      return;
+    }
+    handleDelete();
+  };
+
+  const primaryActionLabel = onEdit ? "Editar" : "Detalhes";
+  const secondaryActionLabel = hasPaymentAction ? paymentActionLabel : isSyntheticLoan ? "Empréstimos" : "Excluir";
 
   const rowContent = (
     <>
@@ -209,46 +224,48 @@ export function TransactionRow({
     <>
       {swipeable && !selectable ? (
         <div className="relative isolate overflow-hidden rounded-2xl">
-          <div className="absolute inset-0 flex items-stretch justify-between">
+          <div className="absolute inset-y-0 left-0 flex w-[208px] items-stretch overflow-hidden rounded-l-2xl">
             <motion.button
               type="button"
-              aria-label={hasPaymentAction ? paymentActionLabel : "Abrir detalhes da transação"}
-              onClick={hasPaymentAction ? handlePaymentAction : handleRowActivate}
+              aria-label={primaryActionLabel}
+              onClick={handlePrimaryAction}
               style={{ opacity: leftActionOpacity, scale: leftActionScale }}
               whileTap={{ scale: 0.96 }}
-              className="flex w-[104px] shrink-0 items-center justify-center gap-1.5 rounded-l-2xl bg-[#2F6BFF] px-2 text-[11px] font-bold text-white"
+              className="flex w-1/2 shrink-0 items-center justify-center gap-1.5 bg-[#2F6BFF] px-2 text-[10.5px] font-bold leading-tight text-white"
             >
-              {hasPaymentAction ? <Check className="size-3.5" /> : <Eye className="size-3.5" />}
-              {hasPaymentAction ? paymentActionLabel : "Detalhes"}
+              {onEdit ? <Pencil className="size-3.5" /> : hasPaymentAction ? <Check className="size-3.5" /> : <Eye className="size-3.5" />}
+              {primaryActionLabel}
             </motion.button>
             <motion.button
               type="button"
-              aria-label={isSyntheticLoan ? "Gerenciar em empréstimos" : "Excluir transação"}
-              onClick={handleDelete}
-              style={{ opacity: rightActionOpacity, scale: rightActionScale }}
+              aria-label={secondaryActionLabel}
+              onClick={handleSecondaryAction}
+              style={{ opacity: leftActionOpacity, scale: leftActionScale }}
               whileTap={{ scale: 0.96 }}
               className={cn(
-                "flex w-[104px] shrink-0 items-center justify-center gap-1.5 rounded-r-2xl px-2 text-[11px] font-bold text-white",
-                isSyntheticLoan ? "bg-glass-ink/60" : "bg-[#E5484D]",
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
+                hasPaymentAction
+                  ? "bg-[#2F6BFF]"
+                  : isSyntheticLoan
+                    ? "bg-glass-ink/60"
+                    : "bg-[#E5484D]",
               )}
             >
-              <Trash2 className="size-3.5" />
-              {isSyntheticLoan ? "Empréstimos" : "Excluir"}
+              {hasPaymentAction ? <Check className="size-3.5" /> : <Trash2 className="size-3.5" />}
+              {secondaryActionLabel}
             </motion.button>
           </div>
 
           <motion.div
             drag="x"
-            dragConstraints={{ left: -SWIPE_DISTANCE, right: SWIPE_DISTANCE }}
+            dragConstraints={{ left: -SWIPE_DISTANCE, right: 0 }}
             dragElastic={0.12}
             dragMomentum={false}
             style={{ x }}
             onDragEnd={(_, info) => {
               const offset = info.offset.x;
               if (offset <= -SWIPE_THRESHOLD) {
-                snapSwipe("left");
-              } else if (offset >= SWIPE_THRESHOLD) {
-                snapSwipe("right");
+                snapSwipe();
               } else {
                 closeSwipe();
               }
