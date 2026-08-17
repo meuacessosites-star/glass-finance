@@ -10,6 +10,7 @@ import { VoiceCommandSheet } from "@/components/app/VoiceCommandSheet";
 import { PinLock } from "@/components/app/PinLock";
 import { Sidebar, SidebarProvider } from "@/components/app/Sidebar";
 import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
+import { DueTodayAlerts } from "@/components/app/DueTodayAlerts";
 import { AppStoreProvider, useAppStore } from "@/lib/app-store";
 
 /**
@@ -47,6 +48,7 @@ function DashboardShell() {
           </main>
 
           <StatusBar />
+          <DueTodayAlerts />
           <BottomNav
             addOpen={addOpen}
             onToggleAdd={() => setAddOpen((open) => !open)}
