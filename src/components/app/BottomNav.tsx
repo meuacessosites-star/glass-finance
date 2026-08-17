@@ -1,6 +1,15 @@
-import type { LucideIcon } from "lucide-react";
-import { Home, ArrowLeftRight, Handshake, ChartPie, Plus } from "lucide-react";
+import { useMemo } from "react";
+import {
+  ArrowLeftRight,
+  ChartPie,
+  Handshake,
+  Home,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
 import { NavLink, useLocation } from "react-router";
+import { getDueTodayAlerts } from "@/lib/due-today";
+import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 
 const tabs: {
@@ -22,6 +31,11 @@ export function BottomNav({
   onToggleAdd: () => void;
 }) {
   const { pathname } = useLocation();
+  const { cards, visibleTransactions, loanReceivables } = useAppStore();
+  const dueTodayCount = useMemo(
+    () => getDueTodayAlerts(cards, visibleTransactions, loanReceivables).length,
+    [cards, loanReceivables, visibleTransactions],
+  );
 
   const isActive = (to: string) =>
     to === "/dashboard"
@@ -36,6 +50,7 @@ export function BottomNav({
             key={tab.to}
             tab={tab}
             active={isActive(tab.to)}
+            pendingCount={tab.to === "/dashboard/transacoes" ? dueTodayCount : 0}
           />
         ))}
 
@@ -59,6 +74,7 @@ export function BottomNav({
             key={tab.to}
             tab={tab}
             active={isActive(tab.to)}
+            pendingCount={0}
           />
         ))}
       </div>
@@ -69,16 +85,20 @@ export function BottomNav({
 function TabButton({
   tab,
   active,
+  pendingCount = 0,
 }: {
   tab: { to: string; label: string; icon: LucideIcon };
   active: boolean;
+  pendingCount?: number;
 }) {
   const Icon = tab.icon;
+  const badgeLabel = pendingCount > 9 ? "9+" : String(pendingCount);
   return (
     <NavLink
       to={tab.to}
+      aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : tab.label}
       className={cn(
-        "flex w-16 flex-col items-center gap-1 rounded-2xl py-1.5 transition-colors duration-200",
+        "relative flex w-16 flex-col items-center gap-1 rounded-2xl py-1.5 transition-colors duration-200",
         active ? "bg-primary/10" : "hover:bg-primary/5",
       )}
     >
@@ -89,6 +109,14 @@ function TabButton({
         )}
         strokeWidth={active ? 2.4 : 2}
       />
+      {pendingCount > 0 && (
+        <span
+          aria-live="polite"
+          className="absolute right-1 top-0 flex min-w-4 items-center justify-center rounded-full bg-[#FF9500] px-1 text-[9px] font-bold leading-4 text-white shadow-sm"
+        >
+          {badgeLabel}
+        </span>
+      )}
       <span
         className={cn(
           "text-[10px] font-semibold leading-none transition-colors duration-200",

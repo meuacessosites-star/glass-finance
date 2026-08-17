@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Filter,
   BarChart3,
   ReceiptText,
@@ -405,6 +406,8 @@ export default function TransactionsPage() {
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [categoryChartExpanded, setCategoryChartExpanded] = useState(true);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -734,42 +737,70 @@ export default function TransactionsPage() {
           <p className="text-[13px] font-bold text-glass-ink dark:text-white">
             Resumo do período
           </p>
-          <p className="truncate text-right text-[11px] font-semibold text-glass-faint">
-            {selectedPeriodLabel}
-          </p>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl bg-[#1FBF4F]/10 px-3 py-2.5">
-            <p className="text-[11px] font-semibold text-[#168A39]">Total pago</p>
-            <p className="mt-1 amount-tabular text-[17px] font-bold text-[#168A39]">
-              {formatCurrency(paidTotal)}
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-right text-[11px] font-semibold text-glass-faint">
+              {selectedPeriodLabel}
             </p>
-          </div>
-          <div className="rounded-2xl bg-[#FF9F0A]/10 px-3 py-2.5">
-            <p className="text-[11px] font-semibold text-[#B56B00]">Total pendente</p>
-            <p className="mt-1 amount-tabular text-[17px] font-bold text-[#B56B00]">
-              {formatCurrency(pendingTotal)}
-            </p>
+            <button
+              type="button"
+              aria-label={summaryExpanded ? "Recolher resumo do período" : "Expandir resumo do período"}
+              aria-expanded={summaryExpanded}
+              aria-controls="transactions-summary-content"
+              onClick={() => setSummaryExpanded((expanded) => !expanded)}
+              className="flex size-7 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            >
+              <ChevronDown
+                className={cn("size-4 transition-transform duration-200", !summaryExpanded && "-rotate-90")}
+              />
+            </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleMarkPendingAsPaid}
-          disabled={pendingTransactions.length === 0 || isMarkingPending}
-          className={cn(
-            "mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all",
-            pendingTransactions.length > 0
-              ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)] hover:brightness-105 active:scale-[0.99]"
-              : "glass text-glass-faint",
+        <AnimatePresence initial={false}>
+          {summaryExpanded && (
+            <motion.div
+              key="transactions-summary-content"
+              id="transactions-summary-content"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-[#1FBF4F]/10 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-[#168A39]">Total pago</p>
+                  <p className="mt-1 amount-tabular text-[17px] font-bold text-[#168A39]">
+                    {formatCurrency(paidTotal)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#FF9F0A]/10 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-[#B56B00]">Total pendente</p>
+                  <p className="mt-1 amount-tabular text-[17px] font-bold text-[#B56B00]">
+                    {formatCurrency(pendingTotal)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleMarkPendingAsPaid}
+                disabled={pendingTransactions.length === 0 || isMarkingPending}
+                className={cn(
+                  "mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all",
+                  pendingTransactions.length > 0
+                    ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)] hover:brightness-105 active:scale-[0.99]"
+                    : "glass text-glass-faint",
+                )}
+              >
+                <Check className="size-3.5" />
+                {isMarkingPending
+                  ? "Atualizando pagamentos..."
+                  : pendingTransactions.length > 0
+                    ? `Marcar ${pendingTransactions.length} pendente(s) como paga(s)`
+                    : "Nenhuma pendência no período"}
+              </button>
+            </motion.div>
           )}
-        >
-          <Check className="size-3.5" />
-          {isMarkingPending
-            ? "Atualizando pagamentos..."
-            : pendingTransactions.length > 0
-              ? `Marcar ${pendingTransactions.length} pendente(s) como paga(s)`
-              : "Nenhuma pendência no período"}
-        </button>
+        </AnimatePresence>
       </section>
 
       <section className="glass rounded-2xl p-4">
@@ -785,33 +816,59 @@ export default function TransactionsPage() {
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            aria-label={categoryChartExpanded ? "Recolher gastos por categoria" : "Expandir gastos por categoria"}
+            aria-expanded={categoryChartExpanded}
+            aria-controls="transactions-category-chart-content"
+            onClick={() => setCategoryChartExpanded((expanded) => !expanded)}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+          >
+            <ChevronDown
+              className={cn("size-4 transition-transform duration-200", !categoryChartExpanded && "-rotate-90")}
+            />
+          </button>
         </div>
-        {categoryChartData.length > 0 ? (
-          <div className="mt-4 space-y-3">
-            {categoryChartData.map((item) => (
-              <div key={item.categoryId}>
-                <div className="mb-1 flex items-center justify-between gap-3 text-[11px]">
-                  <span className="min-w-0 truncate font-semibold text-glass-ink dark:text-white">
-                    {item.label}
-                  </span>
-                  <span className="shrink-0 font-semibold text-glass-sub">
-                    {formatCurrency(item.total)}
-                  </span>
+        <AnimatePresence initial={false}>
+          {categoryChartExpanded && (
+            <motion.div
+              key="transactions-category-chart-content"
+              id="transactions-category-chart-content"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              {categoryChartData.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {categoryChartData.map((item) => (
+                    <div key={item.categoryId}>
+                      <div className="mb-1 flex items-center justify-between gap-3 text-[11px]">
+                        <span className="min-w-0 truncate font-semibold text-glass-ink dark:text-white">
+                          {item.label}
+                        </span>
+                        <span className="shrink-0 font-semibold text-glass-sub">
+                          {formatCurrency(item.total)}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-glass-ink/10 dark:bg-white/10">
+                        <div
+                          className="h-full rounded-full transition-[width] duration-500 ease-out"
+                          style={{ width: `${item.width}%`, backgroundColor: item.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-glass-ink/10 dark:bg-white/10">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-500 ease-out"
-                    style={{ width: `${item.width}%`, backgroundColor: item.color }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 rounded-xl bg-glass-ink/5 px-3 py-3 text-center text-[12px] text-glass-faint dark:bg-white/5">
-            Nenhuma despesa para categorizar neste período.
-          </p>
-        )}
+              ) : (
+                <p className="mt-4 rounded-xl bg-glass-ink/5 px-3 py-3 text-center text-[12px] text-glass-faint dark:bg-white/5">
+                  Nenhuma despesa para categorizar neste período.
+                </p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
 
       {/* Month and period filter */}
