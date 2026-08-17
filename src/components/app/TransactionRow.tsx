@@ -34,6 +34,10 @@ export function TransactionRow({
   paymentStatus,
   paymentActionLabel,
   onPaymentAction,
+  selectable = false,
+  selected = false,
+  onSelect,
+  onEdit,
 }: {
   transaction: Transaction;
   showDate?: boolean;
@@ -42,6 +46,10 @@ export function TransactionRow({
   paymentStatus?: "paid" | "pending";
   paymentActionLabel?: string;
   onPaymentAction?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
+  onEdit?: () => void;
 }) {
   const { categoryById, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
@@ -77,6 +85,10 @@ export function TransactionRow({
   };
 
   const handleRowActivate = () => {
+    if (selectable) {
+      onSelect?.(transaction.id);
+      return;
+    }
     if (Math.abs(x.get()) > 10) {
       closeSwipe();
       return;
@@ -103,6 +115,25 @@ export function TransactionRow({
 
   const rowContent = (
     <>
+      {selectable && (
+        <button
+          type="button"
+          aria-label={selected ? "Desmarcar transação" : "Selecionar transação"}
+          aria-pressed={selected}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect?.(transaction.id);
+          }}
+          className={cn(
+            "flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors",
+            selected
+              ? "border-primary bg-primary text-white"
+              : "border-glass-ink/25 text-transparent dark:border-white/25",
+          )}
+        >
+          {selected && <Check className="size-3.5" strokeWidth={3} />}
+        </button>
+      )}
       <CategoryIcon categoryId={transaction.categoryId} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-semibold text-glass-ink">
@@ -156,7 +187,7 @@ export function TransactionRow({
           </div>
         )}
       </div>
-      {swipeable && (
+      {swipeable && !selectable && (
         <MoveHorizontal
           aria-hidden="true"
           className="size-3 shrink-0 text-glass-faint/60"
@@ -176,7 +207,7 @@ export function TransactionRow({
 
   return (
     <>
-      {swipeable ? (
+      {swipeable && !selectable ? (
         <div className="relative isolate overflow-hidden rounded-2xl">
           <div className="absolute inset-0 flex items-stretch justify-between">
             <motion.button
@@ -240,11 +271,11 @@ export function TransactionRow({
         <div
           role="button"
           tabIndex={0}
-          onClick={() => setOpen(true)}
+          onClick={handleRowActivate}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              setOpen(true);
+              handleRowActivate();
             }
           }}
           className="flex w-full items-center gap-3.5 py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50"
@@ -257,6 +288,14 @@ export function TransactionRow({
         transaction={transaction}
         open={open}
         onClose={() => setOpen(false)}
+        onEdit={
+          onEdit
+            ? () => {
+                setOpen(false);
+                onEdit();
+              }
+            : undefined
+        }
       />
     </>
   );

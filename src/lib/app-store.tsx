@@ -907,7 +907,33 @@ type AppStoreValue = {
     paymentStatus?: "paid" | "pending";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
+  updateTransaction: (
+    id: string,
+    patch: Partial<
+      Pick<
+        Transaction,
+        | "title"
+        | "categoryId"
+        | "amount"
+        | "date"
+        | "time"
+        | "note"
+        | "attachments"
+        | "recurrence"
+        | "frequency"
+        | "frequencyInterval"
+        | "installments"
+        | "currentInstallment"
+        | "paymentMethod"
+        | "cardId"
+        | "cardMode"
+        | "personId"
+        | "paymentStatus"
+      >
+    >,
+  ) => void;
   deleteTransaction: (id: string) => void;
+  deleteTransactions: (ids: string[]) => void;
   markLoanReceivablesPaid: (ids: string[]) => void;
   createLoanRecord: (data: {
     contact: string;
@@ -1350,11 +1376,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               : transaction,
           ),
         })),
+      updateTransaction: (id, patch) =>
+        patchActiveData((d) => ({
+          ...d,
+          transactions: d.transactions.map((transaction) =>
+            transaction.id === id && transaction.source !== "loan"
+              ? { ...transaction, ...patch, id: transaction.id, source: transaction.source }
+              : transaction,
+          ),
+        })),
       deleteTransaction: (id) =>
         patchActiveData((d) => ({
           ...d,
-          transactions: d.transactions.filter((transaction) => transaction.id !== id),
+          transactions: d.transactions.filter(
+            (transaction) => transaction.id !== id || transaction.source === "loan",
+          ),
         })),
+      deleteTransactions: (ids) => {
+        const transactionIds = new Set(ids);
+        if (transactionIds.size === 0) return;
+        patchActiveData((d) => ({
+          ...d,
+          transactions: d.transactions.filter(
+            (transaction) =>
+              !transactionIds.has(transaction.id) || transaction.source === "loan",
+          ),
+        }));
+      },
       markLoanReceivablesPaid: (ids) => {
         const receivableIds = new Set(ids);
         if (receivableIds.size === 0) return;

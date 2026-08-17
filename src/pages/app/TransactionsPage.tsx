@@ -11,11 +11,14 @@ import {
   BarChart3,
   ReceiptText,
   Search,
+  ListChecks,
   X,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { AddTransactionSheet, type TransactionFormValues } from "@/components/app/AddTransactionSheet";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { normalizePaymentMethod } from "@/components/app/PaymentMethodSelector";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -33,6 +36,7 @@ import {
   type Transaction,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 function shiftMonth(key: string, offset: number): string {
   const [year, month] = key.split("-").map(Number);
@@ -387,6 +391,40 @@ function normalizeSearchText(value: string): string {
     .toLocaleLowerCase("pt-BR");
 }
 
+function transactionToFormValues(transaction: Transaction): TransactionFormValues {
+  const payment = normalizePaymentMethod(transaction.paymentMethod);
+  const cardMode =
+    transaction.cardMode === "credito" || transaction.cardMode === "debito"
+      ? transaction.cardMode
+      : payment.cardMode;
+  return {
+    type: transaction.amount >= 0 ? "income" : "expense",
+    cents: Math.round(Math.abs(transaction.amount) * 100),
+    title: transaction.title,
+    categoryId: transaction.categoryId,
+    date: transaction.date,
+    time: transaction.time ?? "",
+    note: transaction.note ?? "",
+    attachments: (transaction.attachments ?? []).map((src, index) => ({
+      src,
+      isImage: src.startsWith("data:image"),
+      name: src.startsWith("data:image")
+        ? `Imagem ${index + 1}`
+        : `Arquivo ${index + 1}`,
+    })),
+    recurrence: transaction.recurrence ?? "unica",
+    frequency: transaction.frequency ?? "mensal",
+    daysInterval: transaction.frequencyInterval ?? 15,
+    installments: transaction.installments ?? 2,
+    currentInstallment: transaction.currentInstallment ?? 1,
+    paymentMethod: payment.method,
+    cardMode,
+    cardId: transaction.cardId ?? null,
+    personId: transaction.personId ?? null,
+    paymentStatus: transaction.paymentStatus ?? "paid",
+  };
+}
+
 export default function TransactionsPage() {
   const {
     categories,
@@ -396,6 +434,7 @@ export default function TransactionsPage() {
     setCardInvoiceStatus,
     setTransactionPaymentStatus,
     markLoanReceivablesPaid,
+    deleteTransactions,
   } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [scope, setScope] = useState<"month" | "all">("month");
@@ -408,6 +447,9 @@ export default function TransactionsPage() {
   const [isMarkingPending, setIsMarkingPending] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -711,6 +753,50 @@ export default function TransactionsPage() {
         ? "1 categoria"
         : `${selectedCategories.length} categorias`;
 
+  const toggleSelectedTransaction = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
+
+  const handleDeleteSelected = () => {
+    const ids = [...selectedIds].filter((id) => {
+      const transaction = consolidatedTransactions.find((item) => item.id === id);
+      return (
+        !id.startsWith("loan-receivable-") && transaction?.source !== "loan"
+      );
+    });
+    if (ids.length === 0) {
+      toast.info("Recebíveis de empréstimos não podem ser excluídos aqui.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Excluir ${ids.length} ${ids.length === 1 ? "transação selecionada" : "transações selecionadas"}?`,
+    );
+    if (!confirmed) return;
+    deleteTransactions(ids);
+    toast.success(
+      `${ids.length} ${ids.length === 1 ? "transação excluída" : "transações excluídas"}`,
+    );
+    exitSelectMode();
+  };
+
+  const handleEditTransaction = (transaction: Transaction) => {
+    if (transaction.source === "loan" || transaction.id.startsWith("loan-receivable-")) {
+      toast.info("Movimentações de empréstimos são gerenciadas em Empréstimos.");
+      return;
+    }
+    setEditingTransaction(transaction);
+  };
+
   const emptyDescription = searchQuery.trim()
     ? `Nenhuma movimentação encontrada para “${searchQuery.trim()}”.`
     : scope === "all"
@@ -729,7 +815,21 @@ export default function TransactionsPage() {
             <p className="text-[13px] text-muted-foreground">Histórico completo de gastos e ganhos</p>
           </div>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={selectMode ? "Sair do modo de seleção" : "Selecionar transações"}
+            aria-pressed={selectMode}
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            className={cn(
+              "glass flex size-9 items-center justify-center rounded-full text-glass-sub transition-all active:scale-90",
+              selectMode && "bg-primary text-white",
+            )}
+          >
+            <ListChecks className="size-4" />
+          </button>
+          <ThemeToggle />
+        </div>
       </header>
 
       <section className="glass rounded-2xl p-4">
@@ -1143,6 +1243,14 @@ export default function TransactionsPage() {
                     paymentStatus={status}
                     paymentActionLabel={paymentActionLabel}
                     onPaymentAction={handlePaymentAction}
+                    selectable={selectMode}
+                    selected={selectedIds.has(transaction.id)}
+                    onSelect={toggleSelectedTransaction}
+                    onEdit={
+                      isLoanReceivable
+                        ? undefined
+                        : () => handleEditTransaction(transaction)
+                    }
                   />
                 );
               })}
@@ -1150,6 +1258,43 @@ export default function TransactionsPage() {
           </motion.section>
         ))
       )}
+
+      <AnimatePresence initial={false}>
+        {selectMode && selectedIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 18 }}
+            className="fixed inset-x-4 bottom-5 z-[180] flex items-center gap-2 rounded-2xl bg-[#0d1b3e] px-3 py-2.5 text-white shadow-[0_18px_40px_-16px_rgba(15,40,90,0.65)]"
+          >
+            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+              {selectedIds.size} {selectedIds.size === 1 ? "selecionada" : "selecionadas"}
+            </p>
+            <button
+              type="button"
+              onClick={handleDeleteSelected}
+              className="rounded-xl bg-[#E5484D] px-3 py-2 text-[11px] font-bold transition-all hover:brightness-105 active:scale-[0.98]"
+            >
+              Excluir selecionados
+            </button>
+            <button
+              type="button"
+              aria-label="Cancelar seleção"
+              onClick={exitSelectMode}
+              className="rounded-xl px-2.5 py-2 text-[11px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Cancelar
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AddTransactionSheet
+        open={Boolean(editingTransaction)}
+        onClose={() => setEditingTransaction(null)}
+        initial={editingTransaction ? transactionToFormValues(editingTransaction) : null}
+        editTransactionId={editingTransaction?.id ?? null}
+      />
     </div>
   );
 }

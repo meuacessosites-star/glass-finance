@@ -8,6 +8,7 @@ import {
   FileText,
   ImageIcon,
   Layers,
+  Pencil,
   Repeat,
   X,
 } from "lucide-react";
@@ -37,10 +38,12 @@ export function TransactionDetailsSheet({
   transaction,
   open,
   onClose,
+  onEdit,
 }: {
   transaction: Transaction;
   open: boolean;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const { categoryById, cards } = useAppStore();
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -227,6 +230,17 @@ export function TransactionDetailsSheet({
                   )}
                 </div>
               </div>
+            )}
+
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-[13px] font-bold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.75)] transition-all hover:brightness-105 active:scale-[0.99]"
+              >
+                <Pencil className="size-4" />
+                Editar
+              </button>
             )}
           </motion.div>
         </motion.div>

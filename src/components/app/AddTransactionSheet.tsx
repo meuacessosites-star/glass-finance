@@ -81,6 +81,7 @@ export type TransactionFormValues = {
   cardMode: CardMode | "";
   cardId: string | null;
   personId?: string | null;
+  paymentStatus?: "paid" | "pending";
 };
 
 const inputClass =
@@ -158,6 +159,7 @@ export function AddTransactionSheet({
   onClose,
   onExitComplete,
   initial,
+  editTransactionId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -168,8 +170,10 @@ export function AddTransactionSheet({
   onExitComplete?: () => void;
   /** Pré-preenchimento opcional aplicado ao abrir (ex.: leitura da IA). */
   initial?: TransactionFormValues | null;
+  /** ID da transação persistida quando o formulário está em modo de edição. */
+  editTransactionId?: string | null;
 }) {
-  const { categories, cards, addTransaction, categoryById } = useAppStore();
+  const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
   const [type, setType] = useState<TxType>("expense");
   const [cents, setCents] = useState(0);
   const [title, setTitle] = useState("");
@@ -187,6 +191,7 @@ export function AddTransactionSheet({
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
   const [personId, setPersonId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
@@ -215,6 +220,7 @@ export function AddTransactionSheet({
     setCardMode("");
     setCardId(null);
     setPersonId(null);
+    setPaymentStatus("paid");
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
     setPickerOpen(false);
@@ -244,6 +250,7 @@ export function AddTransactionSheet({
       setCardMode(initial.cardMode ?? "");
       setCardId(initial.cardId ?? null);
       setPersonId(initial.personId ?? null);
+      setPaymentStatus(initial.paymentStatus ?? "paid");
     }
   }, [open, categories, initial]);
 
@@ -347,7 +354,7 @@ export function AddTransactionSheet({
 
   const handleSave = () => {
     if (!canSave) return;
-    addTransaction({
+    const payload = {
       title: title.trim(),
       categoryId,
       amount: type === "expense" ? -cents / 100 : cents / 100,
@@ -370,10 +377,20 @@ export function AddTransactionSheet({
       cardId: cardId ?? undefined,
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
       personId: personId ?? undefined,
-    });
-    toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
-      description: "Já aparece no seu resumo e no histórico.",
-    });
+      paymentStatus,
+    };
+
+    if (editTransactionId) {
+      updateTransaction(editTransactionId, payload);
+      toast("Transação atualizada", {
+        description: "As alterações já aparecem no resumo e no histórico.",
+      });
+    } else {
+      addTransaction(payload);
+      toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
+        description: "Já aparece no seu resumo e no histórico.",
+      });
+    }
     onClose();
   };
 
@@ -392,10 +409,10 @@ export function AddTransactionSheet({
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <div>
               <h3 className="text-[20px] font-bold tracking-tight text-glass-ink">
-                Adicionar manual
+                {editTransactionId ? "Editar transação" : "Adicionar manual"}
               </h3>
               <p className="text-[12.5px] text-glass-sub">
-                Registre um gasto ou ganho
+                {editTransactionId ? "Atualize os dados deste lançamento" : "Registre um gasto ou ganho"}
               </p>
             </div>
             <button
@@ -863,7 +880,9 @@ export function AddTransactionSheet({
               )}
             >
               <Check className="size-[18px]" strokeWidth={2.6} />
-              Adicionar {type === "expense" ? "despesa" : "receita"}
+              {editTransactionId
+                ? "Salvar alterações"
+                : `Adicionar ${type === "expense" ? "despesa" : "receita"}`}
             </button>
           </div>
 
