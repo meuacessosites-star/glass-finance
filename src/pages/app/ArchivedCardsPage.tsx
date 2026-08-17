@@ -34,7 +34,10 @@ export default function ArchivedCardsPage() {
 
   return (
     <div className="space-y-4">
-      <SettingsHeader title="Cartões Arquivados" />
+      <SettingsHeader
+        title="Cartões Arquivados"
+        titleClassName="whitespace-nowrap text-[17px]"
+      />
 
       <div className="flex items-center justify-between gap-3 px-1">
         <p className="text-[12px] font-medium text-glass-faint">
