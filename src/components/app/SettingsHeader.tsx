@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import { SidebarTrigger } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -7,13 +8,26 @@ import { ThemeToggle } from "./ThemeToggle";
 export function SettingsHeader({
   title,
   titleClassName = "",
+  onBack,
 }: {
   title: string;
   titleClassName?: string;
+  onBack?: () => void;
 }) {
   return (
     <header className="flex items-center justify-between">
-      <SidebarTrigger />
+      {onBack ? (
+        <button
+          type="button"
+          aria-label="Voltar"
+          onClick={onBack}
+          className="glass glass-soft flex size-9 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
+        >
+          <ArrowLeft className="size-[17px]" strokeWidth={2.3} />
+        </button>
+      ) : (
+        <SidebarTrigger />
+      )}
       <h1 className={`text-[20px] font-bold tracking-tight text-foreground ${titleClassName}`}>
         {title}
       </h1>
