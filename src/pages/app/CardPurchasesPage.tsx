@@ -1499,7 +1499,7 @@ export default function CardPurchasesPage() {
         </p>
         <button
           type="button"
-          onClick={() => navigate("/dashboard/cartoes")}
+          onClick={() => navigate("/dashboard/cartoes/arquivados")}
           className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
           aria-label="Abrir Cartões Arquivados"
         >

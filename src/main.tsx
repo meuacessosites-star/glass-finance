@@ -20,6 +20,7 @@ const LoansPage = lazy(() => import("./pages/app/LoansPage.tsx"));
 const ReportsPage = lazy(() => import("./pages/app/ReportsPage.tsx"));
 const CategoriesPage = lazy(() => import("./pages/app/CategoriesPage.tsx"));
 const CardsPage = lazy(() => import("./pages/app/CardsPage.tsx"));
+const ArchivedCardsPage = lazy(() => import("./pages/app/ArchivedCardsPage.tsx"));
 const CardPurchasesPage = lazy(() => import("./pages/app/CardPurchasesPage.tsx"));
 const NotificationsPage = lazy(() => import("./pages/app/NotificationsPage.tsx"));
 const ReservesPage = lazy(() => import("./pages/app/ReservesPage.tsx"));
@@ -178,6 +179,7 @@ if (!convex) {
                   <Route path="relatorios" element={<ReportsPage />} />
                   <Route path="categorias" element={<CategoriesPage />} />
                   <Route path="cartoes" element={<CardsPage />} />
+                  <Route path="cartoes/arquivados" element={<ArchivedCardsPage />} />
                   <Route path="compras-cartao" element={<CardPurchasesPage />} />
                   <Route path="notificacoes" element={<NotificationsPage />} />
                   <Route path="reservas" element={<ReservesPage />} />
