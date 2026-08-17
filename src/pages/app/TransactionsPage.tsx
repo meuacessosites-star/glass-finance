@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAppStore } from "@/lib/app-store";
+import { useAppStore, type AppCard, type LoanReceivable } from "@/lib/app-store";
 import {
   currentMonthKey,
   dayLabel,
@@ -74,6 +74,31 @@ function transactionInPeriod(
 }
 
 type PeriodMode = "current" | "month" | "custom";
+type PaymentStatusFilter = "all" | "paid" | "pending";
+
+function getTransactionPaymentStatus(
+  transaction: Transaction,
+  cards: AppCard[],
+  loanReceivables: LoanReceivable[],
+): Exclude<PaymentStatusFilter, "all"> {
+  if (transaction.id.startsWith("loan-receivable-")) {
+    const receivableId = transaction.id.replace("loan-receivable-", "");
+    const receivable = loanReceivables.find((item) => item.id === receivableId);
+    return receivable?.status === "open" ? "pending" : "paid";
+  }
+
+  const isCreditCardTransaction =
+    Boolean(transaction.cardId) &&
+    (transaction.cardMode === "credito" || transaction.paymentMethod === "credito");
+  if (!isCreditCardTransaction) return "paid";
+
+  const card = cards.find((item) => item.id === transaction.cardId);
+  const transactionMonth = monthKey(transaction.date);
+  const invoicePaid = card?.invoicePaidByMonth?.[transactionMonth]
+    ?? (transactionMonth === currentMonthKey ? card?.invoicePaid : false)
+    ?? false;
+  return invoicePaid ? "paid" : "pending";
+}
 
 type PeriodPickerProps = {
   mode: PeriodMode;
@@ -355,7 +380,7 @@ function normalizeSearchText(value: string): string {
 }
 
 export default function TransactionsPage() {
-  const { categories, visibleTransactions, loanReceivables } = useAppStore();
+  const { categories, visibleTransactions, loanReceivables, cards } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [scope, setScope] = useState<"month" | "all">("month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -363,6 +388,7 @@ export default function TransactionsPage() {
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -480,6 +506,11 @@ export default function TransactionsPage() {
       )
       .filter(
         (transaction) =>
+          paymentStatus === "all" ||
+          getTransactionPaymentStatus(transaction, cards, loanReceivables) === paymentStatus,
+      )
+      .filter(
+        (transaction) =>
           selectedCategories.length === 0 ||
           selectedCategories.includes(transaction.categoryId),
       )
@@ -493,8 +524,11 @@ export default function TransactionsPage() {
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [
+    cards,
     categoryById,
     consolidatedTransactions,
+    loanReceivables,
+    paymentStatus,
     scope,
     searchQuery,
     selectedCategories,
@@ -602,6 +636,30 @@ export default function TransactionsPage() {
             selectedMonths={selectedMonths}
             onSelectedMonthsChange={handleSelectMonths}
           />
+        </div>
+        <div className="mt-2 flex w-full items-center gap-1.5">
+          {(
+            [
+              { id: "all", label: "Todos" },
+              { id: "paid", label: "Pagos" },
+              { id: "pending", label: "Pendentes" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={paymentStatus === option.id}
+              onClick={() => setPaymentStatus(option.id)}
+              className={cn(
+                "flex-1 rounded-full px-2 py-2 text-[11px] font-semibold transition-all",
+                paymentStatus === option.id
+                  ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+                  : "glass text-glass-sub",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
 
