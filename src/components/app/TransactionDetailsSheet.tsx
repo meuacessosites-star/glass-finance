@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -185,6 +186,14 @@ export function TransactionDetailsSheet({
                 <CalendarDays className="size-4 shrink-0 text-glass-sub" />
                 <p className="text-[13px] font-medium text-glass-ink">{dateLabel}</p>
               </div>
+              {transaction.paymentStatus === "paid" && transaction.paymentDate && (
+                <div className="flex items-center gap-3 rounded-2xl bg-[#1FBF4F]/10 px-3.5 py-2.5">
+                  <Check className="size-4 shrink-0 text-[#168A39]" />
+                  <p className="text-[13px] font-semibold text-[#168A39]">
+                    Pago em {shortDate(transaction.paymentDate)}
+                  </p>
+                </div>
+              )}
               {attachments.length > 0 && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
                   <ImageIcon className="size-4 shrink-0 text-glass-sub" />

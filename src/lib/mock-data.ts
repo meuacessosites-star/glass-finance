@@ -79,6 +79,8 @@ export type Transaction = {
   paymentMethod?: string;
   /** Status manual de pagamento para transações comuns. */
   paymentStatus?: "paid" | "pending";
+  /** Data em que a transação foi efetivamente marcada como paga. */
+  paymentDate?: string;
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */

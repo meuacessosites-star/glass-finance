@@ -87,6 +87,7 @@ export type TransactionFormValues = {
   cardId: string | null;
   personId?: string | null;
   paymentStatus?: "paid" | "pending";
+  paymentDate?: string;
 };
 
 const inputClass =
@@ -191,6 +192,7 @@ export function AddTransactionSheet({
   const [cardId, setCardId] = useState<string | null>(null);
   const [personId, setPersonId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
@@ -221,6 +223,7 @@ export function AddTransactionSheet({
     setCardId(null);
     setPersonId(null);
     setPaymentStatus("paid");
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
     setPickerOpen(false);
@@ -252,6 +255,11 @@ export function AddTransactionSheet({
       setCardId(initial.cardId ?? null);
       setPersonId(initial.personId ?? null);
       setPaymentStatus(initial.paymentStatus ?? "paid");
+      setPaymentDate(
+        initial.paymentStatus === "pending"
+          ? ""
+          : initial.paymentDate ?? initial.date ?? new Date().toISOString().slice(0, 10),
+      );
     }
   }, [open, categories, initial]);
 
@@ -378,6 +386,7 @@ export function AddTransactionSheet({
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
       personId: personId ?? undefined,
       paymentStatus,
+      paymentDate: paymentStatus === "paid" ? paymentDate || date || undefined : undefined,
     };
 
     if (editTransactionId) {
@@ -710,6 +719,65 @@ export function AddTransactionSheet({
                 onCardChange={setCardId}
                 cards={cards}
               />
+            </div>
+
+            {/* Payment status */}
+            <div className="mt-6">
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                Status do pagamento
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {([
+                  { id: "paid" as const, label: "Pago", icon: Check },
+                  { id: "pending" as const, label: "Pendente", icon: Clock },
+                ]).map((option) => {
+                  const active = paymentStatus === option.id;
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setPaymentStatus(option.id);
+                        if (option.id === "paid") {
+                          setPaymentDate((current) => current || date || new Date().toISOString().slice(0, 10));
+                        } else {
+                          setPaymentDate("");
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold transition-all active:scale-[0.98]",
+                        active
+                          ? option.id === "paid"
+                            ? "bg-[#1FBF4F] text-white shadow-[0_6px_16px_-8px_rgba(31,191,79,0.8)]"
+                            : "bg-[#FF9F0A] text-white shadow-[0_6px_16px_-8px_rgba(255,159,10,0.8)]"
+                          : "glass glass-soft text-glass-sub",
+                      )}
+                    >
+                      <Icon className="size-4" strokeWidth={2.6} />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {paymentStatus === "paid" && (
+                <div className="mt-3">
+                  <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                    Data do pagamento
+                  </p>
+                  <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
+                    <CalendarDays className="size-4 shrink-0 text-glass-sub" />
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      max={new Date().toISOString().slice(0, 10)}
+                      className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Date + optional time */}

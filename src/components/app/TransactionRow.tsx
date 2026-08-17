@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import {
   Check,
@@ -6,7 +6,6 @@ import {
   Eye,
   Layers,
   Pencil,
-  MoreHorizontal,
   Paperclip,
   Repeat,
   Trash2,
@@ -64,12 +63,30 @@ export function TransactionRow({
     (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
-  const leftActionOpacity = useTransform(
+  const actionOpacity = useTransform(
     x,
     [0, -SWIPE_THRESHOLD, -SWIPE_DISTANCE],
     [0, 0.7, 1],
   );
-  const leftActionScale = useTransform(x, [0, -SWIPE_DISTANCE], [0.96, 1]);
+  const actionScale = useTransform(x, [0, -SWIPE_DISTANCE], [0.96, 1]);
+
+  useEffect(() => {
+    if (!swipeable || selectable) return;
+    let cancelled = false;
+    let restoreTimer: number | undefined;
+    const hintTimer = window.setTimeout(() => {
+      if (cancelled || Math.abs(x.get()) > 1) return;
+      animate(x, -18, { duration: 0.22, ease: "easeOut" });
+      restoreTimer = window.setTimeout(() => {
+        if (!cancelled) animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
+      }, 240);
+    }, 650);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(hintTimer);
+      if (restoreTimer !== undefined) window.clearTimeout(restoreTimer);
+    };
+  }, [selectable, swipeable, x]);
 
   const closeSwipe = () => {
     animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
@@ -131,6 +148,12 @@ export function TransactionRow({
 
   const primaryActionLabel = onEdit ? "Editar" : "Detalhes";
   const secondaryActionLabel = hasPaymentAction ? paymentActionLabel : isSyntheticLoan ? "Empréstimos" : "Excluir";
+  const statusAccent =
+    paymentStatus === "paid"
+      ? "border-l-2 border-l-[#1FBF4F]"
+      : paymentStatus === "pending"
+        ? "border-l-2 border-l-[#FF9F0A]"
+        : "";
 
   const rowContent = (
     <>
@@ -153,8 +176,12 @@ export function TransactionRow({
           {selected && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       )}
-      <CategoryIcon categoryId={transaction.categoryId} />
-      <div className="min-w-0 flex-1">
+      <CategoryIcon
+        categoryId={transaction.categoryId}
+        size="size-12"
+        iconSize="size-5"
+      />
+      <div className="min-w-0 flex-1 pr-1">
         <p className="truncate text-[15px] font-semibold text-glass-ink">
           {transaction.title}
         </p>
@@ -194,10 +221,10 @@ export function TransactionRow({
           <div className="mt-1 flex min-w-0 items-center gap-1.5">
             <span
               className={cn(
-                "flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                "flex shrink-0 items-center gap-1 rounded-xl border px-2 py-1 text-[10.5px] font-extrabold tracking-tight",
                 paymentStatus === "paid"
-                  ? "bg-[#1FBF4F]/10 text-[#168A39]"
-                  : "bg-[#FF9F0A]/10 text-[#B56B00]",
+                  ? "border-[#1FBF4F]/30 border-l-2 border-l-[#1FBF4F] bg-[#1FBF4F]/15 text-[#168A39]"
+                  : "border-[#FF9F0A]/35 border-l-2 border-l-[#FF9F0A] bg-[#FF9F0A]/15 text-[#B56B00]",
               )}
             >
               {paymentStatus === "paid" ? (
@@ -206,20 +233,17 @@ export function TransactionRow({
                 <Clock3 className="size-2.5" strokeWidth={2.8} />
               )}
               {paymentLabel}
+              {paymentStatus === "paid" && transaction.paymentDate && (
+                <span className="font-semibold">· {shortDate(transaction.paymentDate)}</span>
+              )}
             </span>
 
           </div>
         )}
       </div>
-      {swipeable && !selectable && (
-        <MoreHorizontal
-          aria-hidden="true"
-          className="size-4 shrink-0 text-glass-faint/60"
-        />
-      )}
       <p
         className={cn(
-          "amount-tabular shrink-0 text-[15px] font-bold",
+          "amount-tabular ml-auto min-w-[78px] shrink-0 text-right text-[15px] font-bold",
           isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
         )}
       >
@@ -233,12 +257,12 @@ export function TransactionRow({
     <>
       {swipeable && !selectable ? (
         <div className="relative isolate overflow-hidden rounded-2xl">
-          <div className="absolute inset-y-0 left-0 flex w-[208px] items-stretch overflow-hidden rounded-l-2xl">
+          <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl">
             <motion.button
               type="button"
               aria-label={primaryActionLabel}
               onClick={handlePrimaryAction}
-              style={{ opacity: leftActionOpacity, scale: leftActionScale }}
+              style={{ opacity: actionOpacity, scale: actionScale }}
               whileTap={{ scale: 0.96 }}
               className="flex w-1/2 shrink-0 items-center justify-center gap-1.5 bg-[#2F6BFF] px-2 text-[10.5px] font-bold leading-tight text-white"
             >
@@ -249,7 +273,7 @@ export function TransactionRow({
               type="button"
               aria-label={secondaryActionLabel}
               onClick={handleSecondaryAction}
-              style={{ opacity: leftActionOpacity, scale: leftActionScale }}
+              style={{ opacity: actionOpacity, scale: actionScale }}
               whileTap={{ scale: 0.96 }}
               className={cn(
                 "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
@@ -288,7 +312,10 @@ export function TransactionRow({
                 handleRowActivate();
               }
             }}
-            className="relative z-10 flex w-full items-center gap-3.5 bg-transparent py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50"
+            className={cn(
+              "relative z-10 flex w-full items-center gap-3.5 bg-[#f4f8ff] py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50 dark:bg-[#0d1b3e]",
+              statusAccent,
+            )}
           >
             {rowContent}
           </motion.div>
@@ -304,7 +331,10 @@ export function TransactionRow({
               handleRowActivate();
             }
           }}
-          className="flex w-full items-center gap-3.5 py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50"
+          className={cn(
+            "flex w-full items-center gap-3.5 bg-[#f4f8ff] py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50 dark:bg-[#0d1b3e]",
+            statusAccent,
+          )}
         >
           {rowContent}
         </div>

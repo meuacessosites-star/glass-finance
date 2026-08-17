@@ -622,6 +622,12 @@ function sanitizeTransactions(v: unknown): Transaction[] {
           ? t.paymentMethod.trim().slice(0, 20)
           : undefined,
       paymentStatus: t.paymentStatus === "pending" ? "pending" : "paid",
+      paymentDate:
+        t.paymentStatus !== "pending" &&
+        typeof t.paymentDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}/.test(t.paymentDate)
+          ? t.paymentDate.slice(0, 10)
+          : undefined,
       cardId:
         typeof t.cardId === "string" && t.cardId.trim()
           ? t.cardId.trim().slice(0, 40)
@@ -906,6 +912,7 @@ type AppStoreValue = {
     cardMode?: "credito" | "debito";
     personId?: string;
     paymentStatus?: "paid" | "pending";
+    paymentDate?: string;
     draftDisplay?: "hidden" | "multipleMedia";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
@@ -932,6 +939,7 @@ type AppStoreValue = {
         | "cardMode"
         | "personId"
         | "paymentStatus"
+        | "paymentDate"
       >
     >,
   ) => void;
@@ -1366,6 +1374,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               ...data,
               id: uid("t"),
               paymentStatus: data.paymentStatus ?? "paid",
+              paymentDate:
+                data.paymentStatus === "pending"
+                  ? undefined
+                  : data.paymentDate ?? new Date().toISOString().slice(0, 10),
             },
             ...d.transactions,
           ],
@@ -1375,18 +1387,37 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           ...d,
           transactions: d.transactions.map((transaction) =>
             transaction.id === id && transaction.source !== "loan"
-              ? { ...transaction, paymentStatus: status }
+              ? {
+                  ...transaction,
+                  paymentStatus: status,
+                  paymentDate:
+                    status === "paid"
+                      ? new Date().toISOString().slice(0, 10)
+                      : undefined,
+                }
               : transaction,
           ),
         })),
       updateTransaction: (id, patch) =>
         patchActiveData((d) => ({
           ...d,
-          transactions: d.transactions.map((transaction) =>
-            transaction.id === id && transaction.source !== "loan"
-              ? { ...transaction, ...patch, id: transaction.id, source: transaction.source }
-              : transaction,
-          ),
+          transactions: d.transactions.map((transaction) => {
+            if (transaction.id !== id || transaction.source === "loan") return transaction;
+            const nextPaymentStatus = patch.paymentStatus ?? transaction.paymentStatus ?? "paid";
+            const nextPaymentDate =
+              nextPaymentStatus === "paid"
+                ? patch.paymentDate ??
+                  (patch.paymentStatus ? new Date().toISOString().slice(0, 10) : transaction.paymentDate)
+                : undefined;
+            return {
+              ...transaction,
+              ...patch,
+              id: transaction.id,
+              source: transaction.source,
+              paymentStatus: nextPaymentStatus,
+              paymentDate: nextPaymentDate,
+            };
+          }),
         })),
       deleteTransaction: (id) =>
         patchActiveData((d) => ({
