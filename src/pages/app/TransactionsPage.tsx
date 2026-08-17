@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  BarChart3,
   ReceiptText,
   Search,
   X,
@@ -380,7 +381,14 @@ function normalizeSearchText(value: string): string {
 }
 
 export default function TransactionsPage() {
-  const { categories, visibleTransactions, loanReceivables, cards } = useAppStore();
+  const {
+    categories,
+    visibleTransactions,
+    loanReceivables,
+    cards,
+    setCardInvoiceStatus,
+    markLoanReceivablesPaid,
+  } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [scope, setScope] = useState<"month" | "all">("month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -389,6 +397,7 @@ export default function TransactionsPage() {
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
+  const [isMarkingPending, setIsMarkingPending] = useState(false);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -564,12 +573,88 @@ export default function TransactionsPage() {
         getTransactionPaymentStatus(transaction, cards, loanReceivables) === "paid",
     )
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
-  const pendingTotal = summaryTransactions
-    .filter(
-      (transaction) =>
-        getTransactionPaymentStatus(transaction, cards, loanReceivables) === "pending",
-    )
-    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+  const pendingTransactions = useMemo(
+    () =>
+      summaryTransactions.filter(
+        (transaction) =>
+          getTransactionPaymentStatus(transaction, cards, loanReceivables) === "pending",
+      ),
+    [cards, loanReceivables, summaryTransactions],
+  );
+  const pendingTotal = pendingTransactions.reduce(
+    (sum, transaction) => sum + Math.abs(transaction.amount),
+    0,
+  );
+  const pendingCardInvoices = useMemo(() => {
+    const invoiceKeys = new Set<string>();
+    return pendingTransactions.reduce<Array<{ cardId: string; month: string }>>(
+      (invoices, transaction) => {
+        if (!transaction.cardId) return invoices;
+        const month = monthKey(transaction.date);
+        const key = `${transaction.cardId}:${month}`;
+        if (!invoiceKeys.has(key)) {
+          invoiceKeys.add(key);
+          invoices.push({ cardId: transaction.cardId, month });
+        }
+        return invoices;
+      },
+      [],
+    );
+  }, [pendingTransactions]);
+  const pendingLoanReceivableIds = useMemo(
+    () =>
+      pendingTransactions
+        .filter((transaction) => transaction.id.startsWith("loan-receivable-"))
+        .map((transaction) => transaction.id.replace("loan-receivable-", "")),
+    [pendingTransactions],
+  );
+  const categoryChartData = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const transaction of summaryTransactions) {
+      if (transaction.amount >= 0) continue;
+      totals.set(
+        transaction.categoryId,
+        (totals.get(transaction.categoryId) ?? 0) + Math.abs(transaction.amount),
+      );
+    }
+    const sorted = [...totals.entries()]
+      .map(([categoryId, total]) => ({
+        categoryId,
+        total,
+        label: categoryById[categoryId]?.label ?? "Outros",
+        color: categoryById[categoryId]?.color ?? "#94A3B8",
+      }))
+      .sort((a, b) => b.total - a.total);
+    const topCategories = sorted.slice(0, 6);
+    const remaining = sorted.slice(6).reduce((sum, item) => sum + item.total, 0);
+    if (remaining > 0) {
+      topCategories.push({
+        categoryId: "__other__",
+        total: remaining,
+        label: "Outras categorias",
+        color: "#94A3B8",
+      });
+    }
+    const maxTotal = topCategories[0]?.total ?? 0;
+    return topCategories.map((item) => ({
+      ...item,
+      width: maxTotal > 0 ? (item.total / maxTotal) * 100 : 0,
+    }));
+  }, [categoryById, summaryTransactions]);
+  const handleMarkPendingAsPaid = () => {
+    if (pendingTransactions.length === 0 || isMarkingPending) return;
+    const confirmed = window.confirm(
+      `Marcar ${pendingTransactions.length} transação(ões) pendente(s) como paga(s)?`,
+    );
+    if (!confirmed) return;
+    setIsMarkingPending(true);
+    for (const invoice of pendingCardInvoices) {
+      setCardInvoiceStatus(invoice.cardId, invoice.month, true);
+    }
+    markLoanReceivablesPaid(pendingLoanReceivableIds);
+    setPaymentStatus("all");
+    setIsMarkingPending(false);
+  };
   const expenseTotal = filtered
     .filter((transaction) => transaction.amount < 0)
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
@@ -646,6 +731,66 @@ export default function TransactionsPage() {
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={handleMarkPendingAsPaid}
+          disabled={pendingTransactions.length === 0 || isMarkingPending}
+          className={cn(
+            "mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all",
+            pendingTransactions.length > 0
+              ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)] hover:brightness-105 active:scale-[0.99]"
+              : "glass text-glass-faint",
+          )}
+        >
+          <Check className="size-3.5" />
+          {isMarkingPending
+            ? "Atualizando pagamentos..."
+            : pendingTransactions.length > 0
+              ? `Marcar ${pendingTransactions.length} pendente(s) como paga(s)`
+              : "Nenhuma pendência no período"}
+        </button>
+      </section>
+
+      <section className="glass rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <BarChart3 className="size-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold text-glass-ink dark:text-white">
+                Gastos por categoria
+              </p>
+              <p className="truncate text-[11px] text-glass-faint">
+                Distribuição das despesas no período selecionado
+              </p>
+            </div>
+          </div>
+        </div>
+        {categoryChartData.length > 0 ? (
+          <div className="mt-4 space-y-3">
+            {categoryChartData.map((item) => (
+              <div key={item.categoryId}>
+                <div className="mb-1 flex items-center justify-between gap-3 text-[11px]">
+                  <span className="min-w-0 truncate font-semibold text-glass-ink dark:text-white">
+                    {item.label}
+                  </span>
+                  <span className="shrink-0 font-semibold text-glass-sub">
+                    {formatCurrency(item.total)}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-glass-ink/10 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-500 ease-out"
+                    style={{ width: `${item.width}%`, backgroundColor: item.color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl bg-glass-ink/5 px-3 py-3 text-center text-[12px] text-glass-faint dark:bg-white/5">
+            Nenhuma despesa para categorizar neste período.
+          </p>
+        )}
       </section>
 
       {/* Month and period filter */}

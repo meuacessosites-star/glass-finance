@@ -118,7 +118,7 @@ export type LoanReceivable = {
   amount: number;
   /** Ausente apenas quando a cobrança foi criada como dívida em aberto. */
   dueDate?: string;
-  status: "scheduled" | "open";
+  status: "scheduled" | "open" | "paid";
   installment?: number;
   installments?: number;
   transactionId?: string;
@@ -499,7 +499,8 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
   return v
     .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
     .map((item) => {
-      const status = item.status === "open" ? "open" : "scheduled";
+      const status =
+        item.status === "open" ? "open" : item.status === "paid" ? "paid" : "scheduled";
       const dueDate =
         typeof item.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate)
           ? item.dueDate
@@ -512,7 +513,7 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
           typeof item.amount === "number" && Number.isFinite(item.amount)
             ? Math.max(0.01, item.amount)
             : 0.01,
-        dueDate: status === "scheduled" ? dueDate : undefined,
+        dueDate: status === "open" ? undefined : dueDate,
         status,
         installment:
           typeof item.installment === "number" && Number.isFinite(item.installment)
@@ -904,6 +905,7 @@ type AppStoreValue = {
     personId?: string;
   }) => void;
   deleteTransaction: (id: string) => void;
+  markLoanReceivablesPaid: (ids: string[]) => void;
   createLoanRecord: (data: {
     contact: string;
     description?: string;
@@ -1334,6 +1336,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           ...d,
           transactions: d.transactions.filter((transaction) => transaction.id !== id),
         })),
+      markLoanReceivablesPaid: (ids) => {
+        const receivableIds = new Set(ids);
+        if (receivableIds.size === 0) return;
+        patchActiveData((d) => ({
+          ...d,
+          loanReceivables: d.loanReceivables.map((receivable) =>
+            receivableIds.has(receivable.id) && receivable.status === "open"
+              ? { ...receivable, status: "paid" as const }
+              : receivable,
+          ),
+        }));
+      },
       createLoanRecord: (data) =>
         patchActiveData((d) => {
           const loanId = uid("loan");
