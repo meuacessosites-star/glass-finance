@@ -40,10 +40,12 @@ export default function ArchivedCardsPage() {
       />
 
       <div className="flex min-w-0 items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Archive className="size-4 shrink-0 text-glass-sub" />
-          <p className="truncate text-[12px] font-bold uppercase tracking-wide text-glass-sub">
-            {archivedCards.length} cartão(ões) arquivado(s)
+          <p className="truncate text-[12px] font-medium text-glass-faint">
+            {archivedCards.length === 1
+              ? "1 cartão arquivado"
+              : `${archivedCards.length} cartões arquivados`}
           </p>
         </div>
         <button
@@ -78,9 +80,9 @@ export default function ArchivedCardsPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4 px-1">
           {archivedCards.map((card) => (
-            <div key={card.id} className="space-y-2">
+            <div key={card.id} className="mx-auto w-full max-w-[420px] space-y-2">
               <CardVisual
                 card={card}
                 openAmount={openAmountByCard[card.id] ?? 0}
