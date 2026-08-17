@@ -6,7 +6,7 @@ import {
   Eye,
   Layers,
   Pencil,
-  MoveHorizontal,
+  MoreHorizontal,
   Paperclip,
   Repeat,
   Trash2,
@@ -203,9 +203,9 @@ export function TransactionRow({
         )}
       </div>
       {swipeable && !selectable && (
-        <MoveHorizontal
+        <MoreHorizontal
           aria-hidden="true"
-          className="size-3 shrink-0 text-glass-faint/60"
+          className="size-4 shrink-0 text-glass-faint/60"
         />
       )}
       <p
