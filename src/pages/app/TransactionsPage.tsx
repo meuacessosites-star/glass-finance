@@ -1,6 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { Check, Filter, ReceiptText, Search, X } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  ReceiptText,
+  Search,
+  X,
+} from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
@@ -22,6 +32,268 @@ import {
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
+function shiftMonth(key: string, offset: number): string {
+  const [year, month] = key.split("-").map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function lastDayOfMonth(month: string): number {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber, 0).getDate();
+}
+
+function calendarDaysForMonth(month: string): Array<string | null> {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstWeekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
+  const daysInMonth = lastDayOfMonth(month);
+  return [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from(
+      { length: daysInMonth },
+      (_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
+    ),
+  ];
+}
+
+function formatDateLabel(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function transactionInPeriod(
+  transaction: Transaction,
+  selectedMonth: string,
+  untilDate?: string | null,
+  fromDate?: string | null,
+): boolean {
+  const startDate = fromDate ?? `${selectedMonth}-01`;
+  const defaultEndDate = `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
+  const endDate = untilDate && untilDate >= startDate ? untilDate : defaultEndDate;
+  return transaction.date >= startDate && transaction.date <= endDate;
+}
+
+type PeriodMode = "current" | "month" | "custom";
+
+type PeriodPickerProps = {
+  mode: PeriodMode;
+  selectedMonth: string;
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  onModeChange: (mode: PeriodMode) => void;
+  onRangeChange: (start: string | null, end: string | null) => void;
+};
+
+function PeriodPicker({
+  mode,
+  selectedMonth,
+  rangeStart,
+  rangeEnd,
+  onModeChange,
+  onRangeChange,
+}: PeriodPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(
+    rangeStart ? monthKey(rangeStart) : selectedMonth,
+  );
+  const [draftStart, setDraftStart] = useState<string | null>(rangeStart);
+  const [draftEnd, setDraftEnd] = useState<string | null>(rangeEnd);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const calendarDays = calendarDaysForMonth(calendarMonth);
+  const rangeLabel = rangeStart && rangeEnd
+    ? `${formatDateLabel(rangeStart)} → ${formatDateLabel(rangeEnd)}`
+    : "Personalizado";
+  const triggerLabel = mode === "current"
+    ? "Este mês"
+    : mode === "month"
+      ? "Mês selecionado"
+      : rangeLabel;
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pickerWidth = Math.min(304, window.innerWidth - 32);
+      setPopoverPosition({
+        top: rect.bottom + 8,
+        left: Math.max(
+          16,
+          Math.min(window.innerWidth - pickerWidth - 16, rect.right - pickerWidth),
+        ),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  const openCustomCalendar = () => {
+    setDraftStart(rangeStart);
+    setDraftEnd(rangeEnd);
+    setCalendarMonth(rangeStart ? monthKey(rangeStart) : selectedMonth);
+    onModeChange("custom");
+    setOpen(true);
+  };
+
+  const handlePick = (date: string) => {
+    if (!draftStart || draftEnd) {
+      setDraftStart(date);
+      setDraftEnd(null);
+      onRangeChange(null, null);
+      return;
+    }
+    const [start, end] = date < draftStart ? [date, draftStart] : [draftStart, date];
+    setDraftStart(start);
+    setDraftEnd(end);
+    onRangeChange(start, end);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Selecionar período"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
+          mode === "custom"
+            ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+            : "glass text-glass-sub",
+        )}
+      >
+        <CalendarDays className="size-3.5" />
+        {triggerLabel}
+      </button>
+
+      {open && popoverPosition && createPortal(
+        <div
+          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+          className="fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
+        >
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                onModeChange("current");
+                onRangeChange(null, null);
+                setOpen(false);
+              }}
+              className={cn(
+                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
+                mode === "current" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
+              )}
+            >
+              Este mês
+            </button>
+            <button
+              type="button"
+              onClick={openCustomCalendar}
+              className={cn(
+                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
+                mode === "custom" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
+              )}
+            >
+              Personalizado
+            </button>
+          </div>
+
+          {mode === "custom" && (
+            <>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  aria-label="Mês anterior do período personalizado"
+                  onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
+                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <p className="text-[12px] font-bold uppercase tracking-wide">
+                  {monthShortLabel(calendarMonth)} {calendarMonth.slice(0, 4)}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Próximo mês do período personalizado"
+                  onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
+                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+              <p className="mt-2 text-center text-[10px] font-medium text-glass-faint">
+                Escolha a data inicial e depois a data final.
+              </p>
+              <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase text-glass-faint">
+                {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
+                  <span key={`${day}-${index}`}>{day}</span>
+                ))}
+              </div>
+              <div className="mt-1 grid grid-cols-7 gap-1">
+                {calendarDays.map((date, index) => {
+                  if (!date) return <span key={`empty-${index}`} />;
+                  const selected = date === draftStart || date === draftEnd;
+                  const inRange = Boolean(draftStart && draftEnd && date > draftStart && date < draftEnd);
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      aria-label={formatDateLabel(date)}
+                      aria-pressed={selected}
+                      onClick={() => handlePick(date)}
+                      className={cn(
+                        "flex aspect-square items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                        selected
+                          ? "bg-primary text-white"
+                          : inRange
+                            ? "bg-primary/10 text-primary"
+                            : "text-glass-sub hover:bg-primary/10 hover:text-primary",
+                      )}
+                    >
+                      {date.slice(-2).replace(/^0/, "")}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-glass-ink/5 pt-2 dark:border-white/10">
+                <p className="text-[10px] font-medium text-glass-faint">
+                  {draftStart && draftEnd
+                    ? `${formatDateLabel(draftStart)} → ${formatDateLabel(draftEnd)}`
+                    : draftStart
+                      ? `Início: ${formatDateLabel(draftStart)}`
+                      : "Nenhum período aplicado"}
+                </p>
+                {(rangeStart || rangeEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftStart(null);
+                      setDraftEnd(null);
+                      onRangeChange(null, null);
+                    }}
+                    className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 function normalizeSearchText(value: string): string {
   return value
     .normalize("NFD")
@@ -34,6 +306,9 @@ export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [scope, setScope] = useState<"month" | "all">("month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -90,10 +365,29 @@ export default function TransactionsPage() {
       ),
     [consolidatedTransactions],
   );
-  const [month, setMonth] = useState<string>(allMonths[0] ?? currentMonthKey);
-  const selectedMonth = allMonths.includes(month)
+  const monthOptions = useMemo(() => {
+    const navigableMonths = Array.from({ length: 49 }, (_, index) =>
+      shiftMonth(currentMonthKey, 24 - index),
+    );
+    return [...new Set([...navigableMonths, ...allMonths])].sort((a, b) => b.localeCompare(a));
+  }, [allMonths]);
+  const [month, setMonth] = useState<string>(currentMonthKey);
+  const selectedMonth = monthOptions.includes(month)
     ? month
-    : allMonths[0] ?? currentMonthKey;
+    : monthOptions.includes(currentMonthKey)
+      ? currentMonthKey
+      : monthOptions[0] ?? currentMonthKey;
+  const activeRangeStart = periodMode === "custom" && rangeStart && rangeEnd ? rangeStart : null;
+  const activeRangeEnd = periodMode === "custom" && rangeStart && rangeEnd ? rangeEnd : null;
+  const selectedPeriodLabel = activeRangeStart && activeRangeEnd
+    ? `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
+    : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
+  const handleSelectMonth = (nextMonth: string) => {
+    setMonth(nextMonth);
+    setPeriodMode(nextMonth === currentMonthKey ? "current" : "month");
+    setRangeStart(null);
+    setRangeEnd(null);
+  };
 
   const availableCategories = useMemo(
     () =>
@@ -112,7 +406,8 @@ export default function TransactionsPage() {
     return consolidatedTransactions
       .filter(
         (transaction) =>
-          scope === "all" || monthKey(transaction.date) === selectedMonth,
+          scope === "all" ||
+          transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
       )
       .filter(
         (transaction) =>
@@ -134,6 +429,8 @@ export default function TransactionsPage() {
     scope,
     searchQuery,
     selectedCategories,
+    activeRangeEnd,
+    activeRangeStart,
     selectedMonth,
   ]);
 
@@ -173,7 +470,7 @@ export default function TransactionsPage() {
     ? `Nenhuma movimentação encontrada para “${searchQuery.trim()}”.`
     : scope === "all"
       ? "Nenhuma movimentação encontrada no histórico."
-      : `Nada registrado em ${monthShortLabel(selectedMonth)} para os filtros selecionados.`;
+      : `Nada registrado em ${selectedPeriodLabel} para os filtros selecionados.`;
 
   return (
     <div className="space-y-4">
@@ -190,23 +487,46 @@ export default function TransactionsPage() {
         <ThemeToggle />
       </header>
 
-      {/* Month filter */}
-      <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5">
-        {allMonths.map((key) => (
+      {/* Month and period filter */}
+      <div className="glass rounded-2xl p-3">
+        <div className="flex items-center justify-between gap-3">
           <button
-            key={key}
             type="button"
-            onClick={() => setMonth(key)}
-            className={cn(
-              "shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
-              month === key
-                ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
-                : "glass text-glass-sub",
-            )}
+            aria-label="Mês anterior"
+            onClick={() => handleSelectMonth(shiftMonth(selectedMonth, -1))}
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
-            {monthShortLabel(key)}
+            <ChevronLeft className="size-4" />
           </button>
-        ))}
+          <p className="min-w-0 flex-1 truncate text-center text-[13px] font-bold uppercase tracking-wide text-glass-ink dark:text-white">
+            {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)}
+          </p>
+          <button
+            type="button"
+            aria-label="Próximo mês"
+            onClick={() => handleSelectMonth(shiftMonth(selectedMonth, 1))}
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+
+        <div className="mt-3 flex w-full items-center gap-1.5 border-t border-glass-ink/5 px-1 pt-3 dark:border-white/10">
+          <PeriodPicker
+            mode={periodMode}
+            selectedMonth={selectedMonth}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onModeChange={(nextMode) => {
+              if (nextMode === "current") setMonth(currentMonthKey);
+              setPeriodMode(nextMode);
+            }}
+            onRangeChange={(start, end) => {
+              setRangeStart(start);
+              setRangeEnd(end);
+            }}
+          />
+        </div>
       </div>
 
       {/* Search and category filter */}
