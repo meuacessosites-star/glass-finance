@@ -124,7 +124,7 @@ function PeriodPicker({
   const triggerLabel = mode === "current"
     ? "Este mês"
     : mode === "month"
-      ? "Selecionar mês"
+      ? "Mês selecionado"
       : rangeLabel;
 
   useEffect(() => {
@@ -207,20 +207,6 @@ function PeriodPicker({
               )}
             >
               Este mês
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onModeChange("month");
-                onRangeChange(null, null);
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
-                mode === "month" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
-              )}
-            >
-              Selecionar mês
             </button>
             <button
               type="button"
