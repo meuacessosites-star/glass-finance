@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
+import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import { useAppStore, type AppCard } from "@/lib/app-store";
@@ -106,6 +107,7 @@ type CardActionMenuProps = {
   onEdit: () => void;
   onRecalculate: () => void;
   onReconcile: () => void;
+  onInstallInvoice: () => void;
   onEditClosingDay: () => void;
   onHistory: () => void;
   onExpenses: () => void;
@@ -120,6 +122,7 @@ function CardActionMenu({
   onEdit,
   onRecalculate,
   onReconcile,
+  onInstallInvoice,
   onEditClosingDay,
   onHistory,
   onExpenses,
@@ -169,6 +172,7 @@ function CardActionMenu({
     { label: "Editar", icon: Pencil, action: onEdit },
     { label: "Reajustar fatura", icon: SlidersHorizontal, action: onRecalculate },
     { label: "Realizar conciliação", icon: Handshake, action: onReconcile },
+    { label: "Parcelar fatura", icon: CreditCard, action: onInstallInvoice },
     { label: "Editar dia fechamento", icon: CalendarClock, action: onEditClosingDay },
     { label: "Histórico de faturas", icon: History, action: onHistory },
     { label: "Despesas associadas", icon: ReceiptText, action: onExpenses },
@@ -251,6 +255,7 @@ type InvoiceSummaryCardProps = {
   onEdit: () => void;
   onRecalculate: () => void;
   onReconcile: () => void;
+  onInstallInvoice: () => void;
   onEditClosingDay: () => void;
   onHistory: () => void;
   onExpenses: () => void;
@@ -279,6 +284,7 @@ type InvoicePaymentModalProps = {
   month: string;
   totalAmount: number;
   alreadyPaidAmount: number;
+  initialMode?: PaymentMode;
   onClose: () => void;
   onConfirm: (payment: InvoicePaymentRecord) => void;
 };
@@ -296,6 +302,7 @@ function InvoicePaymentModal({
   month,
   totalAmount,
   alreadyPaidAmount,
+  initialMode = "full",
   onClose,
   onConfirm,
 }: InvoicePaymentModalProps) {
@@ -303,7 +310,7 @@ function InvoicePaymentModal({
     0,
     totalAmount - Math.min(totalAmount, Math.max(0, alreadyPaidAmount)),
   );
-  const [mode, setMode] = useState<PaymentMode>("full");
+  const [mode, setMode] = useState<PaymentMode>(initialMode);
   const [partialValue, setPartialValue] = useState(outstandingAmount.toFixed(2));
   const [installmentCount, setInstallmentCount] = useState("3");
   const [step, setStep] = useState<"form" | "confirmation">("form");
@@ -639,6 +646,7 @@ function InvoiceSummaryCard({
   onEdit,
   onRecalculate,
   onReconcile,
+  onInstallInvoice,
   onEditClosingDay,
   onHistory,
   onExpenses,
@@ -683,9 +691,7 @@ function InvoiceSummaryCard({
       <div className="relative flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
 
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/30 bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
-            <CreditCard className="size-4" />
-          </div>
+          <CardBrandMark card={card} className="h-9 shrink-0" />
           <div className="min-w-0">
             <p className="truncate text-[13px] font-bold tracking-wide">
               {card.name}
@@ -704,6 +710,7 @@ function InvoiceSummaryCard({
             onEdit={onEdit}
             onRecalculate={onRecalculate}
             onReconcile={onReconcile}
+            onInstallInvoice={onInstallInvoice}
             onEditClosingDay={onEditClosingDay}
             onHistory={onHistory}
             onExpenses={onExpenses}
@@ -766,6 +773,9 @@ function InvoiceSummaryCard({
           Vencimento: {card.dueDay ? `Dia ${card.dueDay}` : "—"}
         </span>
       </div>
+      <p className="relative mt-1 text-[10px] font-medium text-white/65">
+        Conta vinculada: {card.institution || "Conta principal"}
+      </p>
 
       <div className="relative mt-2 flex items-center justify-between text-[9px] font-medium text-white/65">
         <span>Total da fatura: {formatCurrency(invoiceTotal)}</span>
@@ -811,6 +821,7 @@ export default function CardPurchasesPage() {
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<InvoiceStatusFilter>("all");
   const [paymentCard, setPaymentCard] = useState<AppCard | null>(null);
+  const [paymentInitialMode, setPaymentInitialMode] = useState<PaymentMode>("full");
   const [zeroInvoiceCard, setZeroInvoiceCard] = useState<AppCard | null>(null);
   const [utilityCard, setUtilityCard] = useState<AppCard | null>(null);
   const [utilityKind, setUtilityKind] = useState<"amount" | "closingDay" | null>(null);
@@ -913,13 +924,14 @@ export default function CardPurchasesPage() {
       paidAmount,
     };
   };
-  const handleRequestPayment = (card: AppCard) => {
+  const handleRequestPayment = (card: AppCard, mode: PaymentMode = "full") => {
     const grossAmount = openAmountByCard[card.id] ?? 0;
     const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount);
     if (totalAmount <= 0) {
       setZeroInvoiceCard(card);
       return;
     }
+    setPaymentInitialMode(mode);
     setPaymentCard(card);
   };
 
@@ -927,6 +939,7 @@ export default function CardPurchasesPage() {
     if (!paymentCard) return;
     setCardInvoicePayment(paymentCard.id, selectedMonth, payment);
     setPaymentCard(null);
+    setPaymentInitialMode("full");
     toast(
       payment.installments && payment.installments > 1
         ? `Pagamento parcelado registrado em ${payment.installments}x`
@@ -983,6 +996,7 @@ export default function CardPurchasesPage() {
   const cardActions = (card: AppCard) => ({
     onRequestPayment: () => handleRequestPayment(card),
     onReopenInvoice: () => handleReopenInvoice(card),
+    onInstallInvoice: () => handleRequestPayment(card, "installments"),
     onEdit: () => navigate("/dashboard/cartoes", { state: { editCardId: card.id } }),
     onRecalculate: () => {
       setSelectedCardId(card.id);
@@ -1236,7 +1250,11 @@ export default function CardPurchasesPage() {
           month={selectedMonth}
           totalAmount={invoiceMetricsFor(paymentCard).invoiceTotal}
           alreadyPaidAmount={invoiceMetricsFor(paymentCard).paidAmount}
-          onClose={() => setPaymentCard(null)}
+          initialMode={paymentInitialMode}
+          onClose={() => {
+            setPaymentCard(null);
+            setPaymentInitialMode("full");
+          }}
           onConfirm={handleConfirmPayment}
         />
       )}

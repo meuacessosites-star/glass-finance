@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
+import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import { currentMonthKey, formatCurrency } from "@/lib/mock-data";
@@ -229,7 +230,7 @@ function CardVisual({
           <span className="text-[11px] font-medium text-white/75">
             GranaScan · Cartão pessoal
           </span>
-          <div className="h-6 w-8 rounded-md bg-gradient-to-br from-yellow-200 to-yellow-400/90" />
+          <CardBrandMark card={card} />
         </div>
       </div>
 
