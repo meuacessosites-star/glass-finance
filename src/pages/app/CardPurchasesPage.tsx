@@ -84,31 +84,48 @@ function transactionInPeriod(
   transaction: Transaction,
   selectedMonth: string,
   untilDate?: string | null,
+  fromDate?: string | null,
 ): boolean {
-  const startDate = `${selectedMonth}-01`;
-  const endDate = untilDate && untilDate >= startDate
-    ? untilDate
-    : `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
+  const startDate = fromDate ?? `${selectedMonth}-01`;
+  const defaultEndDate = `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
+  const endDate = untilDate && untilDate >= startDate ? untilDate : defaultEndDate;
   return transaction.date >= startDate && transaction.date <= endDate;
 }
 
-type PeriodUntilPickerProps = {
+type PeriodMode = "current" | "month" | "custom";
+
+type PeriodPickerProps = {
+  mode: PeriodMode;
   selectedMonth: string;
-  value: string | null;
-  onChange: (value: string | null) => void;
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  onModeChange: (mode: PeriodMode) => void;
+  onRangeChange: (start: string | null, end: string | null) => void;
 };
 
-function PeriodUntilPicker({
+function PeriodPicker({
+  mode,
   selectedMonth,
-  value,
-  onChange,
-}: PeriodUntilPickerProps) {
+  rangeStart,
+  rangeEnd,
+  onModeChange,
+  onRangeChange,
+}: PeriodPickerProps) {
   const [open, setOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(selectedMonth);
+  const [calendarMonth, setCalendarMonth] = useState(rangeStart ? monthKey(rangeStart) : selectedMonth);
+  const [draftStart, setDraftStart] = useState<string | null>(rangeStart);
+  const [draftEnd, setDraftEnd] = useState<string | null>(rangeEnd);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const minimumDate = `${selectedMonth}-01`;
   const calendarDays = calendarDaysForMonth(calendarMonth);
+  const rangeLabel = rangeStart && rangeEnd
+    ? `${formatDateLabel(rangeStart)} → ${formatDateLabel(rangeEnd)}`
+    : "Personalizado";
+  const triggerLabel = mode === "current"
+    ? "Este mês"
+    : mode === "month"
+      ? "Selecionar mês"
+      : rangeLabel;
 
   useEffect(() => {
     if (!open) return;
@@ -128,21 +145,28 @@ function PeriodUntilPicker({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [minimumDate, open, selectedMonth, value]);
+  }, [open]);
 
-  const handlePick = (date: string) => {
-    if (date < minimumDate) return;
-    onChange(date);
-    setOpen(false);
+  const openCustomCalendar = () => {
+    setDraftStart(rangeStart);
+    setDraftEnd(rangeEnd);
+    setCalendarMonth(rangeStart ? monthKey(rangeStart) : selectedMonth);
+    onModeChange("custom");
+    setOpen(true);
   };
 
-  const handleToggle = () => {
-    if (!open) {
-      setCalendarMonth(
-        value && value >= minimumDate ? monthKey(value) : selectedMonth,
-      );
+  const handlePick = (date: string) => {
+    if (!draftStart || draftEnd) {
+      setDraftStart(date);
+      setDraftEnd(null);
+      onRangeChange(null, null);
+      return;
     }
-    setOpen((current) => !current);
+    const [start, end] = date < draftStart ? [date, draftStart] : [draftStart, date];
+    setDraftStart(start);
+    setDraftEnd(end);
+    onRangeChange(start, end);
+    setOpen(false);
   };
 
   return (
@@ -150,16 +174,18 @@ function PeriodUntilPicker({
       <button
         ref={triggerRef}
         type="button"
-        aria-label="Selecionar período até uma data"
+        aria-label="Selecionar período"
         aria-expanded={open}
-        onClick={handleToggle}
+        onClick={() => setOpen((current) => !current)}
         className={cn(
           "flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
-          value ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]" : "glass text-glass-sub",
+          mode === "custom"
+            ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+            : "glass text-glass-sub",
         )}
       >
         <CalendarDays className="size-3.5" />
-        {value ? `Até ${formatDateLabel(value)}` : "Até"}
+        {triggerLabel}
       </button>
 
       {open && popoverPosition && createPortal(
@@ -167,79 +193,128 @@ function PeriodUntilPicker({
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
           className="fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
-              aria-label="Mês anterior do período final"
-              onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
-              className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+              onClick={() => {
+                onModeChange("current");
+                onRangeChange(null, null);
+                setOpen(false);
+              }}
+              className={cn(
+                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
+                mode === "current" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
+              )}
             >
-              <ChevronLeft className="size-4" />
+              Este mês
             </button>
-            <p className="text-[12px] font-bold uppercase tracking-wide">
-              {monthShortLabel(calendarMonth)} {calendarMonth.slice(0, 4)}
-            </p>
             <button
               type="button"
-              aria-label="Próximo mês do período final"
-              onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
-              className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+              onClick={() => {
+                onModeChange("month");
+                onRangeChange(null, null);
+                setOpen(false);
+              }}
+              className={cn(
+                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
+                mode === "month" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
+              )}
             >
-              <ChevronRight className="size-4" />
+              Selecionar mês
+            </button>
+            <button
+              type="button"
+              onClick={openCustomCalendar}
+              className={cn(
+                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
+                mode === "custom" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
+              )}
+            >
+              Personalizado
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] font-medium text-glass-faint">
-            Selecione a data final do período iniciado em {monthShortLabel(selectedMonth)}.
-          </p>
-          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase text-glass-faint">
-            {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
-              <span key={`${day}-${index}`}>{day}</span>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {calendarDays.map((date, index) => {
-              if (!date) return <span key={`empty-${index}`} />;
-              const disabled = date < minimumDate;
-              const selected = date === value;
-              return (
+
+          {mode === "custom" && (
+            <>
+              <div className="mt-3 flex items-center justify-between gap-2">
                 <button
-                  key={date}
                   type="button"
-                  disabled={disabled}
-                  aria-label={formatDateLabel(date)}
-                  aria-pressed={selected}
-                  onClick={() => handlePick(date)}
-                  className={cn(
-                    "flex aspect-square items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
-                    selected
-                      ? "bg-primary text-white"
-                      : disabled
-                        ? "cursor-not-allowed text-glass-faint/40"
-                        : "text-glass-sub hover:bg-primary/10 hover:text-primary",
-                  )}
+                  aria-label="Mês anterior do período personalizado"
+                  onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
+                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
                 >
-                  {date.slice(-2).replace(/^0/, "")}
+                  <ChevronLeft className="size-4" />
                 </button>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex items-center justify-between border-t border-glass-ink/5 pt-2 dark:border-white/10">
-            <p className="text-[10px] font-medium text-glass-faint">
-              {value ? `Até ${formatDateLabel(value)}` : "Nenhum limite aplicado"}
-            </p>
-            {value && (
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(null);
-                  setCalendarMonth(selectedMonth);
-                }}
-                className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
-              >
-                Limpar
-              </button>
-            )}
-          </div>
+                <p className="text-[12px] font-bold uppercase tracking-wide">
+                  {monthShortLabel(calendarMonth)} {calendarMonth.slice(0, 4)}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Próximo mês do período personalizado"
+                  onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
+                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+              <p className="mt-2 text-center text-[10px] font-medium text-glass-faint">
+                Escolha a data inicial e depois a data final.
+              </p>
+              <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase text-glass-faint">
+                {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
+                  <span key={`${day}-${index}`}>{day}</span>
+                ))}
+              </div>
+              <div className="mt-1 grid grid-cols-7 gap-1">
+                {calendarDays.map((date, index) => {
+                  if (!date) return <span key={`empty-${index}`} />;
+                  const selected = date === draftStart || date === draftEnd;
+                  const inRange = Boolean(draftStart && draftEnd && date > draftStart && date < draftEnd);
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      aria-label={formatDateLabel(date)}
+                      aria-pressed={selected}
+                      onClick={() => handlePick(date)}
+                      className={cn(
+                        "flex aspect-square items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                        selected
+                          ? "bg-primary text-white"
+                          : inRange
+                            ? "bg-primary/10 text-primary"
+                            : "text-glass-sub hover:bg-primary/10 hover:text-primary",
+                      )}
+                    >
+                      {date.slice(-2).replace(/^0/, "")}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-glass-ink/5 pt-2 dark:border-white/10">
+                <p className="text-[10px] font-medium text-glass-faint">
+                  {draftStart && draftEnd
+                    ? `${formatDateLabel(draftStart)} → ${formatDateLabel(draftEnd)}`
+                    : draftStart
+                      ? `Início: ${formatDateLabel(draftStart)}`
+                      : "Nenhum período aplicado"}
+                </p>
+                {(rangeStart || rangeEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftStart(null);
+                      setDraftEnd(null);
+                      onRangeChange(null, null);
+                    }}
+                    className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>,
         document.body,
       )}
@@ -1221,7 +1296,9 @@ export default function CardPurchasesPage() {
     deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>(currentMonthKey);
-  const [untilDate, setUntilDate] = useState<string | null>(null);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [transactionSearchScope, setTransactionSearchScope] =
@@ -1268,22 +1345,17 @@ export default function CardPurchasesPage() {
     : monthOptions.includes(currentMonthKey)
       ? currentMonthKey
       : monthOptions[0];
-  const selectedPeriodLabel = untilDate
-    ? `${monthShortLabel(selectedMonth)} 01 → ${formatDateLabel(untilDate)}`
+  const activeRangeStart = periodMode === "custom" && rangeStart && rangeEnd ? rangeStart : null;
+  const activeRangeEnd = periodMode === "custom" && rangeStart && rangeEnd ? rangeEnd : null;
+  const selectedPeriodLabel = activeRangeStart && activeRangeEnd
+    ? `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
     : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
   const handleSelectMonth = (nextMonth: string) => {
     setMonth(nextMonth);
-    setUntilDate((current) => (current && monthKey(current) === nextMonth ? current : null));
+    setPeriodMode(nextMonth === currentMonthKey ? "current" : "month");
+    setRangeStart(null);
+    setRangeEnd(null);
   };
-  const visibleMonthOptions = useMemo(() => {
-    const selectedIndex = Math.max(0, monthOptions.indexOf(selectedMonth));
-    const windowSize = Math.min(5, monthOptions.length);
-    const start = Math.max(
-      0,
-      Math.min(selectedIndex - Math.floor(windowSize / 2), monthOptions.length - windowSize),
-    );
-    return monthOptions.slice(start, start + windowSize);
-  }, [monthOptions, selectedMonth]);
   const visibleCards = useMemo(
     () =>
       cards.filter((card) => {
@@ -1305,12 +1377,12 @@ export default function CardPurchasesPage() {
           .filter(
             (transaction) =>
               transaction.cardId === card.id &&
-              transactionInPeriod(transaction, selectedMonth, untilDate),
+              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
           )
           .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
         return totals;
       }, {}),
-    [cards, cardTransactions, selectedMonth, untilDate],
+    [activeRangeEnd, activeRangeStart, cards, cardTransactions, selectedMonth],
   );
 
   const selectedCardTransactions = useMemo(
@@ -1319,10 +1391,10 @@ export default function CardPurchasesPage() {
         ? cardTransactions.filter(
             (transaction) =>
               transaction.cardId === selectedCard.id &&
-              transactionInPeriod(transaction, selectedMonth, untilDate),
+              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
           )
         : [],
-    [cardTransactions, selectedCard, selectedMonth, untilDate],
+    [activeRangeEnd, activeRangeStart, cardTransactions, selectedCard, selectedMonth],
   );
 
   const selectedCardHistoryTransactions = useMemo(
@@ -1374,7 +1446,7 @@ export default function CardPurchasesPage() {
   );
   const invoiceMetricsFor = (card: AppCard) => {
     const openAmount = openAmountByCard[card.id] ?? 0;
-    const invoiceTotal = invoiceTotalFor(card, selectedMonth, openAmount, untilDate);
+    const invoiceTotal = invoiceTotalFor(card, selectedMonth, openAmount, activeRangeEnd);
     const paidAmount = Math.min(
       invoiceTotal,
       Math.max(0, invoicePaymentFor(card, selectedMonth)?.paidAmount ?? 0),
@@ -1387,7 +1459,7 @@ export default function CardPurchasesPage() {
   };
   const handleRequestPayment = (card: AppCard, mode: PaymentMode = "full") => {
     const grossAmount = openAmountByCard[card.id] ?? 0;
-    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, untilDate);
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, activeRangeEnd);
     if (totalAmount <= 0) {
       setZeroInvoiceCard(card);
       return;
@@ -1412,7 +1484,7 @@ export default function CardPurchasesPage() {
 
   const handleReopenInvoice = (card: AppCard) => {
     const grossAmount = openAmountByCard[card.id] ?? 0;
-    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, untilDate);
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, activeRangeEnd);
     const payment = invoicePaymentFor(card, selectedMonth);
     if (payment && payment.paidAmount >= totalAmount) {
       setCardInvoicePayment(card.id, selectedMonth, {
@@ -1509,7 +1581,7 @@ export default function CardPurchasesPage() {
       </div>
 
       <div className="glass rounded-2xl p-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             aria-label="Mês anterior"
@@ -1518,23 +1590,9 @@ export default function CardPurchasesPage() {
           >
             <ChevronLeft className="size-4" />
           </button>
-          <div className="no-scrollbar flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto px-0.5 py-0.5">
-            {visibleMonthOptions.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => handleSelectMonth(key)}
-                className={cn(
-                  "min-w-[78px] shrink-0 snap-center whitespace-nowrap rounded-full px-3 py-2 text-center text-[12px] font-semibold transition-all",
-                  selectedMonth === key
-                    ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
-                    : "glass text-glass-sub",
-                )}
-              >
-                {monthShortLabel(key)} {key.slice(0, 4)}
-              </button>
-            ))}
-          </div>
+          <p className="min-w-0 flex-1 truncate text-center text-[13px] font-bold uppercase tracking-wide text-glass-ink dark:text-white">
+            {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)}
+          </p>
           <button
             type="button"
             aria-label="Próximo mês"
@@ -1545,7 +1603,18 @@ export default function CardPurchasesPage() {
           </button>
         </div>
 
-        <div className="mt-3 flex w-full items-center gap-1.5 overflow-x-auto border-t border-glass-ink/5 px-1 pt-3">
+        <div className="mt-3 flex w-full items-center gap-1.5 border-t border-glass-ink/5 px-1 pt-3 dark:border-white/10">
+          <PeriodPicker
+            mode={periodMode}
+            selectedMonth={selectedMonth}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onModeChange={setPeriodMode}
+            onRangeChange={(start, end) => {
+              setRangeStart(start);
+              setRangeEnd(end);
+            }}
+          />
           {(["all", "open", "paid"] as const).map((status) => {
             const labels: Record<InvoiceStatusFilter, string> = {
               all: "Todas",
@@ -1558,7 +1627,7 @@ export default function CardPurchasesPage() {
                 type="button"
                 onClick={() => setInvoiceStatusFilter(status)}
                 className={cn(
-                  "min-w-[88px] flex-1 shrink-0 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
+                  "min-w-[74px] flex-1 rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all",
                   invoiceStatusFilter === status
                     ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
                     : "glass text-glass-sub",
@@ -1568,11 +1637,6 @@ export default function CardPurchasesPage() {
               </button>
             );
           })}
-          <PeriodUntilPicker
-            selectedMonth={selectedMonth}
-            value={untilDate}
-            onChange={setUntilDate}
-          />
         </div>
       </div>
 
