@@ -4,7 +4,9 @@ import {
   CreditCard,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
+  Archive,
   Trash2,
   Wifi,
   X,
@@ -268,6 +270,9 @@ export default function CardsPage() {
     deleteCard,
   } = useAppStore();
 
+  const activeCards = cards.filter((card) => !card.archived);
+  const archivedCards = cards.filter((card) => card.archived);
+
   const openAmountByCard = transactions.reduce<Record<string, number>>(
     (totals, transaction) => {
       if (
@@ -353,6 +358,11 @@ export default function CardsPage() {
     window.history.replaceState({}, "", window.location.href);
   }, [requestedEditId]);
 
+  const handleRestore = (card: AppCard) => {
+    updateCard(card.id, { archived: false });
+    toast(`${card.name} restaurado`);
+  };
+
   const handleSave = () => {
     const trimmedName = form.name.trim();
     if (!trimmedName) {
@@ -425,7 +435,7 @@ export default function CardsPage() {
           </div>
         )}
 
-        {cards.map((card) => (
+        {activeCards.map((card) => (
             <CardVisual
             key={card.id}
             card={card}
@@ -443,7 +453,56 @@ export default function CardsPage() {
             }}
           />
         ))}
+
+        {cards.length > 0 && activeCards.length === 0 && (
+          <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
+              <Archive className="size-6 text-glass-faint" />
+            </div>
+            <div>
+              <p className="text-[15px] font-semibold text-glass-ink">Todos os cartões estão arquivados</p>
+              <p className="mt-1 text-[13px] text-glass-sub">Consulte a seção de arquivados abaixo para restaurar um cartão.</p>
+            </div>
+          </div>
+        )}
       </div>
+
+      {archivedCards.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <Archive className="size-4 text-glass-sub" />
+              <h2 className="text-[15px] font-bold text-glass-ink">Cartões arquivados</h2>
+            </div>
+            <span className="text-[11px] font-semibold text-glass-faint">{archivedCards.length} cartão(ões)</span>
+          </div>
+          <p className="px-1 text-[12px] text-glass-sub">Cartões arquivados continuam disponíveis para consulta e podem ser restaurados a qualquer momento.</p>
+          <div className="space-y-3">
+            {archivedCards.map((card) => (
+              <div key={card.id} className="space-y-2">
+                <CardVisual
+                  card={card}
+                  openAmount={openAmountByCard[card.id] ?? 0}
+                  onEdit={() => handleEdit(card)}
+                  onDelete={() => {
+                    deleteCard(card.id);
+                    if (editingId === card.id) resetForm();
+                    toast("Cartão removido");
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRestore(card)}
+                  className="glass flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-[0.99]"
+                >
+                  <RotateCcw className="size-3.5" />
+                  Restaurar cartão
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="glass rounded-3xl p-4">
         <FormCardPreview form={form} />

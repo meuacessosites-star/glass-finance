@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  Handshake,
   History,
   LockKeyhole,
   LockOpen,
@@ -21,6 +20,17 @@ import {
   Trash2,
   TrendingUp,
 } from "lucide-react";
+import {
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { CardBrandMark } from "@/components/app/CardBrandMark";
@@ -298,7 +308,6 @@ type CardActionMenuProps = {
   card: AppCard;
   onEdit: () => void;
   onRecalculate: () => void;
-  onReconcile: () => void;
   onInstallInvoice: () => void;
   onEditClosingDay: () => void;
   onHistory: () => void;
@@ -313,7 +322,6 @@ function CardActionMenu({
   card,
   onEdit,
   onRecalculate,
-  onReconcile,
   onInstallInvoice,
   onEditClosingDay,
   onHistory,
@@ -363,7 +371,6 @@ function CardActionMenu({
   const options = [
     { label: "Editar", icon: Pencil, action: onEdit },
     { label: "Reajustar fatura", icon: SlidersHorizontal, action: onRecalculate },
-    { label: "Realizar conciliação", icon: Handshake, action: onReconcile },
     { label: "Parcelar fatura", icon: CreditCard, action: onInstallInvoice },
     { label: "Editar dia fechamento", icon: CalendarClock, action: onEditClosingDay },
     { label: "Histórico de faturas", icon: History, action: onHistory },
@@ -446,7 +453,6 @@ type InvoiceSummaryCardProps = {
   onReopenInvoice: () => void;
   onEdit: () => void;
   onRecalculate: () => void;
-  onReconcile: () => void;
   onInstallInvoice: () => void;
   onEditClosingDay: () => void;
   onHistory: () => void;
@@ -692,6 +698,214 @@ function InvoicePaymentModal({
   );
 }
 
+type CardAnalyticsKind = "categoryChart" | "monthlyTrend";
+
+type CardAnalyticsModalProps = {
+  card: AppCard;
+  kind: CardAnalyticsKind;
+  transactions: Transaction[];
+  categoryById: Record<string, { label: string; color: string }>;
+  onClose: () => void;
+};
+
+function CardAnalyticsModal({
+  card,
+  kind,
+  transactions,
+  categoryById,
+  onClose,
+}: CardAnalyticsModalProps) {
+  const cardTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.cardId === card.id),
+    [card.id, transactions],
+  );
+  const byCategory = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const transaction of cardTransactions) {
+      totals.set(
+        transaction.categoryId,
+        (totals.get(transaction.categoryId) ?? 0) + Math.abs(transaction.amount),
+      );
+    }
+    return [...totals.entries()]
+      .map(([categoryId, value]) => ({
+        categoryId,
+        name: categoryById[categoryId]?.label ?? "Outros",
+        value,
+        color: categoryById[categoryId]?.color ?? "#8E8E93",
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [cardTransactions, categoryById]);
+  const totalSpent = byCategory.reduce((sum, item) => sum + item.value, 0);
+  const monthlyData = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const transaction of cardTransactions) {
+      const key = monthKey(transaction.date);
+      totals.set(key, (totals.get(key) ?? 0) + Math.abs(transaction.amount));
+    }
+    const months = [...new Set([currentMonthKey, ...totals.keys()])]
+      .sort((a, b) => a.localeCompare(b))
+      .slice(-12);
+    return months.map((key) => ({
+      month: monthShortLabel(key),
+      value: totals.get(key) ?? 0,
+      key,
+    }));
+  }, [cardTransactions]);
+  const isCategoryChart = kind === "categoryChart";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="card-analytics-title"
+          className="glass glass-strong w-full max-w-md rounded-3xl bg-[#f4f8ff] p-5 text-glass-ink shadow-[0_24px_70px_-24px_rgba(15,40,90,0.65)] dark:bg-[#0d1b3e] dark:text-white"
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 24, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                Análise do cartão
+              </p>
+              <h2 id="card-analytics-title" className="mt-1 text-[20px] font-bold">
+                {isCategoryChart ? "Gastos por categoria" : "Evolução mensal"}
+              </h2>
+              <p className="mt-1 text-[13px] text-glass-sub">
+                {card.name} ····{card.last4} · histórico de compras de crédito
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Fechar análise do cartão"
+              onClick={onClose}
+              className="rounded-full px-2 py-1 text-[18px] leading-none text-glass-faint transition-colors hover:text-glass-ink dark:hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+
+          {cardTransactions.length === 0 ? (
+            <div className="glass glass-soft mt-5 rounded-2xl px-4 py-8 text-center">
+              <p className="text-[14px] font-semibold text-glass-ink">
+                Ainda não há compras para analisar
+              </p>
+              <p className="mt-1 text-[12px] text-glass-sub">
+                As compras normais de crédito deste cartão aparecerão aqui.
+              </p>
+            </div>
+          ) : isCategoryChart ? (
+            <>
+              <div className="relative mt-4 h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={byCategory}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="64%"
+                      outerRadius="90%"
+                      paddingAngle={3}
+                      cornerRadius={6}
+                      stroke="none"
+                    >
+                      {byCategory.map((entry) => (
+                        <Cell key={entry.categoryId} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: "none",
+                        background: "rgba(244,248,255,0.96)",
+                        color: "#1c2a4a",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <p className="text-[11px] font-medium text-glass-sub">Total gasto</p>
+                  <p className="amount-tabular text-[18px] font-bold text-glass-ink">
+                    {formatCurrency(totalSpent)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">
+                {byCategory.map((entry) => (
+                  <div key={entry.categoryId} className="flex items-center gap-2.5 text-[12.5px]">
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <span className="flex-1 text-glass-sub">{entry.name}</span>
+                    <span className="font-semibold text-glass-ink">{formatCurrency(entry.value)}</span>
+                    <span className="w-9 text-right text-glass-faint">
+                      {totalSpent ? `${Math.round((entry.value / totalSpent) * 100)}%` : "0%"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-4 h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <XAxis
+                      dataKey="month"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "var(--glass-faint)", fontWeight: 600 }}
+                      dy={6}
+                    />
+                    <YAxis hide />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.key ?? ""}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: "none",
+                        background: "rgba(244,248,255,0.96)",
+                        color: "#1c2a4a",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      name="Gastos"
+                      stroke="#2F6BFF"
+                      strokeWidth={3}
+                      dot={{ r: 3, fill: "#2F6BFF", strokeWidth: 0 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">
+                {[...monthlyData].reverse().map((entry) => (
+                  <div key={entry.key} className="flex items-center justify-between text-[12.5px]">
+                    <span className="text-glass-sub">{monthShortLabel(entry.key)} {entry.key.slice(0, 4)}</span>
+                    <span className="font-semibold text-glass-ink">{formatCurrency(entry.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 type InvoiceNumberModalProps = {
   card: AppCard;
   month: string;
@@ -837,7 +1051,6 @@ function InvoiceSummaryCard({
   onReopenInvoice,
   onEdit,
   onRecalculate,
-  onReconcile,
   onInstallInvoice,
   onEditClosingDay,
   onHistory,
@@ -901,7 +1114,6 @@ function InvoiceSummaryCard({
             card={card}
             onEdit={onEdit}
             onRecalculate={onRecalculate}
-            onReconcile={onReconcile}
             onInstallInvoice={onInstallInvoice}
             onEditClosingDay={onEditClosingDay}
             onHistory={onHistory}
@@ -1006,7 +1218,6 @@ export default function CardPurchasesPage() {
     setCardInvoiceStatus,
     setCardInvoicePayment,
     setCardInvoiceOverride,
-    setCardInvoiceReconciled,
     deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>(currentMonthKey);
@@ -1022,7 +1233,9 @@ export default function CardPurchasesPage() {
   const [paymentInitialMode, setPaymentInitialMode] = useState<PaymentMode>("full");
   const [zeroInvoiceCard, setZeroInvoiceCard] = useState<AppCard | null>(null);
   const [utilityCard, setUtilityCard] = useState<AppCard | null>(null);
-  const [utilityKind, setUtilityKind] = useState<"amount" | "closingDay" | null>(null);
+  const [utilityKind, setUtilityKind] = useState<
+    "amount" | "closingDay" | CardAnalyticsKind | null
+  >(null);
 
   const cardTransactions = useMemo(
     () =>
@@ -1254,11 +1467,6 @@ export default function CardPurchasesPage() {
       setUtilityCard(card);
       setUtilityKind("amount");
     },
-    onReconcile: () => {
-      const nextValue = !card.invoiceReconciledByMonth?.[selectedMonth];
-      setCardInvoiceReconciled(card.id, selectedMonth, nextValue);
-      toast(nextValue ? "Fatura conciliada" : "Conciliação removida");
-    },
     onEditClosingDay: () => {
       setUtilityCard(card);
       setUtilityKind("closingDay");
@@ -1270,11 +1478,13 @@ export default function CardPurchasesPage() {
     onExpenses: () => handleAssociatedExpenses(card),
     onCategoryChart: () => {
       setSelectedCardId(card.id);
-      toast("Gráfico por categorias selecionado no extrato");
+      setUtilityCard(card);
+      setUtilityKind("categoryChart");
     },
     onMonthlyTrend: () => {
       setSelectedCardId(card.id);
-      toast("Evolução mensal selecionada no histórico");
+      setUtilityCard(card);
+      setUtilityKind("monthlyTrend");
     },
     onArchive: () => handleArchiveCard(card),
     onDelete: () => handleDeleteCard(card),
@@ -1585,7 +1795,19 @@ export default function CardPurchasesPage() {
           onClose={() => setZeroInvoiceCard(null)}
         />
       )}
-      {utilityCard && utilityKind && (
+      {utilityCard && (utilityKind === "categoryChart" || utilityKind === "monthlyTrend") && (
+        <CardAnalyticsModal
+          card={utilityCard}
+          kind={utilityKind}
+          transactions={cardTransactions}
+          categoryById={categoryById}
+          onClose={() => {
+            setUtilityCard(null);
+            setUtilityKind(null);
+          }}
+        />
+      )}
+      {utilityCard && (utilityKind === "amount" || utilityKind === "closingDay") && (
         <InvoiceNumberModal
           card={utilityCard}
           month={selectedMonth}
