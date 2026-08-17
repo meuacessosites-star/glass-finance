@@ -84,6 +84,72 @@ type PeriodPickerProps = {
   onRangeChange: (start: string | null, end: string | null) => void;
 };
 
+type MonthMultiPickerProps = {
+  monthOptions: string[];
+  selectedMonths: string[];
+  onSelectedMonthsChange: (months: string[]) => void;
+};
+
+function MonthMultiPicker({
+  monthOptions,
+  selectedMonths,
+  onSelectedMonthsChange,
+}: MonthMultiPickerProps) {
+  const label = selectedMonths.length === 0
+    ? "Meses"
+    : selectedMonths.length === 1
+      ? "1 mês"
+      : `${selectedMonths.length} meses`;
+
+  const toggleMonth = (month: string) => {
+    const nextMonths = selectedMonths.includes(month)
+      ? selectedMonths.filter((current) => current !== month)
+      : [...selectedMonths, month].sort((a, b) => b.localeCompare(a));
+    onSelectedMonthsChange(nextMonths);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Selecionar um ou mais meses"
+          className={cn(
+            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all",
+            selectedMonths.length > 0
+              ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+              : "glass text-glass-sub",
+          )}
+        >
+          <CalendarDays className="size-3.5 shrink-0" />
+          <span className="truncate">{label}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="glass-strong w-64">
+        <DropdownMenuItem
+          disabled={selectedMonths.length === 0}
+          onSelect={() => onSelectedMonthsChange([])}
+        >
+          <X className="size-4" />
+          Limpar meses
+        </DropdownMenuItem>
+        {monthOptions.map((monthOption) => (
+          <DropdownMenuCheckboxItem
+            key={monthOption}
+            checked={selectedMonths.includes(monthOption)}
+            onSelect={(event) => {
+              event.preventDefault();
+              toggleMonth(monthOption);
+            }}
+          >
+            {monthShortLabel(monthOption)} {monthOption.slice(0, 4)}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function PeriodPicker({
   mode,
   selectedMonth,
@@ -101,14 +167,6 @@ function PeriodPicker({
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarDays = calendarDaysForMonth(calendarMonth);
-  const rangeLabel = rangeStart && rangeEnd
-    ? `${formatDateLabel(rangeStart)} → ${formatDateLabel(rangeEnd)}`
-    : "Personalizado";
-  const triggerLabel = mode === "current"
-    ? "Este mês"
-    : mode === "month"
-      ? "Mês selecionado"
-      : rangeLabel;
 
   useEffect(() => {
     if (!open) return;
@@ -156,22 +214,44 @@ function PeriodPicker({
   };
 
   return (
-    <div className="relative shrink-0">
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <button
+        type="button"
+        aria-label="Selecionar este mês"
+        onClick={() => {
+          onModeChange("current");
+          onRangeChange(null, null);
+          setOpen(false);
+        }}
+        className={cn(
+          "flex min-w-0 flex-1 items-center justify-center rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all",
+          mode === "current"
+            ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
+            : "glass text-glass-sub",
+        )}
+      >
+        <span className="truncate">Este mês</span>
+      </button>
       <button
         ref={triggerRef}
         type="button"
-        aria-label="Selecionar período"
+        aria-label="Selecionar período personalizado"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+          } else {
+            openCustomCalendar();
+          }
+        }}
         className={cn(
-          "flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
+          "flex min-w-0 flex-1 items-center justify-center rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all",
           mode === "custom"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
         )}
       >
-        <CalendarDays className="size-3.5" />
-        {triggerLabel}
+        <span className="truncate">Personalizado</span>
       </button>
 
       {open && popoverPosition && createPortal(
@@ -179,33 +259,6 @@ function PeriodPicker({
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
           className="fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
         >
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                onModeChange("current");
-                onRangeChange(null, null);
-                setOpen(false);
-              }}
-              className={cn(
-                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
-                mode === "current" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
-              )}
-            >
-              Este mês
-            </button>
-            <button
-              type="button"
-              onClick={openCustomCalendar}
-              className={cn(
-                "rounded-xl px-2 py-2 text-[10px] font-semibold transition-colors",
-                mode === "custom" ? "bg-primary text-white" : "glass text-glass-sub hover:text-primary",
-              )}
-            >
-              Personalizado
-            </button>
-          </div>
-
           {mode === "custom" && (
             <>
               <div className="mt-3 flex items-center justify-between gap-2">
@@ -309,6 +362,7 @@ export default function TransactionsPage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((category) => [category.id, category])),
@@ -381,12 +435,25 @@ export default function TransactionsPage() {
   const activeRangeEnd = periodMode === "custom" && rangeStart && rangeEnd ? rangeEnd : null;
   const selectedPeriodLabel = activeRangeStart && activeRangeEnd
     ? `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
-    : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
+    : selectedMonths.length > 0
+      ? `${selectedMonths.length} ${selectedMonths.length === 1 ? "mês selecionado" : "meses selecionados"}`
+      : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
   const handleSelectMonth = (nextMonth: string) => {
     setMonth(nextMonth);
+    setSelectedMonths([]);
     setPeriodMode(nextMonth === currentMonthKey ? "current" : "month");
     setRangeStart(null);
     setRangeEnd(null);
+  };
+
+  const handleSelectMonths = (months: string[]) => {
+    setSelectedMonths(months);
+    setRangeStart(null);
+    setRangeEnd(null);
+    if (months.length > 0) {
+      setMonth(months[0]);
+      setPeriodMode(months[0] === currentMonthKey ? "current" : "month");
+    }
   };
 
   const availableCategories = useMemo(
@@ -407,7 +474,9 @@ export default function TransactionsPage() {
       .filter(
         (transaction) =>
           scope === "all" ||
-          transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
+          (selectedMonths.length > 0
+            ? selectedMonths.includes(monthKey(transaction.date))
+            : transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart)),
       )
       .filter(
         (transaction) =>
@@ -429,6 +498,7 @@ export default function TransactionsPage() {
     scope,
     searchQuery,
     selectedCategories,
+    selectedMonths,
     activeRangeEnd,
     activeRangeStart,
     selectedMonth,
@@ -519,12 +589,18 @@ export default function TransactionsPage() {
             rangeEnd={rangeEnd}
             onModeChange={(nextMode) => {
               if (nextMode === "current") setMonth(currentMonthKey);
+              setSelectedMonths([]);
               setPeriodMode(nextMode);
             }}
             onRangeChange={(start, end) => {
               setRangeStart(start);
               setRangeEnd(end);
             }}
+          />
+          <MonthMultiPicker
+            monthOptions={monthOptions}
+            selectedMonths={selectedMonths}
+            onSelectedMonthsChange={handleSelectMonths}
           />
         </div>
       </div>
