@@ -39,10 +39,13 @@ export default function ArchivedCardsPage() {
         titleClassName="whitespace-nowrap text-[17px]"
       />
 
-      <div className="flex items-center justify-between gap-3 px-1">
-        <p className="text-[12px] font-medium text-glass-faint">
-          Consulte e restaure cartões que não fazem parte do dia a dia.
-        </p>
+      <div className="flex min-w-0 items-center justify-between gap-3 px-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <Archive className="size-4 shrink-0 text-glass-sub" />
+          <p className="truncate text-[12px] font-bold uppercase tracking-wide text-glass-sub">
+            {archivedCards.length} cartão(ões) arquivado(s)
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => navigate("/dashboard/compras-cartao")}
@@ -76,12 +79,6 @@ export default function ArchivedCardsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 px-1">
-            <Archive className="size-4 text-glass-sub" />
-            <p className="text-[12px] font-bold uppercase tracking-wide text-glass-sub">
-              {archivedCards.length} cartão(ões) arquivado(s)
-            </p>
-          </div>
           {archivedCards.map((card) => (
             <div key={card.id} className="space-y-2">
               <CardVisual
