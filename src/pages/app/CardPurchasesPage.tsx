@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import {
   Archive,
   CalendarClock,
+  CalendarDays,
   ChartNoAxesColumn,
   ChevronLeft,
   ChevronRight,
@@ -45,11 +46,194 @@ function shiftMonth(key: string, offset: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function lastDayOfMonth(month: string): number {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber, 0).getDate();
+}
+
+function calendarDaysForMonth(month: string): Array<string | null> {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstWeekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
+  const daysInMonth = lastDayOfMonth(month);
+  return [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from(
+      { length: daysInMonth },
+      (_, index) => `${month}-${String(index + 1).padStart(2, "0")}`,
+    ),
+  ];
+}
+
+function formatDateLabel(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 function transactionInPeriod(
   transaction: Transaction,
   selectedMonth: string,
+  untilDate?: string | null,
 ): boolean {
-  return monthKey(transaction.date) === selectedMonth;
+  const startDate = `${selectedMonth}-01`;
+  const endDate = untilDate && untilDate >= startDate
+    ? untilDate
+    : `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
+  return transaction.date >= startDate && transaction.date <= endDate;
+}
+
+type PeriodUntilPickerProps = {
+  selectedMonth: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+};
+
+function PeriodUntilPicker({
+  selectedMonth,
+  value,
+  onChange,
+}: PeriodUntilPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(selectedMonth);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const minimumDate = `${selectedMonth}-01`;
+  const calendarDays = calendarDaysForMonth(calendarMonth);
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pickerWidth = Math.min(304, window.innerWidth - 32);
+      setPopoverPosition({
+        top: rect.bottom + 8,
+        left: Math.max(16, Math.min(window.innerWidth - pickerWidth - 16, rect.right - pickerWidth)),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [minimumDate, open, selectedMonth, value]);
+
+  const handlePick = (date: string) => {
+    if (date < minimumDate) return;
+    onChange(date);
+    setOpen(false);
+  };
+
+  const handleToggle = () => {
+    if (!open) {
+      setCalendarMonth(
+        value && value >= minimumDate ? monthKey(value) : selectedMonth,
+      );
+    }
+    setOpen((current) => !current);
+  };
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Selecionar período até uma data"
+        aria-expanded={open}
+        onClick={handleToggle}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold transition-all",
+          value ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]" : "glass text-glass-sub",
+        )}
+      >
+        <CalendarDays className="size-3.5" />
+        {value ? `Até ${formatDateLabel(value)}` : "Até"}
+      </button>
+
+      {open && popoverPosition && createPortal(
+        <div
+          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+          className="fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              aria-label="Mês anterior do período final"
+              onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
+              className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <p className="text-[12px] font-bold uppercase tracking-wide">
+              {monthShortLabel(calendarMonth)} {calendarMonth.slice(0, 4)}
+            </p>
+            <button
+              type="button"
+              aria-label="Próximo mês do período final"
+              onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
+              className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+          <p className="mt-2 text-center text-[10px] font-medium text-glass-faint">
+            Selecione a data final do período iniciado em {monthShortLabel(selectedMonth)}.
+          </p>
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase text-glass-faint">
+            {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {calendarDays.map((date, index) => {
+              if (!date) return <span key={`empty-${index}`} />;
+              const disabled = date < minimumDate;
+              const selected = date === value;
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  disabled={disabled}
+                  aria-label={formatDateLabel(date)}
+                  aria-pressed={selected}
+                  onClick={() => handlePick(date)}
+                  className={cn(
+                    "flex aspect-square items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                    selected
+                      ? "bg-primary text-white"
+                      : disabled
+                        ? "cursor-not-allowed text-glass-faint/40"
+                        : "text-glass-sub hover:bg-primary/10 hover:text-primary",
+                  )}
+                >
+                  {date.slice(-2).replace(/^0/, "")}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-glass-ink/5 pt-2 dark:border-white/10">
+            <p className="text-[10px] font-medium text-glass-faint">
+              {value ? `Até ${formatDateLabel(value)}` : "Nenhum limite aplicado"}
+            </p>
+            {value && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(null);
+                  setCalendarMonth(selectedMonth);
+                }}
+                className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
 }
 
 function normalizeSearchText(value: string): string {
@@ -95,7 +279,13 @@ function invoicePaymentFor(card: AppCard, month: string): InvoicePaymentRecord |
   return card.invoicePaymentsByMonth?.[month];
 }
 
-function invoiceTotalFor(card: AppCard, month: string, grossAmount: number): number {
+function invoiceTotalFor(
+  card: AppCard,
+  month: string,
+  grossAmount: number,
+  untilDate?: string | null,
+): number {
+  if (untilDate) return grossAmount;
   const override = card.invoiceOverrideByMonth?.[month];
   return typeof override === "number" && Number.isFinite(override)
     ? Math.max(0, override)
@@ -817,6 +1007,7 @@ export default function CardPurchasesPage() {
     deleteCard,
   } = useAppStore();
   const [month, setMonth] = useState<string>(currentMonthKey);
+  const [untilDate, setUntilDate] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<InvoiceStatusFilter>("all");
@@ -857,6 +1048,13 @@ export default function CardPurchasesPage() {
     : monthOptions.includes(currentMonthKey)
       ? currentMonthKey
       : monthOptions[0];
+  const selectedPeriodLabel = untilDate
+    ? `${monthShortLabel(selectedMonth)} 01 → ${formatDateLabel(untilDate)}`
+    : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
+  const handleSelectMonth = (nextMonth: string) => {
+    setMonth(nextMonth);
+    setUntilDate((current) => (current && monthKey(current) === nextMonth ? current : null));
+  };
   const visibleMonthOptions = useMemo(() => {
     const selectedIndex = Math.max(0, monthOptions.indexOf(selectedMonth));
     const windowSize = Math.min(5, monthOptions.length);
@@ -887,12 +1085,12 @@ export default function CardPurchasesPage() {
           .filter(
             (transaction) =>
               transaction.cardId === card.id &&
-              transactionInPeriod(transaction, selectedMonth),
+              transactionInPeriod(transaction, selectedMonth, untilDate),
           )
           .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
         return totals;
       }, {}),
-    [cards, cardTransactions, selectedMonth],
+    [cards, cardTransactions, selectedMonth, untilDate],
   );
 
   const selectedCardTransactions = useMemo(
@@ -901,10 +1099,10 @@ export default function CardPurchasesPage() {
         ? cardTransactions.filter(
             (transaction) =>
               transaction.cardId === selectedCard.id &&
-              transactionInPeriod(transaction, selectedMonth),
+              transactionInPeriod(transaction, selectedMonth, untilDate),
           )
         : [],
-    [cardTransactions, selectedCard, selectedMonth],
+    [cardTransactions, selectedCard, selectedMonth, untilDate],
   );
 
   const selectedCardTotal = selectedCardTransactions.reduce(
@@ -913,7 +1111,7 @@ export default function CardPurchasesPage() {
   );
   const invoiceMetricsFor = (card: AppCard) => {
     const openAmount = openAmountByCard[card.id] ?? 0;
-    const invoiceTotal = invoiceTotalFor(card, selectedMonth, openAmount);
+    const invoiceTotal = invoiceTotalFor(card, selectedMonth, openAmount, untilDate);
     const paidAmount = Math.min(
       invoiceTotal,
       Math.max(0, invoicePaymentFor(card, selectedMonth)?.paidAmount ?? 0),
@@ -926,7 +1124,7 @@ export default function CardPurchasesPage() {
   };
   const handleRequestPayment = (card: AppCard, mode: PaymentMode = "full") => {
     const grossAmount = openAmountByCard[card.id] ?? 0;
-    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount);
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, untilDate);
     if (totalAmount <= 0) {
       setZeroInvoiceCard(card);
       return;
@@ -951,7 +1149,7 @@ export default function CardPurchasesPage() {
 
   const handleReopenInvoice = (card: AppCard) => {
     const grossAmount = openAmountByCard[card.id] ?? 0;
-    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount);
+    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, untilDate);
     const payment = invoicePaymentFor(card, selectedMonth);
     if (payment && payment.paidAmount >= totalAmount) {
       setCardInvoicePayment(card.id, selectedMonth, {
@@ -1041,7 +1239,7 @@ export default function CardPurchasesPage() {
           <button
             type="button"
             aria-label="Mês anterior"
-            onClick={() => setMonth(shiftMonth(selectedMonth, -1))}
+            onClick={() => handleSelectMonth(shiftMonth(selectedMonth, -1))}
             className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <ChevronLeft className="size-4" />
@@ -1051,7 +1249,7 @@ export default function CardPurchasesPage() {
               <button
                 key={key}
                 type="button"
-                onClick={() => setMonth(key)}
+                onClick={() => handleSelectMonth(key)}
                 className={cn(
                   "min-w-[78px] shrink-0 snap-center whitespace-nowrap rounded-full px-3 py-2 text-center text-[12px] font-semibold transition-all",
                   selectedMonth === key
@@ -1066,7 +1264,7 @@ export default function CardPurchasesPage() {
           <button
             type="button"
             aria-label="Próximo mês"
-            onClick={() => setMonth(shiftMonth(selectedMonth, 1))}
+            onClick={() => handleSelectMonth(shiftMonth(selectedMonth, 1))}
             className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <ChevronRight className="size-4" />
@@ -1096,6 +1294,11 @@ export default function CardPurchasesPage() {
               </button>
             );
           })}
+          <PeriodUntilPicker
+            selectedMonth={selectedMonth}
+            value={untilDate}
+            onChange={setUntilDate}
+          />
         </div>
       </div>
 
@@ -1123,7 +1326,7 @@ export default function CardPurchasesPage() {
               Nenhuma fatura encontrada
             </p>
             <p className="mt-1 max-w-[260px] text-[13px] leading-relaxed text-glass-sub">
-              Não há faturas {invoiceStatusFilter === "paid" ? "pagas" : "abertas"} em {monthShortLabel(selectedMonth)}.
+              Não há faturas {invoiceStatusFilter === "paid" ? "pagas" : "abertas"} no período {selectedPeriodLabel}.
             </p>
           </div>
         </div>
@@ -1144,7 +1347,7 @@ export default function CardPurchasesPage() {
                 </button>
               )}
               <p className="text-[11px] font-medium text-glass-faint">
-                {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)} · mês inteiro
+                {selectedPeriodLabel}
               </p>
             </div>
           </div>
