@@ -58,6 +58,10 @@ export function TransactionRow({
   const isIncome = transaction.amount > 0;
   const category = categoryById[transaction.categoryId] ?? fallback;
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
+  const showDraftOnCard =
+    transaction.draftDisplay === "multipleMedia" &&
+    Boolean(transaction.note?.trim()) &&
+    (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const leftActionOpacity = useTransform(
@@ -181,6 +185,11 @@ export function TransactionRow({
             </span>
           )}
         </p>
+        {showDraftOnCard && (
+          <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-glass-sub">
+            {transaction.note}
+          </p>
+        )}
         {paymentLabel && paymentStatus && (
           <div className="mt-1 flex min-w-0 items-center gap-1.5">
             <span

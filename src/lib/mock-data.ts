@@ -52,6 +52,8 @@ export function frequencyLabel(
   return FREQUENCY_LABELS[f ?? "mensal"];
 }
 
+export type DraftDisplayMode = "hidden" | "multipleMedia";
+
 export type Transaction = {
   id: string;
   title: string;
@@ -60,6 +62,8 @@ export type Transaction = {
   date: string; // ISO yyyy-mm-dd
   time?: string; // HH:MM — set when scanned from a receipt
   note?: string; // free text (draft / observations)
+  /** Regra de exibição do rascunho no card da transação. */
+  draftDisplay?: DraftDisplayMode;
   attachments?: string[]; // photos / files attached (data URLs)
   /** Repetição: undefined = única. */
   recurrence?: RecurrenceMode;

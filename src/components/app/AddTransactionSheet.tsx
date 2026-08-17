@@ -19,8 +19,12 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-import { imageToDataUrl } from "@/lib/receipt-scan";
-import type { RecurrenceFrequency, RecurrenceMode } from "@/lib/mock-data";
+import { compressAttachmentFile } from "@/lib/attachment-utils";
+import type {
+  DraftDisplayMode,
+  RecurrenceFrequency,
+  RecurrenceMode,
+} from "@/lib/mock-data";
 import { CategoryIcon } from "./CategoryIcon";
 import { HorizontalScroll } from "./HorizontalScroll";
 import { SquircleIcon } from "./ThemeToggle";
@@ -71,6 +75,7 @@ export type TransactionFormValues = {
   date: string;
   time: string;
   note: string;
+  draftDisplay?: DraftDisplayMode;
   attachments: PickedAttachment[];
   recurrence: RecurrenceMode;
   frequency: RecurrenceFrequency;
@@ -103,16 +108,6 @@ const FREQUENCIES: { id: RecurrenceFrequency; label: string }[] = [
   { id: "anual", label: "Anual" },
   { id: "dias", label: "Dias" },
 ];
-
-/** Reads any file into a raw data URL (used for non-image attachments). */
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("read-failed"));
-    reader.onload = () => resolve(reader.result as string);
-    reader.readAsDataURL(file);
-  });
-}
 
 function Stepper({
   value,
@@ -184,6 +179,7 @@ export function AddTransactionSheet({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
+  const [draftDisplay, setDraftDisplay] = useState<DraftDisplayMode>("hidden");
   const [attachments, setAttachments] = useState<PickedAttachment[]>([]);
   const [recurrence, setRecurrence] = useState<RecurrenceMode>("unica");
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
@@ -213,6 +209,7 @@ export function AddTransactionSheet({
     setDate(new Date().toISOString().slice(0, 10));
     setTime("");
     setNote("");
+    setDraftDisplay("hidden");
     setAttachments([]);
     setRecurrence("unica");
     setFrequency("mensal");
@@ -243,6 +240,7 @@ export function AddTransactionSheet({
       setDate(initial.date || new Date().toISOString().slice(0, 10));
       setTime(initial.time ?? "");
       setNote(initial.note ?? "");
+      setDraftDisplay(initial.draftDisplay ?? "hidden");
       setAttachments(initial.attachments ?? []);
       setRecurrence(initial.recurrence ?? "unica");
       setFrequency(initial.frequency ?? "mensal");
@@ -325,26 +323,24 @@ export function AddTransactionSheet({
       return;
     }
     for (const file of picked) {
-      if (file.size > 3_000_000) {
+      if (file.size > 12_000_000) {
         toast(`"${file.name}" é grande demais`, {
-          description: "O limite é de 3 MB por arquivo.",
+          description: "O limite de seleção é 12 MB por arquivo.",
         });
         continue;
       }
       try {
-        if (file.type.startsWith("image/")) {
-          const src = await imageToDataUrl(file, 1000, 0.82);
-          setAttachments((prev) => [
-            ...prev,
-            { src, isImage: true, name: file.name },
-          ]);
-        } else {
-          const src = await fileToDataUrl(file);
-          setAttachments((prev) => [
-            ...prev,
-            { src, isImage: false, name: file.name },
-          ]);
+        const src = await compressAttachmentFile(file);
+        if (src.length >= 3_000_000) {
+          toast(`"${file.name}" continua grande demais`, {
+            description: "Escolha um arquivo menor para manter o armazenamento otimizado.",
+          });
+          continue;
         }
+        setAttachments((prev) => [
+          ...prev,
+          { src, isImage: file.type.startsWith("image/"), name: file.name },
+        ]);
       } catch {
         toast(`Não foi possível ler "${file.name}"`);
       }
@@ -364,6 +360,7 @@ export function AddTransactionSheet({
       date,
       time: time || undefined,
       note: note.trim() || undefined,
+      draftDisplay,
       attachments: attachments.length
         ? attachments.map((a) => a.src)
         : undefined,
@@ -846,6 +843,37 @@ export function AddTransactionSheet({
                   "mt-2 min-h-[84px] resize-none leading-relaxed",
                 )}
               />
+              <div className="mt-3">
+                <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                  Exibição no card
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      { id: "hidden" as const, label: "Ocultar no card" },
+                      {
+                        id: "multipleMedia" as const,
+                        label: "Mostrar com mais de 1 anexo",
+                      },
+                    ]
+                  ).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={draftDisplay === option.id}
+                      onClick={() => setDraftDisplay(option.id)}
+                      className={cn(
+                        "rounded-2xl px-3 py-2.5 text-left text-[11.5px] font-semibold transition-all active:scale-[0.98]",
+                        draftDisplay === option.id
+                          ? "bg-primary text-white shadow-[0_6px_16px_-8px_rgba(47,107,255,0.8)]"
+                          : "glass glass-soft text-glass-sub",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

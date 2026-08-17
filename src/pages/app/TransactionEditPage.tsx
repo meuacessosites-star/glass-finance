@@ -21,6 +21,7 @@ function transactionToFormValues(transaction: Transaction): TransactionFormValue
     date: transaction.date,
     time: transaction.time ?? "",
     note: transaction.note ?? "",
+    draftDisplay: transaction.draftDisplay ?? "hidden",
     attachments: (transaction.attachments ?? []).map((src, index) => ({
       src,
       isImage: src.startsWith("data:image"),

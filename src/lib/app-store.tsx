@@ -601,6 +601,7 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.note === "string" && t.note.trim()
           ? t.note.trim().slice(0, 300)
           : undefined,
+      draftDisplay: t.draftDisplay === "multipleMedia" ? "multipleMedia" : "hidden",
       attachments: Array.isArray(t.attachments)
         ? t.attachments
             .filter(
@@ -905,6 +906,7 @@ type AppStoreValue = {
     cardMode?: "credito" | "debito";
     personId?: string;
     paymentStatus?: "paid" | "pending";
+    draftDisplay?: "hidden" | "multipleMedia";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
   updateTransaction: (
@@ -918,6 +920,7 @@ type AppStoreValue = {
         | "date"
         | "time"
         | "note"
+        | "draftDisplay"
         | "attachments"
         | "recurrence"
         | "frequency"

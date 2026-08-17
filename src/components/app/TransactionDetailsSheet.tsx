@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   FileText,
@@ -10,8 +13,12 @@ import {
   Layers,
   Pencil,
   Repeat,
+  RotateCcw,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
+import { downloadAttachment } from "@/lib/attachment-utils";
 import { useAppStore } from "@/lib/app-store";
 import {
   dayLabel,
@@ -46,10 +53,16 @@ export function TransactionDetailsSheet({
   onEdit?: () => void;
 }) {
   const { categoryById, cards } = useAppStore();
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxZoom, setLightboxZoom] = useState(1);
   const category = categoryById[transaction.categoryId] ?? fallback;
   const isIncome = transaction.amount > 0;
   const attachments = transaction.attachments ?? [];
+  const imageAttachments = attachments.flatMap((src, index) =>
+    src.startsWith("data:image") ? [{ src, index }] : [],
+  );
+  const lightboxSrc =
+    lightboxIndex === null ? null : imageAttachments[lightboxIndex]?.src ?? null;
   const rawMethod = transaction.paymentMethod ?? "";
   const methodId =
     rawMethod === "credito" || rawMethod === "debito" ? "cartao" : rawMethod;
@@ -70,6 +83,43 @@ export function TransactionDetailsSheet({
   const dateLabel = `${dayLabel(transaction.date)} · ${shortDate(transaction.date)}${
     transaction.time ? ` às ${transaction.time}` : ""
   }`;
+
+  const closeLightbox = () => {
+    setLightboxIndex(null);
+    setLightboxZoom(1);
+  };
+
+  const openLightbox = (attachmentIndex: number) => {
+    const galleryIndex = imageAttachments.findIndex(
+      (item) => item.index === attachmentIndex,
+    );
+    if (galleryIndex < 0) return;
+    setLightboxIndex(galleryIndex);
+    setLightboxZoom(1);
+  };
+
+  const moveLightbox = (direction: -1 | 1) => {
+    if (lightboxIndex === null || imageAttachments.length < 2) return;
+    setLightboxIndex(
+      (lightboxIndex + direction + imageAttachments.length) %
+        imageAttachments.length,
+    );
+    setLightboxZoom(1);
+  };
+
+  const adjustLightboxZoom = (delta: number) => {
+    setLightboxZoom((current) =>
+      Math.min(3, Math.max(1, Math.round((current + delta) * 100) / 100)),
+    );
+  };
+
+  const handleAttachmentDownload = async (src: string, index: number) => {
+    try {
+      await downloadAttachment(src, `anexo-${index + 1}`);
+    } catch {
+      toast.error("Não foi possível baixar este anexo");
+    }
+  };
 
   return createPortal(
     <>
@@ -205,7 +255,7 @@ export function TransactionDetailsSheet({
                         key={i}
                         type="button"
                         aria-label={`Ver anexo ${i + 1}`}
-                        onClick={() => setLightbox(src)}
+                        onClick={() => openLightbox(i)}
                         className="group relative aspect-square overflow-hidden rounded-2xl transition-transform active:scale-95"
                       >
                         <img
@@ -215,17 +265,17 @@ export function TransactionDetailsSheet({
                         />
                       </button>
                     ) : (
-                      <a
+                      <button
                         key={i}
-                        href={src}
-                        download={`anexo-${i + 1}`}
+                        type="button"
+                        onClick={() => void handleAttachmentDownload(src, i)}
                         className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-2xl bg-white/40 px-2 text-center transition-transform active:scale-95"
                       >
                         <FileText className="size-5 shrink-0 text-[#2F6BFF]" />
                         <span className="truncate text-[10.5px] font-semibold leading-tight text-glass-sub">
                           Arquivo
                         </span>
-                      </a>
+                      </button>
                     ),
                   )}
                 </div>
@@ -246,27 +296,121 @@ export function TransactionDetailsSheet({
         </motion.div>
       )}
 
-      {/* Lightbox */}
-      {lightbox &&
+      {/* Attachment gallery: navigation and zoom are local-only viewer state. */}
+      {lightboxSrc &&
         createPortal(
           <div
-            onClick={() => setLightbox(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Visualizador de anexos"
+            onClick={closeLightbox}
             className="absolute inset-0 z-[70] flex items-center justify-center bg-[#0b1630]/85 p-4"
           >
             <button
               type="button"
               aria-label="Fechar imagem"
-              onClick={() => setLightbox(null)}
-              className="glass absolute right-4 top-4 flex size-9 items-center justify-center rounded-full text-white"
+              onClick={closeLightbox}
+              className="glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full text-white"
             >
               <X className="size-4" />
             </button>
-            <img
-              src={lightbox}
-              alt="Nota fiscal"
-              onClick={(e) => e.stopPropagation()}
-              className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
-            />
+
+            {imageAttachments.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Imagem anterior"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveLightbox(-1);
+                  }}
+                  className="glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Próxima imagem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveLightbox(1);
+                  }}
+                  className="glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+              </>
+            )}
+
+            <motion.div
+              drag={imageAttachments.length > 1 ? "x" : false}
+              dragConstraints={{ left: -180, right: 180 }}
+              dragElastic={0.18}
+              dragMomentum={false}
+              onDragEnd={(_, info) => {
+                if (info.offset.x <= -56) moveLightbox(1);
+                else if (info.offset.x >= 56) moveLightbox(-1);
+              }}
+              onClick={(event) => event.stopPropagation()}
+              style={{ touchAction: "pan-y" }}
+              className="flex max-h-[78vh] max-w-[calc(100vw-4rem)] items-center justify-center overflow-visible rounded-2xl"
+            >
+              <motion.img
+                key={lightboxSrc}
+                src={lightboxSrc}
+                alt={`Anexo ${
+                  (imageAttachments[lightboxIndex ?? 0]?.index ?? 0) + 1
+                }`}
+                onDoubleClick={() =>
+                  setLightboxZoom((current) => (current > 1 ? 1 : 2))
+                }
+                animate={{ scale: lightboxZoom }}
+                transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                className="max-h-[78vh] max-w-[calc(100vw-4rem)] select-none rounded-2xl object-contain shadow-2xl"
+                draggable={false}
+              />
+            </motion.div>
+
+            <div
+              className="glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-2 py-1.5 text-white"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                aria-label="Reduzir zoom"
+                onClick={() => adjustLightboxZoom(-0.25)}
+                disabled={lightboxZoom <= 1}
+                className="flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+              >
+                <ZoomOut className="size-4" />
+              </button>
+              <span className="min-w-[44px] text-center text-[11px] font-bold">
+                {Math.round(lightboxZoom * 100)}%
+              </span>
+              <button
+                type="button"
+                aria-label="Aumentar zoom"
+                onClick={() => adjustLightboxZoom(0.25)}
+                disabled={lightboxZoom >= 3}
+                className="flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+              >
+                <ZoomIn className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Redefinir zoom"
+                onClick={() => setLightboxZoom(1)}
+                disabled={lightboxZoom === 1}
+                className="ml-0.5 flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+              >
+                <RotateCcw className="size-3.5" />
+              </button>
+              {imageAttachments.length > 1 && (
+                <span className="ml-1 border-l border-white/20 pl-2 text-[11px] font-bold">
+                  {(lightboxIndex ?? 0) + 1}/{imageAttachments.length}
+                </span>
+              )}
+            </div>
           </div>,
           screen,
         )}
