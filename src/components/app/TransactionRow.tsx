@@ -112,7 +112,6 @@ const SWIPE_CLOSE_VELOCITY = 180;
 
 export function TransactionRow({
   transaction,
-  showDate = true,
   swipeable = false,
   paymentLabel,
   paymentStatus,
@@ -262,18 +261,14 @@ export function TransactionRow({
           {selected && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       )}
-      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 lg:size-14">
-        <CategoryIcon
-          categoryId={transaction.categoryId}
-          size="size-11 lg:size-14"
-          iconSize="size-4.5 lg:size-6"
-        />
-      </div>
       <div className="min-w-0 flex-1 px-0.5">
+        {/* Linha 1: título */}
         <p className="min-w-0 truncate text-[14px] font-semibold leading-5 tracking-[-0.01em] text-glass-ink lg:text-[17px]">
           <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
         </p>
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+
+        {/* Linha 2: todas as tags em um único agrupamento */}
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
           <span
             className="inline-flex min-h-6 max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
             style={{
@@ -288,13 +283,6 @@ export function TransactionRow({
             />
             <span className="truncate">{category.label}</span>
           </span>
-          {showDate && (
-            <span className="text-[11px] font-medium text-glass-faint lg:text-[13px]">
-              · {shortDate(transaction.date)}
-            </span>
-          )}
-        </div>
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           {paymentPresentation && (
             <span
               className="inline-flex min-h-6 min-w-0 max-w-[12rem] items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold lg:max-w-[16rem] lg:text-[12px]"
@@ -331,6 +319,8 @@ export function TransactionRow({
             </span>
           )}
         </div>
+
+        {/* Linha 3: rascunho/anotação */}
         {showDraftOnCard && (
           <div className="mt-2 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
             <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] font-medium leading-snug text-glass-ink/85 dark:text-white/85 lg:text-[13px]">
@@ -465,7 +455,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3.5 py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
+              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3.5 py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
             )}
           >
             {rowContent}
@@ -485,7 +475,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3.5 py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
+            "flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3.5 py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
           )}
         >
           {rowContent}
