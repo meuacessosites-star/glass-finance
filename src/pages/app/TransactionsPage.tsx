@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAppStore, type AppCard, type LoanReceivable } from "@/lib/app-store";
+import { useAppStore, type LoanReceivable } from "@/lib/app-store";
 import {
   currentMonthKey,
   dayLabel,
@@ -90,7 +90,6 @@ function isCreditCardTransaction(transaction: Transaction): boolean {
 
 function getTransactionPaymentStatus(
   transaction: Transaction,
-  cards: AppCard[],
   loanReceivables: LoanReceivable[],
 ): Exclude<PaymentStatusFilter, "all"> {
   if (transaction.id.startsWith("loan-receivable-")) {
@@ -99,16 +98,7 @@ function getTransactionPaymentStatus(
     return receivable?.status === "open" ? "pending" : "paid";
   }
 
-  if (!isCreditCardTransaction(transaction)) {
-    return transaction.paymentStatus === "pending" ? "pending" : "paid";
-  }
-
-  const card = cards.find((item) => item.id === transaction.cardId);
-  const transactionMonth = monthKey(transaction.date);
-  const invoicePaid = card?.invoicePaidByMonth?.[transactionMonth]
-    ?? (transactionMonth === currentMonthKey ? card?.invoicePaid : false)
-    ?? false;
-  return invoicePaid ? "paid" : "pending";
+  return transaction.paymentStatus === "pending" ? "pending" : "paid";
 }
 
 type PeriodPickerProps = {
@@ -1153,7 +1143,6 @@ export default function TransactionsPage() {
               {list.map((transaction) => {
                 const status = getTransactionPaymentStatus(
                   transaction,
-                  cards,
                   loanReceivables,
                 );
                 const creditCardPurchase = isCreditCardTransaction(transaction);
@@ -1182,14 +1171,6 @@ export default function TransactionsPage() {
                         transaction.id.replace("loan-receivable-", ""),
                       ]);
                     }
-                    return;
-                  }
-                  if (creditCardPurchase && transaction.cardId) {
-                    setCardInvoiceStatus(
-                      transaction.cardId,
-                      monthKey(transaction.date),
-                      status !== "paid",
-                    );
                     return;
                   }
                   setTransactionPaymentStatus(

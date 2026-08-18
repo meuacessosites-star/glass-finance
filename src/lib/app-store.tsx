@@ -534,7 +534,7 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
     });
 }
 
-function sanitizeTransactions(v: unknown): Transaction[] {
+function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] {
   if (!Array.isArray(v)) return seedTransactions.map((t) => ({ ...t }));
   const list = v
     .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
@@ -581,6 +581,41 @@ function sanitizeTransactions(v: unknown): Transaction[] {
               Math.max(1, Math.round(t.currentInstallment)),
             )
           : undefined;
+      const normalizedDate =
+        typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(t.date)
+          ? t.date.slice(0, 10)
+          : "2026-08-01";
+      const normalizedCardId =
+        typeof t.cardId === "string" && t.cardId.trim()
+          ? t.cardId.trim().slice(0, 40)
+          : undefined;
+      const normalizedCardMode =
+        t.cardMode === "credito" || t.cardMode === "debito"
+          ? t.cardMode
+          : t.paymentMethod === "credito" || t.paymentMethod === "debito"
+            ? t.paymentMethod
+            : undefined;
+      const isLegacyCardPurchase =
+        Boolean(normalizedCardId) &&
+        (normalizedCardMode === "credito" || t.paymentMethod === "credito");
+      const card = normalizedCardId
+        ? cards.find((item) => item.id === normalizedCardId)
+        : undefined;
+      const invoiceMonth = normalizedDate.slice(0, 7);
+      const legacyInvoicePaid = Boolean(
+        card?.invoicePaidByMonth?.[invoiceMonth] ??
+          (invoiceMonth === currentMonthKey ? card?.invoicePaid : false),
+      );
+      const paymentStatus: Transaction["paymentStatus"] =
+        t.paymentStatus === "pending"
+          ? "pending"
+          : t.paymentStatus === "paid"
+            ? "paid"
+            : isLegacyCardPurchase
+              ? legacyInvoicePaid
+                ? "paid"
+                : "pending"
+              : "paid";
       return {
       id: str(t.id, uid("t")),
       title: str(t.title, "Transação"),
@@ -589,10 +624,7 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.amount === "number" && Number.isFinite(t.amount)
           ? t.amount
           : 0,
-      date:
-        typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(t.date)
-          ? t.date.slice(0, 10)
-          : "2026-08-01",
+      date: normalizedDate,
       time:
         typeof t.time === "string" && /^\d{2}:\d{2}/.test(t.time)
           ? t.time.slice(0, 5)
@@ -621,23 +653,15 @@ function sanitizeTransactions(v: unknown): Transaction[] {
         typeof t.paymentMethod === "string" && t.paymentMethod.trim()
           ? t.paymentMethod.trim().slice(0, 20)
           : undefined,
-      paymentStatus: t.paymentStatus === "pending" ? "pending" : "paid",
+      paymentStatus,
       paymentDate:
-        t.paymentStatus !== "pending" &&
+        paymentStatus !== "pending" &&
         typeof t.paymentDate === "string" &&
         /^\d{4}-\d{2}-\d{2}/.test(t.paymentDate)
           ? t.paymentDate.slice(0, 10)
           : undefined,
-      cardId:
-        typeof t.cardId === "string" && t.cardId.trim()
-          ? t.cardId.trim().slice(0, 40)
-          : undefined,
-      cardMode:
-        t.cardMode === "credito" || t.cardMode === "debito"
-          ? t.cardMode
-          : t.paymentMethod === "credito" || t.paymentMethod === "debito"
-            ? t.paymentMethod
-            : undefined,
+      cardId: normalizedCardId,
+      cardMode: normalizedCardMode,
       personId:
         typeof t.personId === "string" && t.personId.trim()
           ? t.personId.trim().slice(0, 80)
@@ -697,12 +721,13 @@ function buildProfiles(raw: unknown): AppProfile[] {
         : null;
 
     if (nested) {
+      const profileCards = sanitizeCards(nested.cards);
       return {
         ...base,
         data: {
           categories: sanitizeCategories(nested.categories),
-          cards: sanitizeCards(nested.cards),
-          transactions: sanitizeTransactions(nested.transactions),
+          cards: profileCards,
+          transactions: sanitizeTransactions(nested.transactions, profileCards),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
           people: sanitizePeople(nested.people),
           reserves: sanitizeReserves(nested.reserves),

@@ -148,13 +148,6 @@ export function TransactionRow({
 
   const primaryActionLabel = onEdit ? "Editar" : "Detalhes";
   const secondaryActionLabel = hasPaymentAction ? paymentActionLabel : isSyntheticLoan ? "Empréstimos" : "Excluir";
-  const statusAccent =
-    paymentStatus === "paid"
-      ? "border-l-2 border-l-[#1FBF4F]"
-      : paymentStatus === "pending"
-        ? "border-l-2 border-l-[#FF9F0A]"
-        : "";
-
   const rowContent = (
     <>
       {selectable && (
@@ -176,12 +169,14 @@ export function TransactionRow({
           {selected && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       )}
-      <CategoryIcon
-        categoryId={transaction.categoryId}
-        size="size-12"
-        iconSize="size-5"
-      />
-      <div className="min-w-0 flex-1 pr-1">
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10">
+        <CategoryIcon
+          categoryId={transaction.categoryId}
+          size="size-12"
+          iconSize="size-5"
+        />
+      </div>
+      <div className="min-w-0 flex-1 px-1">
         <p className="truncate text-[15px] font-semibold text-glass-ink">
           {transaction.title}
         </p>
@@ -213,43 +208,50 @@ export function TransactionRow({
           )}
         </p>
         {showDraftOnCard && (
-          <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-glass-sub">
-            {transaction.note}
-          </p>
-        )}
-        {paymentLabel && paymentStatus && (
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <div className="mt-1 flex items-start gap-1.5">
             <span
-              className={cn(
-                "flex shrink-0 items-center gap-1 rounded-xl border px-2 py-1 text-[10.5px] font-extrabold tracking-tight",
-                paymentStatus === "paid"
-                  ? "border-[#1FBF4F]/30 border-l-2 border-l-[#1FBF4F] bg-[#1FBF4F]/15 text-[#168A39]"
-                  : "border-[#FF9F0A]/35 border-l-2 border-l-[#FF9F0A] bg-[#FF9F0A]/15 text-[#B56B00]",
-              )}
-            >
-              {paymentStatus === "paid" ? (
-                <Check className="size-2.5" strokeWidth={2.8} />
-              ) : (
-                <Clock3 className="size-2.5" strokeWidth={2.8} />
-              )}
-              {paymentLabel}
-              {paymentStatus === "paid" && transaction.paymentDate && (
-                <span className="font-semibold">· {shortDate(transaction.paymentDate)}</span>
-              )}
-            </span>
-
+              aria-hidden="true"
+              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-glass-sub/60"
+            />
+            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub">
+              {transaction.note}
+            </p>
           </div>
         )}
       </div>
-      <p
-        className={cn(
-          "amount-tabular ml-auto min-w-[78px] shrink-0 text-right text-[15px] font-bold",
-          isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
+      <div className="ml-auto flex min-w-[84px] shrink-0 flex-col items-end gap-1">
+        <p
+          className={cn(
+            "amount-tabular text-right text-[15px] font-bold",
+            isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
+          )}
+        >
+          {isIncome ? "+" : "−"}
+          {formatCurrency(transaction.amount)}
+        </p>
+        {paymentLabel && paymentStatus && (
+          <span
+            className={cn(
+              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight",
+              paymentStatus === "paid"
+                ? "border-[#1FBF4F] bg-[#1FBF4F] text-white"
+                : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",
+            )}
+          >
+            {paymentStatus === "paid" ? (
+              <Check className="size-2.5" strokeWidth={2.8} />
+            ) : (
+              <Clock3 className="size-2.5" strokeWidth={2.8} />
+            )}
+            <span className="truncate">{paymentLabel}</span>
+          </span>
         )}
-      >
-        {isIncome ? "+" : "−"}
-        {formatCurrency(transaction.amount)}
-      </p>
+        {paymentStatus === "paid" && transaction.paymentDate && (
+          <span className="text-right text-[9px] font-semibold text-glass-faint">
+            Pago em {shortDate(transaction.paymentDate)}
+          </span>
+        )}
+      </div>
     </>
   );
 
@@ -278,7 +280,9 @@ export function TransactionRow({
               className={cn(
                 "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
                 hasPaymentAction
-                  ? "bg-[#2F6BFF]"
+                  ? paymentStatus === "pending"
+                    ? "bg-[#1FBF4F]"
+                    : "bg-[#FF9F0A]"
                   : isSyntheticLoan
                     ? "bg-glass-ink/60"
                     : "bg-[#E5484D]",
@@ -314,7 +318,6 @@ export function TransactionRow({
             }}
             className={cn(
               "relative z-10 flex w-full items-center gap-3.5 bg-[#f4f8ff] py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50 dark:bg-[#0d1b3e]",
-              statusAccent,
             )}
           >
             {rowContent}
