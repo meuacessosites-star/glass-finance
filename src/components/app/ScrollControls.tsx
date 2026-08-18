@@ -7,6 +7,7 @@ type ScrollControlsProps = {
 };
 
 type ScrollTarget = HTMLElement | Window;
+type ScrollDirection = "up" | "down";
 
 function getScrollTarget(containerId?: string): ScrollTarget {
   if (containerId) {
@@ -23,15 +24,25 @@ function hasOverflow(target: ScrollTarget) {
   return document.documentElement.scrollHeight > window.innerHeight + 8;
 }
 
-function getScrollHeight(target: ScrollTarget) {
-  if (target instanceof HTMLElement) return target.scrollHeight;
-  return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+function getScrollTop(target: ScrollTarget) {
+  if (target instanceof HTMLElement) return target.scrollTop;
+  return window.scrollY;
+}
+
+function getMaxScrollTop(target: ScrollTarget) {
+  if (target instanceof HTMLElement) {
+    return Math.max(0, target.scrollHeight - target.clientHeight);
+  }
+  return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 }
 
 export function ScrollControls({ containerId }: ScrollControlsProps) {
   const [visible, setVisible] = useState(false);
   const [scrollable, setScrollable] = useState(true);
+  const [direction, setDirection] = useState<ScrollDirection>("down");
   const hideTimer = useRef<number | null>(null);
+  const directionRef = useRef<ScrollDirection>("down");
+  const lastScrollTop = useRef(0);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current !== null) {
@@ -40,78 +51,107 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
     }
   }, []);
 
-  const reveal = useCallback(() => {
-    clearHideTimer();
-    setVisible(true);
-    hideTimer.current = window.setTimeout(() => {
-      setVisible(false);
-      hideTimer.current = null;
-    }, 2500);
-  }, [clearHideTimer]);
+  const reveal = useCallback(
+    (nextDirection?: ScrollDirection) => {
+      clearHideTimer();
+
+      if (nextDirection && nextDirection !== directionRef.current) {
+        directionRef.current = nextDirection;
+        setDirection(nextDirection);
+      }
+
+      setVisible(true);
+      hideTimer.current = window.setTimeout(() => {
+        setVisible(false);
+        hideTimer.current = null;
+      }, 2500);
+    },
+    [clearHideTimer],
+  );
 
   useEffect(() => {
     const target = getScrollTarget(containerId);
+    lastScrollTop.current = getScrollTop(target);
 
-    const handleActivity = () => {
+    const refreshScrollableState = () => {
       const canScroll = hasOverflow(target);
       setScrollable(canScroll);
       if (canScroll) reveal();
     };
 
-    handleActivity();
-    target.addEventListener("scroll", handleActivity, { passive: true });
-    window.addEventListener("pointermove", handleActivity, { passive: true });
-    window.addEventListener("touchstart", handleActivity, { passive: true });
-    window.addEventListener("touchmove", handleActivity, { passive: true });
-    window.addEventListener("keydown", handleActivity);
-    window.addEventListener("resize", handleActivity);
+    const handleScroll = () => {
+      const currentScrollTop = getScrollTop(target);
+      const delta = currentScrollTop - lastScrollTop.current;
+      const nextDirection =
+        delta < -1 ? "up" : delta > 1 ? "down" : directionRef.current;
+
+      lastScrollTop.current = currentScrollTop;
+      const canScroll = hasOverflow(target);
+      setScrollable(canScroll);
+      if (canScroll) reveal(nextDirection);
+    };
+
+    refreshScrollableState();
+    target.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("pointermove", refreshScrollableState, { passive: true });
+    window.addEventListener("touchstart", refreshScrollableState, { passive: true });
+    window.addEventListener("touchmove", refreshScrollableState, { passive: true });
+    window.addEventListener("keydown", refreshScrollableState);
+    window.addEventListener("resize", refreshScrollableState);
 
     return () => {
-      target.removeEventListener("scroll", handleActivity);
-      window.removeEventListener("pointermove", handleActivity);
-      window.removeEventListener("touchstart", handleActivity);
-      window.removeEventListener("touchmove", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      window.removeEventListener("resize", handleActivity);
+      target.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("pointermove", refreshScrollableState);
+      window.removeEventListener("touchstart", refreshScrollableState);
+      window.removeEventListener("touchmove", refreshScrollableState);
+      window.removeEventListener("keydown", refreshScrollableState);
+      window.removeEventListener("resize", refreshScrollableState);
       clearHideTimer();
     };
   }, [clearHideTimer, containerId, reveal]);
 
-  const scrollTo = (position: "top" | "bottom") => {
+  const scrollTo = (position: ScrollDirection) => {
     const target = getScrollTarget(containerId);
+    const top = position === "up" ? 0 : getMaxScrollTop(target);
+
     target.scrollTo({
-      top: position === "top" ? 0 : getScrollHeight(target),
+      top,
       behavior: "smooth",
     });
-    reveal();
+    reveal(position);
   };
+
+  const controlIsVisible = visible && scrollable;
 
   return (
     <div
       aria-label="Controles de rolagem"
       className={cn(
         "pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-30 flex flex-col gap-2 transition-opacity duration-300 sm:right-5 md:bottom-8",
-        visible && scrollable ? "opacity-100" : "opacity-0",
+        controlIsVisible ? "opacity-100" : "opacity-0",
       )}
     >
-      <button
-        type="button"
-        aria-label="Rolar para o topo"
-        onClick={() => scrollTo("top")}
-        tabIndex={visible && scrollable ? 0 : -1}
-        className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
-      >
-        <ChevronUp className="size-4" strokeWidth={2.5} />
-      </button>
-      <button
-        type="button"
-        aria-label="Rolar para o final"
-        onClick={() => scrollTo("bottom")}
-        tabIndex={visible && scrollable ? 0 : -1}
-        className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
-      >
-        <ChevronDown className="size-4" strokeWidth={2.5} />
-      </button>
+      {direction === "up" ? (
+        <button
+          type="button"
+          aria-label="Rolar para o topo"
+          onClick={() => scrollTo("up")}
+          tabIndex={controlIsVisible ? 0 : -1}
+          className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
+        >
+          <ChevronUp className="size-4" strokeWidth={2.5} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-label="Rolar para o final"
+          onClick={() => scrollTo("down")}
+          tabIndex={controlIsVisible ? 0 : -1}
+          className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
+        >
+          <ChevronDown className="size-4" strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   );
 }
