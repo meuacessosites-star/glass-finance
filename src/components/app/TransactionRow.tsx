@@ -211,7 +211,11 @@ export function TransactionRow({
           )}
         </p>
         {showDraftOnCard && (
-          <div className="mt-1 rounded-lg bg-[#7C6FF2]/10 px-2 py-1 dark:bg-[#7C6FF2]/15">
+          <div className="mt-1 flex items-start gap-1.5">
+            <span
+              aria-hidden="true"
+              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70"
+            />
             <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub">
               {transaction.note}
             </p>
@@ -260,25 +264,8 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl">
-            <motion.button
-              type="button"
-              aria-label={primaryActionLabel}
-              onClick={handlePrimaryAction}
-              whileTap={{ scale: 0.96 }}
-              className={cn(
-                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight",
-                primaryActionClass,
-              )}
-            >
-              {paymentStatus === "paid" ? (
-                <Clock3 className="size-3.5" />
-              ) : (
-                <Check className="size-3.5" />
-              )}
-              {primaryActionLabel}
-            </motion.button>
+        <div className="relative overflow-hidden rounded-2xl">
+          <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden">
             <motion.button
               type="button"
               aria-label={secondaryActionLabel}
@@ -295,6 +282,23 @@ export function TransactionRow({
                 <Trash2 className="size-3.5" />
               )}
               {secondaryActionLabel}
+            </motion.button>
+            <motion.button
+              type="button"
+              aria-label={primaryActionLabel}
+              onClick={handlePrimaryAction}
+              whileTap={{ scale: 0.96 }}
+              className={cn(
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight",
+                primaryActionClass,
+              )}
+            >
+              {paymentStatus === "paid" ? (
+                <Clock3 className="size-3.5" />
+              ) : (
+                <Check className="size-3.5" />
+              )}
+              {primaryActionLabel}
             </motion.button>
           </div>
 
