@@ -44,6 +44,29 @@ const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 const LIGHTBOX_MIN_ZOOM = 1;
 const LIGHTBOX_MAX_ZOOM = 3;
 
+type LightboxImageSize = {
+  width: number;
+  height: number;
+};
+
+function fitLightboxImageSize(
+  naturalWidth: number,
+  naturalHeight: number,
+): LightboxImageSize {
+  const maxWidth = Math.max(1, window.innerWidth - 64);
+  const maxHeight = Math.max(1, window.innerHeight - 144);
+  const scale = Math.min(
+    1,
+    maxWidth / Math.max(1, naturalWidth),
+    maxHeight / Math.max(1, naturalHeight),
+  );
+
+  return {
+    width: Math.max(1, Math.round(naturalWidth * scale)),
+    height: Math.max(1, Math.round(naturalHeight * scale)),
+  };
+}
+
 function clampLightboxZoom(value: number) {
   return Math.min(
     LIGHTBOX_MAX_ZOOM,
@@ -78,6 +101,8 @@ export function TransactionDetailsSheet({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
   const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+  const [lightboxImageSize, setLightboxImageSize] =
+    useState<LightboxImageSize | null>(null);
   const lightboxImageRef = useRef<HTMLImageElement | null>(null);
   const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
@@ -127,6 +152,7 @@ export function TransactionDetailsSheet({
 
   const closeLightbox = () => {
     setLightboxIndex(null);
+    setLightboxImageSize(null);
     resetLightboxViewport();
   };
 
@@ -136,6 +162,7 @@ export function TransactionDetailsSheet({
     );
     if (galleryIndex < 0) return;
     setLightboxIndex(galleryIndex);
+    setLightboxImageSize(null);
     resetLightboxViewport();
   };
 
@@ -152,6 +179,7 @@ export function TransactionDetailsSheet({
         imageAttachments.length
       );
     });
+    setLightboxImageSize(null);
     resetLightboxViewport();
   };
 
@@ -285,6 +313,13 @@ export function TransactionDetailsSheet({
     } else if (activePointersRef.current.size === 0) {
       panRef.current = null;
     }
+  };
+
+  const handleLightboxImageLoad = (image: HTMLImageElement) => {
+    if (image.naturalWidth <= 0 || image.naturalHeight <= 0) return;
+    setLightboxImageSize(
+      fitLightboxImageSize(image.naturalWidth, image.naturalHeight),
+    );
   };
 
   const handleAttachmentDownload = async (src: string, index: number) => {
@@ -556,9 +591,18 @@ export function TransactionDetailsSheet({
                   setLightboxZoom(nextZoom);
                   if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
                 }}
+                onLoad={(event) => handleLightboxImageLoad(event.currentTarget)}
                 animate={{ scale: lightboxZoom, x: lightboxPan.x, y: lightboxPan.y }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
                 ref={lightboxImageRef}
+                style={
+                  lightboxImageSize
+                    ? {
+                        width: `${lightboxImageSize.width}px`,
+                        height: `${lightboxImageSize.height}px`,
+                      }
+                    : undefined
+                }
                 className="block h-auto w-auto max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] flex-none select-none rounded-xl border border-[#4b5563]/60 object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
                 draggable={false}
               />
