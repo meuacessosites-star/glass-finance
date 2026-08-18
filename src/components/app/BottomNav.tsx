@@ -98,7 +98,7 @@ function TabButton({
       to={tab.to}
       aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : undefined}
       className={cn(
-        "relative flex w-14 flex-col items-center gap-0.5 rounded-2xl py-1 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-1.5",
+        "relative flex min-h-11 w-14 flex-col items-center gap-0.5 rounded-2xl py-2 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-2",
         active ? "bg-primary/10" : "hover:bg-primary/5",
       )}
     >

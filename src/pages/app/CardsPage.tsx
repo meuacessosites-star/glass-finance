@@ -549,14 +549,14 @@ export default function CardsPage() {
               aria-label={`Cor ${color}`}
               onClick={() => updateField("color", color)}
               className={cn(
-                "size-8 rounded-full transition-transform active:scale-90",
+                "size-11 bg-clip-content rounded-full p-1.5 transition-transform active:scale-90",
                 form.color === color &&
                   "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
               )}
               style={{ backgroundColor: color }}
             />
           ))}
-          <label className="relative flex size-8 cursor-pointer overflow-hidden rounded-full border-2 border-white/70 shadow-sm dark:border-[#111c3c]">
+          <label className="relative flex size-11 cursor-pointer overflow-hidden rounded-full border-2 border-white/70 p-1.5 shadow-sm dark:border-[#111c3c]">
             <input
               type="color"
               value={isHexColor(form.color) ? form.color : PALETTE[0]}

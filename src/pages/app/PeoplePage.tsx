@@ -189,7 +189,7 @@ export default function PeoplePage() {
                       target="_blank"
                       rel="noreferrer"
                       aria-label={`Cobrar ${person.name} no WhatsApp`}
-                      className="flex size-9 items-center justify-center rounded-full bg-[#1FBF4F]/15 text-[#17a443] transition-transform active:scale-90"
+                      className="flex size-11 items-center justify-center rounded-full bg-[#1FBF4F]/15 text-[#17a443] transition-transform active:scale-90"
                     >
                       <MessageCircle className="size-[17px]" strokeWidth={2.3} />
                     </a>
@@ -198,7 +198,7 @@ export default function PeoplePage() {
                     type="button"
                     aria-label={`Editar ${person.name}`}
                     onClick={() => startEdit(person._id)}
-                    className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                    className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
                   >
                     <Pencil className="size-4" />
                   </button>
@@ -206,7 +206,7 @@ export default function PeoplePage() {
                     type="button"
                     aria-label={`Excluir ${person.name}`}
                     onClick={() => void handleDelete(person._id)}
-                    className="flex size-9 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
+                    className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
                   >
                     <Trash2 className="size-4" />
                   </button>
@@ -227,7 +227,7 @@ export default function PeoplePage() {
             <button
               type="button"
               onClick={cancelEdit}
-              className="flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
+              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
             >
               <X className="size-3.5" />
               Cancelar

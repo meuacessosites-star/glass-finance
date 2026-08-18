@@ -162,7 +162,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => scrollTo("up")}
           tabIndex={controlIsVisible ? 0 : -1}
-          className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
+          className="pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
         >
           <ChevronUp className="size-4" strokeWidth={2.5} />
         </button>
@@ -173,7 +173,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => scrollTo("down")}
           tabIndex={controlIsVisible ? 0 : -1}
-          className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
+          className="pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
         >
           <ChevronDown className="size-4" strokeWidth={2.5} />
         </button>

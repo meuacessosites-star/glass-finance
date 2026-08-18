@@ -208,7 +208,7 @@ export function AvatarEditor({
             type="button"
             aria-label="Fechar"
             onClick={onClose}
-            className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+            className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
           >
             <X className="size-4" />
           </button>

@@ -232,7 +232,7 @@ function PeriodPicker({
                   type="button"
                   aria-label="Mês anterior do período personalizado"
                   onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
-                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
                 >
                   <ChevronLeft className="size-4" />
                 </button>
@@ -243,7 +243,7 @@ function PeriodPicker({
                   type="button"
                   aria-label="Próximo mês do período personalizado"
                   onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
-                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
                 >
                   <ChevronRight className="size-4" />
                 </button>
@@ -453,7 +453,7 @@ function CardActionMenu({
         aria-label={`Opções de ${card.name}`}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="flex size-8 items-center justify-center rounded-full border border-white/30 bg-black/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
+        className="flex size-11 items-center justify-center rounded-full border border-white/30 bg-black/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
       >
         <MoreVertical className="size-4" />
       </button>
@@ -1586,7 +1586,7 @@ export default function CardPurchasesPage() {
         <button
           type="button"
           onClick={() => navigate("/dashboard/cartoes/arquivados")}
-          className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
           aria-label="Abrir Cartões Arquivados"
         >
           <Archive className="size-3.5" />
@@ -1600,7 +1600,7 @@ export default function CardPurchasesPage() {
             type="button"
             aria-label="Mês anterior"
             onClick={() => handleSelectMonth(shiftMonth(selectedMonth, -1))}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -1611,7 +1611,7 @@ export default function CardPurchasesPage() {
             type="button"
             aria-label="Próximo mês"
             onClick={() => handleSelectMonth(shiftMonth(selectedMonth, 1))}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <ChevronRight className="size-4" />
           </button>

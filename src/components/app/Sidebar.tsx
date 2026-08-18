@@ -79,7 +79,7 @@ export function SidebarTrigger({ className }: { className?: string }) {
       aria-label="Abrir menu"
       onClick={open}
       className={cn(
-        "glass glass-soft flex size-9 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90",
+        "glass glass-soft flex size-11 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90",
         className,
       )}
     >
@@ -245,7 +245,7 @@ export function Sidebar() {
                   type="button"
                   aria-label="Fechar menu"
                   onClick={close}
-                  className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                  className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
                 >
                   <X className="size-4" />
                 </button>

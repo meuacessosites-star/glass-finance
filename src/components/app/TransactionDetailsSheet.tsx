@@ -398,7 +398,7 @@ export function TransactionDetailsSheet({
                 type="button"
                 aria-label="Fechar"
                 onClick={onClose}
-                className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
               >
                 <X className="size-4" />
               </button>
@@ -610,7 +610,7 @@ export function TransactionDetailsSheet({
               type="button"
               aria-label="Fechar imagem"
               onClick={closeLightbox}
-              className="glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full text-white"
+              className="glass absolute right-4 top-4 z-10 flex size-11 items-center justify-center rounded-full text-white"
             >
               <X className="size-4" />
             </button>
@@ -625,7 +625,7 @@ export function TransactionDetailsSheet({
                     event.stopPropagation();
                     moveLightbox(-1);
                   }}
-                  className="glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
+                  className="glass absolute left-3 top-1/2 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
                 >
                   <ChevronLeft className="size-5" />
                 </button>
@@ -637,7 +637,7 @@ export function TransactionDetailsSheet({
                     event.stopPropagation();
                     moveLightbox(1);
                   }}
-                  className="glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
+                  className="glass absolute right-3 top-1/2 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
                 >
                   <ChevronRight className="size-5" />
                 </button>
@@ -700,7 +700,7 @@ export function TransactionDetailsSheet({
                 aria-label="Reduzir zoom"
                 onClick={() => adjustLightboxZoom(-0.25)}
                 disabled={lightboxZoom <= 1}
-                className="flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+                className="flex size-11 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
               >
                 <ZoomOut className="size-4" />
               </button>
@@ -712,7 +712,7 @@ export function TransactionDetailsSheet({
                 aria-label="Aumentar zoom"
                 onClick={() => adjustLightboxZoom(0.25)}
                 disabled={lightboxZoom >= 3}
-                className="flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+                className="flex size-11 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
               >
                 <ZoomIn className="size-4" />
               </button>
@@ -721,7 +721,7 @@ export function TransactionDetailsSheet({
                 aria-label="Redefinir zoom"
                 onClick={resetLightboxViewport}
                 disabled={lightboxZoom === LIGHTBOX_MIN_ZOOM && lightboxPan.x === 0 && lightboxPan.y === 0}
-                className="ml-0.5 flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
+                className="ml-0.5 flex size-11 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
               >
                 <RotateCcw className="size-3.5" />
               </button>

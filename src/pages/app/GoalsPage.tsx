@@ -264,7 +264,7 @@ export default function GoalsPage() {
                       type="button"
                       aria-label={`Editar ${g.name}`}
                       onClick={() => startEdit(g.id)}
-                      className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                      className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
                     >
                       <Pencil className="size-4" />
                     </button>
@@ -276,7 +276,7 @@ export default function GoalsPage() {
                         if (editingId === g.id) cancelEdit();
                         toast("Meta removida");
                       }}
-                      className="flex size-9 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
+                      className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
                     >
                       <Trash2 className="size-4" />
                     </button>
@@ -314,7 +314,7 @@ export default function GoalsPage() {
             <button
               type="button"
               onClick={cancelEdit}
-              className="flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
+              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
             >
               <X className="size-3.5" />
               Cancelar

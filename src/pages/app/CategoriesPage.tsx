@@ -168,7 +168,7 @@ export default function CategoriesPage() {
                 type="button"
                 aria-label={`Editar ${category.label}`}
                 onClick={() => startEdit(category.id)}
-                className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-white/60 active:scale-90"
+                className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-white/60 active:scale-90"
               >
                 <Pencil className="size-4" />
               </button>
@@ -176,7 +176,7 @@ export default function CategoriesPage() {
                 type="button"
                 aria-label={`Excluir ${category.label}`}
                 onClick={() => handleDelete(category.id, category.label)}
-                className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
+                className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
               >
                 <Trash2 className="size-4" />
               </button>
@@ -234,7 +234,7 @@ export default function CategoriesPage() {
               <ImagePlus className="size-5" />
             </div>
           )}
-          <label className="glass glass-soft flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12px] font-semibold text-glass-sub transition-colors hover:text-glass-ink active:scale-[0.98]">
+          <label className="glass glass-soft flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12px] font-semibold text-glass-sub transition-colors hover:text-glass-ink active:scale-[0.98]">
             <Upload className="size-4" />
             {image ? "Trocar imagem" : "Adicionar imagem"}
             <input
@@ -248,7 +248,7 @@ export default function CategoriesPage() {
             <button
               type="button"
               onClick={() => setImage(undefined)}
-              className="text-[12px] font-semibold text-glass-faint underline underline-offset-2"
+              className="min-h-11 px-2 text-[12px] font-semibold text-glass-faint underline underline-offset-2"
             >
               Remover
             </button>
@@ -267,7 +267,7 @@ export default function CategoriesPage() {
               aria-label={`Cor ${paletteColor}`}
               onClick={() => applyColor(paletteColor)}
               className={cn(
-                "size-8 rounded-full transition-transform active:scale-90",
+                "size-11 rounded-full transition-transform active:scale-90",
                 color === paletteColor &&
                   "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
               )}

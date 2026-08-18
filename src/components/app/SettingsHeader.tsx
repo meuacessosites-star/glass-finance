@@ -21,7 +21,7 @@ export function SettingsHeader({
           type="button"
           aria-label="Voltar"
           onClick={onBack}
-          className="glass glass-soft flex size-9 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
+          className="glass glass-soft flex size-11 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
         >
           <ArrowLeft className="size-[17px]" strokeWidth={2.3} />
         </button>

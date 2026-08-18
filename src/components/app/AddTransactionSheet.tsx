@@ -135,7 +135,7 @@ function Stepper({
         aria-label="Diminuir"
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
-        className="flex size-8 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
+        className="flex size-11 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
       >
         <Minus className="size-4" strokeWidth={2.6} />
       </button>
@@ -147,7 +147,7 @@ function Stepper({
         aria-label="Aumentar"
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
-        className="flex size-8 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
+        className="flex size-11 items-center justify-center rounded-full bg-white/70 text-glass-ink transition-all active:scale-90 disabled:opacity-30"
       >
         <Plus className="size-4" strokeWidth={2.6} />
       </button>
@@ -455,7 +455,7 @@ export function AddTransactionSheet({
               type="button"
               aria-label={editTransactionId ? "Cancelar edição" : "Fechar"}
               onClick={onClose}
-              className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+              className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
             >
               <X className="size-[18px]" />
             </button>
@@ -546,7 +546,7 @@ export function AddTransactionSheet({
                       type="button"
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
-                        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                        "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
                         selected ? "text-glass-ink" : "glass text-glass-sub",
                       )}
                       style={
@@ -572,7 +572,7 @@ export function AddTransactionSheet({
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="glass flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub transition-all"
+                  className="glass flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub transition-all"
                 >
                   <SquircleIcon
                     icon={Plus}
@@ -772,7 +772,7 @@ export function AddTransactionSheet({
                         }
                       }}
                       className={cn(
-                        "flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold transition-all active:scale-[0.98]",
+                        "flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold transition-all active:scale-[0.98]",
                         active
                           ? option.id === "paid"
                             ? "bg-[#1FBF4F] text-white shadow-[0_6px_16px_-8px_rgba(31,191,79,0.8)]"
@@ -1061,7 +1061,7 @@ export function AddTransactionSheet({
                       type="button"
                       aria-label="Fechar"
                       onClick={() => setPickerOpen(false)}
-                      className="glass glass-soft flex size-8 items-center justify-center rounded-full text-glass-sub active:scale-90"
+                      className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub active:scale-90"
                     >
                       <X className="size-4" />
                     </button>
@@ -1090,7 +1090,7 @@ export function AddTransactionSheet({
                         type="button"
                         aria-label="Limpar busca"
                         onClick={() => setQuery("")}
-                        className="shrink-0 text-glass-sub transition-transform active:scale-90"
+                        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-glass-sub transition-transform active:scale-90"
                       >
                         <X className="size-4" />
                       </button>

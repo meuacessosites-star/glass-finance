@@ -57,7 +57,7 @@ export default function InsightsPage() {
         value,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [categoryById, visibleTransactions]);
+  }, [categoryById, month, visibleTransactions]);
 
   const topCategory = byCategory[0];
   const reservesTotal = reserves.reduce((s, r) => s + r.amount, 0);
@@ -205,7 +205,7 @@ export default function InsightsPage() {
     });
 
     return list;
-  }, [expense, income, monthName, savingsPct, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingReceivables, people.length, pendingNotifications, firstName]);
+  }, [expense, income, monthName, savingsPct, savingsRate, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingReceivables, people.length, pendingNotifications, firstName]);
 
   return (
     <div className="space-y-4">

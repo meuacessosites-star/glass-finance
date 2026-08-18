@@ -18,7 +18,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label={dark ? "Mudar para tema claro" : "Mudar para tema escuro"}
       onClick={() => setTheme(dark ? "light" : "dark")}
       className={cn(
-        "glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90",
+        "glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90",
         className,
       )}
     >

@@ -56,7 +56,7 @@ export default function HomePage() {
         <Link
           to="/dashboard/notificacoes"
           aria-label={`Ver notificações${pendingCount > 0 ? ` (${pendingCount} pendentes)` : ""}`}
-          className="glass glass-soft relative flex size-9 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
+          className="glass glass-soft relative flex size-11 shrink-0 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90"
         >
           <Bell className="size-[17px]" strokeWidth={2.3} />
           {pendingCount > 0 && (

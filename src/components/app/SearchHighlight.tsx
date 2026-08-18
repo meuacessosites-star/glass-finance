@@ -192,7 +192,7 @@ export function SearchNavigationControls({
         title="Resultado anterior"
         disabled={!hasResults}
         onClick={onPrevious}
-        className="flex size-7 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
+        className="flex size-11 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
       >
         <ChevronUp className="size-3.5" strokeWidth={2.4} />
       </button>
@@ -202,7 +202,7 @@ export function SearchNavigationControls({
         title="Próximo resultado"
         disabled={!hasResults}
         onClick={onNext}
-        className="flex size-7 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
+        className="flex size-11 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
       >
         <ChevronDown className="size-3.5" strokeWidth={2.4} />
       </button>

@@ -321,7 +321,7 @@ function PeriodPicker({
             type="button"
             aria-label="Fechar calendário"
             onClick={() => setOpen(false)}
-            className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <X className="size-3.5" />
           </button>
@@ -332,7 +332,7 @@ function PeriodPicker({
                   type="button"
                   aria-label="Mês anterior do período personalizado"
                   onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
-                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
                 >
                   <ChevronLeft className="size-4 lg:size-5" />
                 </button>
@@ -343,7 +343,7 @@ function PeriodPicker({
                   type="button"
                   aria-label="Próximo mês do período personalizado"
                   onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
-                  className="flex size-8 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+                  className="flex size-11 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
                 >
                   <ChevronRight className="size-4 lg:size-5" />
                 </button>
@@ -853,7 +853,7 @@ export default function TransactionsPage() {
             aria-pressed={selectMode}
             onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
             className={cn(
-              "glass flex size-9 items-center justify-center rounded-full text-glass-sub transition-all active:scale-90",
+              "glass flex size-11 items-center justify-center rounded-full text-glass-sub transition-all active:scale-90",
               selectMode && "bg-primary text-white",
             )}
           >
@@ -878,7 +878,7 @@ export default function TransactionsPage() {
               aria-expanded={summaryExpanded}
               aria-controls="transactions-summary-content"
               onClick={() => setSummaryExpanded((expanded) => !expanded)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
             >
               <ChevronDown
                 className={cn("size-4 transition-transform duration-200", !summaryExpanded && "-rotate-90")}
@@ -953,7 +953,7 @@ export default function TransactionsPage() {
             aria-expanded={categoryChartExpanded}
             aria-controls="transactions-category-chart-content"
             onClick={() => setCategoryChartExpanded((expanded) => !expanded)}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
           >
             <ChevronDown
               className={cn("size-4 transition-transform duration-200", !categoryChartExpanded && "-rotate-90")}
@@ -1010,7 +1010,7 @@ export default function TransactionsPage() {
             type="button"
             aria-label="Mês anterior"
             onClick={() => handleSelectMonth(shiftMonth(selectedMonth, -1))}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95 lg:size-10"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95 lg:size-11"
           >
             <ChevronLeft className="size-4 lg:size-5" />
           </button>
@@ -1021,7 +1021,7 @@ export default function TransactionsPage() {
             type="button"
             aria-label="Próximo mês"
             onClick={() => handleSelectMonth(shiftMonth(selectedMonth, 1))}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95 lg:size-10"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95 lg:size-11"
           >
             <ChevronRight className="size-4 lg:size-5" />
           </button>
@@ -1063,7 +1063,7 @@ export default function TransactionsPage() {
               aria-pressed={paymentStatus === option.id}
               onClick={() => setPaymentStatus(option.id)}
               className={cn(
-                "min-w-[4.5rem] shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-0 lg:flex-1 lg:text-[13px]",
+                "min-h-11 min-w-[4.5rem] shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-0 lg:flex-1 lg:text-[13px]",
                 paymentStatus === option.id
                   ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
                   : "glass text-glass-sub",
@@ -1105,7 +1105,7 @@ export default function TransactionsPage() {
               type="button"
               onClick={() => setSearchQuery("")}
               aria-label="Limpar busca"
-              className="shrink-0 text-glass-faint transition-colors hover:text-glass-ink"
+              className="flex size-11 shrink-0 items-center justify-center rounded-lg text-glass-faint transition-colors hover:text-glass-ink"
             >
               <X className="size-4" />
             </button>
@@ -1117,7 +1117,7 @@ export default function TransactionsPage() {
               type="button"
               aria-label="Filtrar por categorias"
               className={cn(
-                "glass flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-[12px] font-semibold transition-all lg:px-3.5 lg:py-2.5 lg:text-[15px]",
+                "glass flex min-h-11 shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-[12px] font-semibold transition-all lg:px-3.5 lg:py-2.5 lg:text-[15px]",
                 selectedCategories.length > 0
                   ? "text-glass-ink"
                   : "text-glass-sub",

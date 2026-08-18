@@ -192,7 +192,7 @@ export default function ReservesPage() {
                       type="button"
                       aria-label={`Editar ${r.name}`}
                       onClick={() => startEdit(r.id)}
-                      className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                      className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
                     >
                       <Pencil className="size-4" />
                     </button>
@@ -204,7 +204,7 @@ export default function ReservesPage() {
                         if (editingId === r.id) cancelEdit();
                         toast("Cofrinho removido");
                       }}
-                      className="flex size-9 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
+                      className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
                     >
                       <Trash2 className="size-4" />
                     </button>
@@ -235,7 +235,7 @@ export default function ReservesPage() {
             <button
               type="button"
               onClick={cancelEdit}
-              className="flex items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
+              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
             >
               <X className="size-3.5" />
               Cancelar
@@ -273,7 +273,7 @@ export default function ReservesPage() {
               aria-label={`Cor ${c}`}
               onClick={() => setColor(c)}
               className={cn(
-                "size-8 rounded-full transition-transform active:scale-90",
+                "size-11 rounded-full transition-transform active:scale-90",
                 color === c &&
                   "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
               )}

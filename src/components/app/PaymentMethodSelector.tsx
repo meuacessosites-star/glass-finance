@@ -104,7 +104,7 @@ export function PaymentMethodSelector({
                 onValueChange(m.id);
                 if (m.id !== "cartao") onCardChange(null);
               }}                className={cn(
-                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
                   selected
                     ? "bg-primary text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
                     : "glass text-glass-sub",
@@ -126,7 +126,7 @@ export function PaymentMethodSelector({
                 type="button"
                 onClick={() => onCardModeChange(mode)}
                 className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13.5px] font-semibold transition-all",
+                  "flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13.5px] font-semibold transition-all",
                   cardMode === mode ? "bg-white shadow-sm" : "text-glass-sub",
                 )}
               >
@@ -159,7 +159,7 @@ export function PaymentMethodSelector({
             <button
               type="button"
               onClick={() => onCardChange(null)}                className={cn(
-                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
                   cardId === null
                     ? "bg-glass-ink text-white"
                     : "glass text-glass-sub",
@@ -176,7 +176,7 @@ export function PaymentMethodSelector({
                   type="button"
                   onClick={() => onCardChange(c.id)}
                   className={cn(
-                    "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-semibold transition-all active:scale-95",
+                    "flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full py-1.5 pl-1.5 pr-3.5 text-[12.5px] font-semibold transition-all active:scale-95",
                     selected
                       ? "text-white shadow-[0_6px_16px_-6px_rgba(15,40,90,0.45)]"
                       : "glass text-glass-sub",

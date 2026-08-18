@@ -154,7 +154,7 @@ export default function NotificationsPage() {
                         description: `${n.merchant} · ${formatCurrency(n.amount)} entrou no histórico.`,
                       });
                     }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#1FBF4F] py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_-8px_rgba(31,191,79,0.7)] transition-all hover:brightness-105 active:scale-[0.98]"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#1FBF4F] py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_18px_-8px_rgba(31,191,79,0.7)] transition-all hover:brightness-105 active:scale-[0.98]"
                   >
                     <Check className="size-4" strokeWidth={2.6} />
                     Aprovar
@@ -165,7 +165,7 @@ export default function NotificationsPage() {
                       ignoreNotification(n.id);
                       toast("Notificação ignorada");
                     }}
-                    className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-[13.5px] font-semibold text-glass-sub transition-all active:scale-[0.98]"
+                    className="glass glass-soft flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-[13.5px] font-semibold text-glass-sub transition-all active:scale-[0.98]"
                   >
                     <X className="size-4" strokeWidth={2.4} />
                     Ignorar

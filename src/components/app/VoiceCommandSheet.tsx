@@ -362,7 +362,7 @@ export function VoiceCommandSheet({
                 type="button"
                 aria-label="Fechar"
                 onClick={onClose}
-                className="glass glass-soft flex size-9 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
+                className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
               >
                 <X className="size-[18px]" />
               </button>
@@ -397,7 +397,7 @@ export function VoiceCommandSheet({
                         key={suggestion}
                         type="button"
                         onClick={() => void sendMessage(suggestion)}
-                        className="glass glass-soft rounded-full px-3 py-2 text-left text-[12px] font-semibold leading-tight text-glass-sub transition-transform active:scale-[0.98]"
+                        className="glass glass-soft min-h-11 rounded-full px-3 py-2 text-left text-[12px] font-semibold leading-tight text-glass-sub transition-transform active:scale-[0.98]"
                       >
                         {suggestion}
                       </button>
@@ -437,7 +437,7 @@ export function VoiceCommandSheet({
                   onClick={listening ? stopListening : startListening}
                   disabled={waiting || reviewOpen}
                   className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-xl transition-transform active:scale-90 disabled:opacity-40",
+                    "flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform active:scale-90 disabled:opacity-40",
                     listening
                       ? "bg-[#AF52DE] text-white"
                       : "bg-gray-100 text-glass-sub",
@@ -450,7 +450,7 @@ export function VoiceCommandSheet({
                   aria-label="Enviar mensagem"
                   onClick={() => void sendMessage(draft)}
                   disabled={waiting || !draft.trim() || reviewOpen}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-500 text-white transition-transform active:scale-90 disabled:opacity-40"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-500 text-white transition-transform active:scale-90 disabled:opacity-40"
                 >
                   {waiting ? <ArrowUp className="size-[18px]" /> : <Send className="size-[17px]" />}
                 </button>

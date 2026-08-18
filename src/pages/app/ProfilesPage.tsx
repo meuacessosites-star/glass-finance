@@ -255,7 +255,7 @@ export default function ProfilesPage() {
                 type="button"
                 aria-label={`Editar ${profile.name}`}
                 onClick={() => setEditor({ mode: "edit", profile })}
-                className="flex size-8 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-primary/10 hover:text-primary active:scale-90"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-primary/10 hover:text-primary active:scale-90"
               >
                 <Pencil className="size-4" />
               </button>
@@ -263,7 +263,7 @@ export default function ProfilesPage() {
                 type="button"
                 aria-label={`Excluir ${profile.name}`}
                 onClick={() => handleDeleteProfile(profile.id, profile.name)}
-                className="flex size-8 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
               >
                 <Trash2 className="size-4" />
               </button>
