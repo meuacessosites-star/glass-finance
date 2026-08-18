@@ -1,5 +1,5 @@
 import {
-  type TouchEvent as ReactTouchEvent,
+  type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
   useRef,
   useState,
@@ -51,10 +51,11 @@ function clampLightboxZoom(value: number) {
   );
 }
 
-function distanceBetweenTouches(touches: TouchList) {
-  const first = touches[0];
-  const second = touches[1];
-  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+function distanceBetweenPoints(
+  first: { x: number; y: number },
+  second: { x: number; y: number },
+) {
+  return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
 /**
@@ -77,8 +78,11 @@ export function TransactionDetailsSheet({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
   const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+  const lightboxImageRef = useRef<HTMLImageElement | null>(null);
+  const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
   const panRef = useRef<{
+    pointerId: number;
     startX: number;
     startY: number;
     originX: number;
@@ -114,6 +118,7 @@ export function TransactionDetailsSheet({
   }`;
 
   const resetLightboxViewport = () => {
+    activePointersRef.current.clear();
     pinchRef.current = null;
     panRef.current = null;
     setLightboxZoom(LIGHTBOX_MIN_ZOOM);
@@ -153,7 +158,15 @@ export function TransactionDetailsSheet({
   const adjustLightboxZoom = (delta: number) => {
     const nextZoom = clampLightboxZoom(lightboxZoom + delta);
     setLightboxZoom(nextZoom);
-    if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
+    if (nextZoom === LIGHTBOX_MIN_ZOOM) {
+      setLightboxPan({ x: 0, y: 0 });
+      return;
+    }
+    const bounds = getLightboxPanBounds(nextZoom);
+    setLightboxPan((currentPan) => ({
+      x: Math.min(bounds.x, Math.max(-bounds.x, currentPan.x)),
+      y: Math.min(bounds.y, Math.max(-bounds.y, currentPan.y)),
+    }));
   };
 
   const handleLightboxWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -163,55 +176,115 @@ export function TransactionDetailsSheet({
     adjustLightboxZoom(event.deltaY > 0 ? -0.1 : 0.1);
   };
 
-  const handleLightboxTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (event.touches.length >= 2) {
+  const getLightboxPanBounds = (zoom: number) => {
+    const image = lightboxImageRef.current;
+    const baseWidth = image?.offsetWidth ?? window.innerWidth - 48;
+    const baseHeight = image?.offsetHeight ?? window.innerHeight - 48;
+    const viewportWidth = Math.max(1, window.innerWidth - 32);
+    const viewportHeight = Math.max(1, window.innerHeight - 32);
+
+    return {
+      x: Math.max(0, (baseWidth * zoom - viewportWidth) / 2),
+      y: Math.max(0, (baseHeight * zoom - viewportHeight) / 2),
+    };
+  };
+
+  const handleLightboxPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (lightboxZoom <= LIGHTBOX_MIN_ZOOM) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (activePointersRef.current.size >= 2) {
+      const points = Array.from(activePointersRef.current.values()).slice(0, 2);
       pinchRef.current = {
-        distance: distanceBetweenTouches(event.touches),
+        distance: distanceBetweenPoints(points[0], points[1]),
         zoom: lightboxZoom,
       };
       panRef.current = null;
-      event.stopPropagation();
       return;
     }
-    if (lightboxZoom > LIGHTBOX_MIN_ZOOM && event.touches.length === 1) {
-      const [touch] = event.touches;
-      panRef.current = {
-        startX: touch.clientX,
-        startY: touch.clientY,
-        originX: lightboxPan.x,
-        originY: lightboxPan.y,
-      };
-      event.stopPropagation();
-    }
+
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: lightboxPan.x,
+      originY: lightboxPan.y,
+    };
   };
 
-  const handleLightboxTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (event.touches.length >= 2 && pinchRef.current) {
+  const handleLightboxPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!activePointersRef.current.has(event.pointerId)) return;
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (activePointersRef.current.size >= 2) {
       event.preventDefault();
       event.stopPropagation();
-      const ratio = distanceBetweenTouches(event.touches) / pinchRef.current.distance;
-      const nextZoom = clampLightboxZoom(pinchRef.current.zoom * ratio);
+      const points = Array.from(activePointersRef.current.values()).slice(0, 2);
+      const distance = distanceBetweenPoints(points[0], points[1]);
+      const pinch = pinchRef.current ?? { distance, zoom: lightboxZoom };
+      pinchRef.current = pinch;
+      const nextZoom = clampLightboxZoom(pinch.zoom * (distance / pinch.distance));
       setLightboxZoom(nextZoom);
-      if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
+      if (nextZoom === LIGHTBOX_MIN_ZOOM) {
+        setLightboxPan({ x: 0, y: 0 });
+        return;
+      }
+      const bounds = getLightboxPanBounds(nextZoom);
+      setLightboxPan((currentPan) => ({
+        x: Math.min(bounds.x, Math.max(-bounds.x, currentPan.x)),
+        y: Math.min(bounds.y, Math.max(-bounds.y, currentPan.y)),
+      }));
       return;
     }
-    if (lightboxZoom <= LIGHTBOX_MIN_ZOOM || !panRef.current || event.touches.length !== 1) {
+
+    if (
+      lightboxZoom <= LIGHTBOX_MIN_ZOOM ||
+      !panRef.current ||
+      panRef.current.pointerId !== event.pointerId
+    ) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    const [touch] = event.touches;
-    const maxPanX = Math.max(0, window.innerWidth * (lightboxZoom - 1) * 0.45);
-    const maxPanY = Math.max(0, window.innerHeight * (lightboxZoom - 1) * 0.45);
+    const bounds = getLightboxPanBounds(lightboxZoom);
     setLightboxPan({
-      x: Math.min(maxPanX, Math.max(-maxPanX, panRef.current.originX + touch.clientX - panRef.current.startX)),
-      y: Math.min(maxPanY, Math.max(-maxPanY, panRef.current.originY + touch.clientY - panRef.current.startY)),
+      x: Math.min(
+        bounds.x,
+        Math.max(bounds.x * -1, panRef.current.originX + event.clientX - panRef.current.startX),
+      ),
+      y: Math.min(
+        bounds.y,
+        Math.max(bounds.y * -1, panRef.current.originY + event.clientY - panRef.current.startY),
+      ),
     });
   };
 
-  const handleLightboxTouchEnd = () => {
-    pinchRef.current = null;
-    panRef.current = null;
+  const handleLightboxPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    activePointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (activePointersRef.current.size < 2) pinchRef.current = null;
+    if (activePointersRef.current.size === 1 && lightboxZoom > LIGHTBOX_MIN_ZOOM) {
+      const [pointerId, point] = Array.from(activePointersRef.current.entries())[0];
+      panRef.current = {
+        pointerId,
+        startX: point.x,
+        startY: point.y,
+        originX: lightboxPan.x,
+        originY: lightboxPan.y,
+      };
+    } else if (activePointersRef.current.size === 0) {
+      panRef.current = null;
+    }
   };
 
   const handleAttachmentDownload = async (src: string, index: number) => {
@@ -464,13 +537,13 @@ export function TransactionDetailsSheet({
                 else if (info.offset.x >= 56) moveLightbox(-1);
               }}
               onWheel={handleLightboxWheel}
-              onTouchStart={handleLightboxTouchStart}
-              onTouchMove={handleLightboxTouchMove}
-              onTouchEnd={handleLightboxTouchEnd}
-              onTouchCancel={handleLightboxTouchEnd}
+              onPointerDown={handleLightboxPointerDown}
+              onPointerMove={handleLightboxPointerMove}
+              onPointerUp={handleLightboxPointerEnd}
+              onPointerCancel={handleLightboxPointerEnd}
               onClick={(event) => event.stopPropagation()}
               style={{ touchAction: lightboxZoom > LIGHTBOX_MIN_ZOOM ? "none" : "pan-y" }}
-              className="flex max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] items-center justify-center overflow-visible rounded-[1.5rem] bg-[#e5e7eb] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-2 ring-[#111827]"
+              className="flex h-fit w-fit max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] items-center justify-center overflow-visible rounded-[1.5rem] bg-[#e5e7eb] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-2 ring-[#111827]"
             >
               <motion.img
                 key={lightboxSrc}
@@ -485,7 +558,8 @@ export function TransactionDetailsSheet({
                 }}
                 animate={{ scale: lightboxZoom, x: lightboxPan.x, y: lightboxPan.y }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="h-auto w-auto max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] select-none rounded-xl border border-[#4b5563]/60 object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+                ref={lightboxImageRef}
+                className="block h-auto w-auto max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] flex-none select-none rounded-xl border border-[#4b5563]/60 object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
                 draggable={false}
               />
             </motion.div>
