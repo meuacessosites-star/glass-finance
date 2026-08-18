@@ -43,8 +43,8 @@ export function BottomNav({
       : pathname.startsWith(to);
 
   return (
-    <nav className="absolute inset-x-0 bottom-5 z-30 flex justify-center px-5">
-      <div className="glass glass-strong flex w-full items-center justify-between rounded-[2.1rem] py-2 pl-3 pr-3">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-2 pt-2 safe-bottom md:absolute md:bottom-5 md:z-30 md:px-5 md:pb-0">
+      <div className="pointer-events-auto glass glass-strong flex w-full max-w-[640px] items-center justify-between rounded-[1.8rem] px-1.5 py-1.5 sm:rounded-[2.1rem] sm:px-3 sm:py-2">
         {tabs.slice(0, 2).map((tab) => (
           <TabButton
             key={tab.to}
@@ -55,13 +55,13 @@ export function BottomNav({
         ))}
 
         {/* Center add button */}
-        <div className="relative flex w-16 shrink-0 justify-center">
+        <div className="relative flex w-14 shrink-0 justify-center sm:w-16">
           <button
             type="button"
             aria-label="Adicionar transação"
             onClick={onToggleAdd}
             className={cn(
-              "absolute -top-7 flex size-14 items-center justify-center rounded-full bg-gradient-to-b from-[#5b9dff] to-[#2f6bff] text-white shadow-[0_10px_24px_-6px_rgba(47,107,255,0.55),inset_0_1px_0_rgba(255,255,255,0.5)] ring-4 ring-white/80 transition-transform duration-300 active:scale-90 dark:ring-[#f4f8ff]/80",
+              "absolute -top-[1.625rem] flex size-[3.25rem] items-center justify-center rounded-full bg-gradient-to-b from-[#5b9dff] to-[#2f6bff] text-white shadow-[0_10px_24px_-6px_rgba(47,107,255,0.55),inset_0_1px_0_rgba(255,255,255,0.5)] ring-4 ring-white/80 transition-transform duration-300 active:scale-90 dark:ring-[#f4f8ff]/80",
               addOpen && "rotate-45",
             )}
           >
@@ -98,7 +98,7 @@ function TabButton({
       to={tab.to}
       aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : tab.label}
       className={cn(
-        "relative flex w-16 flex-col items-center gap-1 rounded-2xl py-1.5 transition-colors duration-200",
+        "relative flex w-14 flex-col items-center gap-0.5 rounded-2xl py-1 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-1.5",
         active ? "bg-primary/10" : "hover:bg-primary/5",
       )}
     >

@@ -18,6 +18,7 @@ import {
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { HorizontalScroll } from "@/components/app/HorizontalScroll";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -141,14 +142,14 @@ function MonthMultiPicker({
           type="button"
           aria-label="Selecionar um ou mais meses"
           className={cn(
-            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all lg:text-[13px]",
+            "flex h-9 min-w-[6.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[7rem] lg:text-[13px]",
             selectedMonths.length > 0
               ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
               : "glass text-glass-sub",
           )}
         >
           <CalendarDays className="size-3.5 shrink-0" />
-          <span className="truncate">{label}</span>
+          <span className="whitespace-nowrap">{label}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="glass-strong w-64">
@@ -240,7 +241,7 @@ function PeriodPicker({
   };
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         aria-label="Selecionar este mês"
@@ -250,13 +251,13 @@ function PeriodPicker({
           setOpen(false);
         }}
         className={cn(
-          "flex min-w-0 flex-1 items-center justify-center rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all lg:text-[13px]",
+          "flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[6.5rem] lg:text-[13px]",
           mode === "current"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
         )}
       >
-        <span className="truncate">Este mês</span>
+        <span className="whitespace-nowrap">Este mês</span>
       </button>
       <button
         ref={triggerRef}
@@ -271,13 +272,13 @@ function PeriodPicker({
           }
         }}
         className={cn(
-          "flex min-w-0 flex-1 items-center justify-center rounded-full px-2.5 py-2 text-[11px] font-semibold transition-all lg:text-[13px]",
+          "flex h-9 min-w-[8.25rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[9rem] lg:text-[13px]",
           mode === "custom"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
         )}
       >
-        <span className="truncate">Personalizado</span>
+        <span className="whitespace-nowrap">Personalizado</span>
       </button>
 
       {open && popoverPosition && createPortal(
@@ -782,15 +783,15 @@ export default function TransactionsPage() {
       : `Nada registrado em ${selectedPeriodLabel} para os filtros selecionados.`;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-3 lg:space-y-4">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>
-            <h1 className="text-[24px] font-bold tracking-tight text-foreground lg:text-[28px]">
+            <h1 className="text-[21px] font-bold tracking-tight text-foreground sm:text-[24px] lg:text-[28px]">
               Transações
             </h1>
-            <p className="text-[13px] text-muted-foreground lg:text-[15px]">Histórico completo de gastos e ganhos</p>
+            <p className="hidden text-[12px] text-muted-foreground sm:block lg:text-[15px]">Histórico completo de gastos e ganhos</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -810,7 +811,7 @@ export default function TransactionsPage() {
         </div>
       </header>
 
-      <section className="glass rounded-2xl p-4 lg:p-5">
+      <section className="glass rounded-2xl p-3 lg:p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] font-bold text-glass-ink dark:text-white lg:text-[15px]">
             Resumo do período
@@ -844,16 +845,16 @@ export default function TransactionsPage() {
               transition={{ duration: 0.22, ease: "easeInOut" }}
               className="overflow-hidden"
             >
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-2 grid grid-cols-2 gap-2 lg:mt-3">
                 <div className="rounded-2xl bg-[#1FBF4F]/10 px-3 py-2.5">
-                  <p className="text-[11px] font-semibold text-[#168A39] lg:text-[13px]">Total pago</p>
-                  <p className="mt-1 amount-tabular text-[17px] font-bold text-[#168A39] lg:text-[20px]">
+                  <p className="text-[10px] font-semibold text-[#168A39] lg:text-[13px]">Total pago</p>
+                  <p className="mt-0.5 amount-tabular text-[16px] font-bold text-[#168A39] lg:mt-1 lg:text-[20px]">
                     {formatCurrency(paidTotal)}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-[#FF9F0A]/10 px-3 py-2.5">
-                  <p className="text-[11px] font-semibold text-[#B56B00] lg:text-[13px]">Total pendente</p>
-                  <p className="mt-1 amount-tabular text-[17px] font-bold text-[#B56B00] lg:text-[20px]">
+                  <p className="text-[10px] font-semibold text-[#B56B00] lg:text-[13px]">Total pendente</p>
+                  <p className="mt-0.5 amount-tabular text-[16px] font-bold text-[#B56B00] lg:mt-1 lg:text-[20px]">
                     {formatCurrency(pendingTotal)}
                   </p>
                 </div>
@@ -863,7 +864,7 @@ export default function TransactionsPage() {
                 onClick={handleMarkPendingAsPaid}
                 disabled={pendingTransactions.length === 0 || isMarkingPending}
                 className={cn(
-                  "mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all lg:text-[14px]",
+                  "mt-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold transition-all lg:mt-3 lg:py-2.5 lg:text-[14px]",
                   pendingTransactions.length > 0
                     ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)] hover:brightness-105 active:scale-[0.99]"
                     : "glass text-glass-faint",
@@ -881,7 +882,7 @@ export default function TransactionsPage() {
         </AnimatePresence>
       </section>
 
-      <section className="glass rounded-2xl p-4 lg:p-5">
+      <section className="glass rounded-2xl p-3 lg:p-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <BarChart3 className="size-4 shrink-0 text-primary" />
@@ -919,7 +920,8 @@ export default function TransactionsPage() {
               className="overflow-hidden"
             >
               {categoryChartData.length > 0 ? (
-                <div className="mt-4 space-y-3">
+                                  <div className="mt-3 space-y-2.5 lg:mt-4 lg:space-y-3">
+
                   {categoryChartData.map((item) => (
                     <div key={item.categoryId}>
                       <div className="mb-1 flex items-center justify-between gap-3 text-[11px] lg:text-[13px]">
@@ -950,7 +952,7 @@ export default function TransactionsPage() {
       </section>
 
       {/* Month and period filter */}
-      <div className="glass rounded-2xl p-3 lg:p-4">
+      <div className="glass rounded-2xl p-2.5 lg:p-4">
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -973,7 +975,7 @@ export default function TransactionsPage() {
           </button>
         </div>
 
-        <div className="mt-3 flex w-full items-center gap-1.5 border-t border-glass-ink/5 px-1 pt-3 dark:border-white/10">
+        <HorizontalScroll className="mt-2 -mx-1 gap-1.5 border-t border-glass-ink/5 px-1 pt-2 pb-0.5 dark:border-white/10 lg:mt-3 lg:pt-3">
           <PeriodPicker
             mode={periodMode}
             selectedMonth={selectedMonth}
@@ -994,8 +996,8 @@ export default function TransactionsPage() {
             selectedMonths={selectedMonths}
             onSelectedMonthsChange={handleSelectMonths}
           />
-        </div>
-        <div className="mt-2 flex w-full items-center gap-1.5">
+        </HorizontalScroll>
+        <HorizontalScroll className="mt-1.5 gap-1.5 pb-0.5 lg:mt-2">
           {(
             [
               { id: "all", label: "Todos" },
@@ -1009,7 +1011,7 @@ export default function TransactionsPage() {
               aria-pressed={paymentStatus === option.id}
               onClick={() => setPaymentStatus(option.id)}
               className={cn(
-                "flex-1 rounded-full px-2 py-2 text-[11px] font-semibold transition-all lg:text-[13px]",
+                "min-w-[4.5rem] shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-0 lg:flex-1 lg:text-[13px]",
                 paymentStatus === option.id
                   ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
                   : "glass text-glass-sub",
@@ -1018,12 +1020,12 @@ export default function TransactionsPage() {
               {option.label}
             </button>
           ))}
-        </div>
+        </HorizontalScroll>
       </div>
 
       {/* Search and category filter */}
       <div className="flex min-w-0 items-center gap-2">
-        <div className="glass flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-3.5 py-2.5">
+        <div className="glass flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-3 py-2 lg:px-3.5 lg:py-2.5">
           <Search className="size-4 shrink-0 text-glass-faint" />
           <input
             type="search"
@@ -1050,7 +1052,7 @@ export default function TransactionsPage() {
               type="button"
               aria-label="Filtrar por categorias"
               className={cn(
-                "glass flex shrink-0 items-center gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold transition-all lg:text-[15px]",
+                "glass flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-[12px] font-semibold transition-all lg:px-3.5 lg:py-2.5 lg:text-[15px]",
                 selectedCategories.length > 0
                   ? "text-glass-ink"
                   : "text-glass-sub",
@@ -1094,12 +1096,12 @@ export default function TransactionsPage() {
       </div>
 
       {/* Search scope */}
-      <div className="glass-soft flex w-full items-center gap-1 rounded-2xl p-1">
+      <div className="glass-soft flex w-full items-center gap-1 rounded-2xl p-0.5 lg:p-1">
         <button
           type="button"
           onClick={() => setScope("month")}
           className={cn(
-            "flex-1 rounded-xl px-3 py-2 text-[12px] font-semibold transition-all lg:text-[14px]",
+            "flex-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all lg:px-3 lg:py-2 lg:text-[14px]",
             scope === "month"
               ? "bg-glass-ink text-white shadow-sm"
               : "text-glass-sub",
@@ -1111,7 +1113,7 @@ export default function TransactionsPage() {
           type="button"
           onClick={() => setScope("all")}
           className={cn(
-            "flex-1 rounded-xl px-3 py-2 text-[12px] font-semibold transition-all lg:text-[14px]",
+            "flex-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all lg:px-3 lg:py-2 lg:text-[14px]",
             scope === "all"
               ? "bg-glass-ink text-white shadow-sm"
               : "text-glass-sub",
@@ -1135,7 +1137,7 @@ export default function TransactionsPage() {
       )}
 
       {/* Summary of the filter */}
-      <div className="glass flex items-center justify-between rounded-2xl px-4 py-3 lg:px-5 lg:py-3.5">
+      <div className="glass flex items-center justify-between rounded-2xl px-3 py-2.5 lg:px-5 lg:py-3.5">
         <p className="text-[12.5px] text-glass-sub lg:text-[14px]">
           {filtered.length} {filtered.length === 1 ? "transação" : "transações"}
         </p>
@@ -1171,11 +1173,12 @@ export default function TransactionsPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: groupIndex * 0.05 }}
+            className="last:pb-5 lg:last:pb-0"
           >
             <p className="mb-1 px-2 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground/80 lg:text-[14px]">
               {label}
             </p>
-            <div className="space-y-2 py-1.5 lg:py-2">
+            <div className="space-y-2 py-1 lg:py-2">
               {list.map((transaction) => {
                 const status = getTransactionPaymentStatus(
                   transaction,

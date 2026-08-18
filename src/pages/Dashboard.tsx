@@ -44,7 +44,7 @@ function DashboardShell() {
 
           {/* Scrollable content */}
           <main className="no-scrollbar relative z-10 flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
-            <div className={isTransactionEdit ? "h-full min-w-0" : "min-w-0 px-5 pb-52"}>
+            <div className={isTransactionEdit ? "h-full min-w-0" : "min-w-0 px-5 pb-[7rem] lg:pb-36"}>
               <Outlet />
             </div>
           </main>

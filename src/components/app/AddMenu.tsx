@@ -105,7 +105,7 @@ export function AddMenu({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
           onClick={onClose}
-          className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[230] bg-[#0b1630]/45 backdrop-blur-[2px]"
         />
       )}
       {open && (
@@ -121,7 +121,7 @@ export function AddMenu({
           onDragEnd={(_, info) => {
             if (info.offset.y > 90 || info.velocity.y > 500) onClose();
           }}
-          className="glass glass-strong absolute inset-x-0 bottom-0 z-50 rounded-t-[2.2rem] bg-white px-5 pb-8 pt-3 dark:bg-[#f4f8ff]"
+          className="glass glass-strong fixed inset-x-0 bottom-0 z-[240] max-h-[calc(100dvh-4rem)] overflow-y-auto rounded-t-[2.2rem] bg-white px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-3 dark:bg-[#f4f8ff]"
         >
             <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15 dark:bg-black/25" />
             <div className="mb-4 flex items-center justify-between">

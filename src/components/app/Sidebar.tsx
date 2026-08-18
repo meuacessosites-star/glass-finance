@@ -223,17 +223,17 @@ export function Sidebar() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={close}
-            className="absolute inset-0 z-40 bg-[#0b1630]/45 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[210] bg-[#0b1630]/45 backdrop-blur-[2px]"
           />
         )}
         {isOpen && (
           <motion.aside
             key="sidebar-panel"
-            initial={{ x: "-105%" }}
+            initial={{ x: "-100%" }}
             animate={{ x: 0 }}
-            exit={{ x: "-105%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 330 }}
-            className="glass glass-strong absolute inset-y-3 left-3 z-50 flex w-[286px] flex-col overflow-y-auto no-scrollbar rounded-[1.9rem] bg-white p-4 dark:bg-[#f4f8ff]"
+            exit={{ x: "-100%" }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="glass glass-strong fixed inset-y-2 left-2 z-[220] flex w-[286px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[1.9rem] bg-white p-4 dark:bg-[#f4f8ff] md:inset-y-3 md:left-3"
           >
               {/* Header */}
               <div className="flex items-center justify-between">
@@ -347,7 +347,7 @@ export function Sidebar() {
               )}
 
               {/* Nav */}
-              <nav className="mt-4 flex-1 space-y-1 overflow-y-auto no-scrollbar">
+              <nav className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
                 {items.map((item) => {
                   const active = pathname.startsWith(item.to);
                   return (
@@ -389,7 +389,7 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="mt-3 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors hover:bg-[#FF3B30]/10"
+                className="mt-3 flex w-full shrink-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors hover:bg-[#FF3B30]/10"
               >
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#FF3B30]/15">
                   <LogOut
