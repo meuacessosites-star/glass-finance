@@ -217,8 +217,14 @@ function PeriodPicker({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const pickerWidth = Math.min(304, window.innerWidth - 32);
+      const pickerHeight = Math.min(440, window.innerHeight - 32);
+      const preferredTop = rect.bottom + 8;
+      const top =
+        preferredTop + pickerHeight <= window.innerHeight - 16
+          ? preferredTop
+          : Math.max(16, rect.top - pickerHeight - 8);
       setPopoverPosition({
-        top: rect.bottom + 8,
+        top,
         left: Math.max(
           16,
           Math.min(window.innerWidth - pickerWidth - 16, rect.right - pickerWidth),
@@ -281,7 +287,7 @@ function PeriodPicker({
           setOpen(false);
         }}
         className={cn(
-          "flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[6.5rem] lg:text-[13px]",
+          "flex h-11 min-h-11 min-w-[5.75rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[6.5rem] lg:text-[13px]",
           mode === "current"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
@@ -302,7 +308,7 @@ function PeriodPicker({
           }
         }}
         className={cn(
-          "flex h-9 min-w-[8.25rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[9rem] lg:text-[13px]",
+          "flex h-11 min-h-11 min-w-[8.25rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[9rem] lg:text-[13px]",
           mode === "custom"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
@@ -315,7 +321,7 @@ function PeriodPicker({
         <div
           ref={calendarRef}
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
-          className="relative fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 pt-10 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
+          className="relative fixed z-[210] max-h-[calc(100dvh-2rem)] w-[min(19rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 pt-10 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
         >
           <button
             type="button"
@@ -834,9 +840,9 @@ export default function TransactionsPage() {
       : `Nada registrado em ${selectedPeriodLabel} para os filtros selecionados.`;
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-col gap-3 lg:gap-4">
-      <div className="flex min-h-0 shrink-0 flex-col gap-3 lg:gap-4">
-        <header className="flex items-center justify-between pt-[env(safe-area-inset-top)] sm:pt-0">
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-col">
+      <div className="shrink-0 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
+        <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>
@@ -862,7 +868,13 @@ export default function TransactionsPage() {
           <ThemeToggle />
         </div>
       </header>
+      </div>
 
+      <div
+        id="transactions-list-scroll"
+        className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3 pb-24 lg:pt-4 lg:pb-36"
+      >
+        <div className="flex flex-col gap-3 lg:gap-4">
       <section className="glass rounded-2xl p-3 lg:p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] font-bold text-glass-ink dark:text-white lg:text-[15px]">
@@ -1263,12 +1275,6 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      </div>
-
-      <div
-        id="transactions-list-scroll"
-        className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-24 lg:pb-36"
-      >
         {/* Grouped list */}
         {grouped.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
@@ -1362,6 +1368,7 @@ export default function TransactionsPage() {
           </motion.section>
         ))
         )}
+        </div>
       </div>
 
       <AnimatePresence initial={false}>

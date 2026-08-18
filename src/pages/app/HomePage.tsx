@@ -39,7 +39,7 @@ export default function HomePage() {
   const pendingCount = notifications.filter((n) => n.status === "pending").length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -8 }}
