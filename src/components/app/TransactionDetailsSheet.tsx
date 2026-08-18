@@ -362,7 +362,9 @@ export function TransactionDetailsSheet({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onClose();
+          }}
           className="absolute inset-0 z-[65] flex items-center justify-center bg-[#0b1630]/45 px-8 backdrop-blur-[2px]"
         >
           <motion.div
@@ -421,7 +423,11 @@ export function TransactionDetailsSheet({
               </div>
               {transaction.paymentStatus === "paid" && (
                 <>
-                  <div className="flex items-center gap-3 rounded-2xl bg-[#1FBF4F]/10 px-3.5 py-2.5">
+                  <div
+                    className="flex items-center gap-3 rounded-2xl bg-[#1FBF4F]/10 px-3.5 py-2.5"
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
                     <Check className="size-4 shrink-0 text-[#168A39]" />
                     <button
                       type="button"
@@ -440,7 +446,11 @@ export function TransactionDetailsSheet({
                       className="sr-only"
                     />
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
+                  <div
+                    className="flex items-center justify-between gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5"
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
                     <label
                       htmlFor={`show-payment-date-${transaction.id}`}
                       className="min-w-0 cursor-pointer text-[12px] font-semibold text-glass-ink"
