@@ -150,7 +150,7 @@ function MonthMultiPicker({
           type="button"
           aria-label="Selecionar um ou mais meses"
           className={cn(
-            "flex h-9 min-w-[6.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:h-10 lg:min-w-[7rem] lg:text-[13px]",
+            "flex h-11 min-h-11 min-w-[7rem] flex-none shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[7.25rem] lg:text-[13px]",
             selectedMonths.length > 0
               ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
               : "glass text-glass-sub",
@@ -202,12 +202,10 @@ function PeriodPicker({
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
-  useExclusiveOverlay({
+  const periodOverlay = useExclusiveOverlay({
     name: "period-picker",
     open,
-    onOpenChange: (nextOpen) => {
-      if (!nextOpen) setOpen(false);
-    },
+    onOpenChange: setOpen,
   });
   const calendarDays = calendarDaysForMonth(calendarMonth);
 
@@ -259,7 +257,7 @@ function PeriodPicker({
     setDraftEnd(rangeEnd);
     setCalendarMonth(rangeStart ? monthKey(rangeStart) : selectedMonth);
     onModeChange("custom");
-    setOpen(true);
+    periodOverlay.requestOpen();
   };
 
   const handlePick = (date: string) => {
@@ -277,17 +275,17 @@ function PeriodPicker({
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex flex-none shrink-0 items-center gap-2 whitespace-nowrap">
       <button
         type="button"
         aria-label="Selecionar este mês"
         onClick={() => {
           onModeChange("current");
           onRangeChange(null, null);
-          setOpen(false);
+          periodOverlay.setOpen(false);
         }}
         className={cn(
-          "flex h-11 min-h-11 min-w-[5.75rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[6.5rem] lg:text-[13px]",
+          "flex h-11 min-h-11 min-w-[7rem] flex-none items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[7.25rem] lg:text-[13px]",
           mode === "current"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
@@ -302,13 +300,13 @@ function PeriodPicker({
         aria-expanded={open}
         onClick={() => {
           if (open) {
-            setOpen(false);
+            periodOverlay.setOpen(false);
           } else {
             openCustomCalendar();
           }
         }}
         className={cn(
-          "flex h-11 min-h-11 min-w-[8.25rem] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[9rem] lg:text-[13px]",
+          "flex h-11 min-h-11 min-w-[9.25rem] flex-none items-center justify-center whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-all lg:min-w-[9.5rem] lg:text-[13px]",
           mode === "custom"
             ? "bg-primary text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)]"
             : "glass text-glass-sub",
@@ -1039,7 +1037,7 @@ export default function TransactionsPage() {
           </button>
         </div>
 
-        <HorizontalScroll className="mt-2 -mx-1 gap-1.5 border-t border-glass-ink/5 px-1 pt-2 pb-0.5 dark:border-white/10 lg:mt-3 lg:pt-3">
+        <HorizontalScroll className="no-scrollbar mt-2 -mx-1 gap-2 border-t border-glass-ink/5 px-1 pt-2 pb-0.5 dark:border-white/10 lg:mt-3 lg:pt-3">
           <PeriodPicker
             mode={periodMode}
             selectedMonth={selectedMonth}
