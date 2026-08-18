@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import {
   Check,
@@ -119,9 +119,22 @@ export function TransactionRow({
     toast.success("Status atualizado");
   };
 
+  const handleStatusBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!hasPaymentAction) return;
+    const nextStatus = paymentStatus === "paid" ? "Pendente" : "Pago";
+    if (window.confirm(`Deseja alterar o status para ${nextStatus}?`)) {
+      handlePaymentAction();
+    }
+  };
+
   const handleDelete = () => {
     if (isSyntheticLoan) {
       toast.info("Movimentações de empréstimos são gerenciadas em Empréstimos.");
+      closeSwipe();
+      return;
+    }
+    if (!window.confirm("Deseja excluir esta transação?")) {
       closeSwipe();
       return;
     }
@@ -139,15 +152,11 @@ export function TransactionRow({
   };
 
   const handleSecondaryAction = () => {
-    if (hasPaymentAction) {
-      handlePaymentAction();
-      return;
-    }
     handleDelete();
   };
 
   const primaryActionLabel = onEdit ? "Editar" : "Detalhes";
-  const secondaryActionLabel = hasPaymentAction ? paymentActionLabel : isSyntheticLoan ? "Empréstimos" : "Excluir";
+  const secondaryActionLabel = isSyntheticLoan ? "Empréstimos" : "Excluir";
   const rowContent = (
     <>
       {selectable && (
@@ -211,9 +220,9 @@ export function TransactionRow({
           <div className="mt-1 flex items-start gap-1.5">
             <span
               aria-hidden="true"
-              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-glass-sub/60"
+              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70"
             />
-            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub">
+            <p className="line-clamp-2 text-[11px] italic leading-snug text-[#6558C8] dark:text-[#B9B2FF]">
               {transaction.note}
             </p>
           </div>
@@ -230,9 +239,12 @@ export function TransactionRow({
           {formatCurrency(transaction.amount)}
         </p>
         {paymentLabel && paymentStatus && (
-          <span
+          <button
+            type="button"
+            aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
+            onClick={handleStatusBadgeClick}
             className={cn(
-              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight",
+              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight transition-transform active:scale-95",
               paymentStatus === "paid"
                 ? "border-[#1FBF4F] bg-[#1FBF4F] text-white"
                 : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",
@@ -244,7 +256,7 @@ export function TransactionRow({
               <Clock3 className="size-2.5" strokeWidth={2.8} />
             )}
             <span className="truncate">{paymentLabel}</span>
-          </span>
+          </button>
         )}
         {paymentStatus === "paid" && transaction.paymentDate && (
           <span className="text-right text-[9px] font-semibold text-glass-faint">
@@ -279,16 +291,14 @@ export function TransactionRow({
               whileTap={{ scale: 0.96 }}
               className={cn(
                 "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
-                hasPaymentAction
-                  ? paymentStatus === "pending"
-                    ? "bg-[#1FBF4F]"
-                    : "bg-[#FF9F0A]"
-                  : isSyntheticLoan
-                    ? "bg-glass-ink/60"
-                    : "bg-[#E5484D]",
+                isSyntheticLoan ? "bg-glass-ink/60" : "bg-[#E5484D]",
               )}
             >
-              {hasPaymentAction ? <Check className="size-3.5" /> : <Trash2 className="size-3.5" />}
+              {isSyntheticLoan ? (
+                <Layers className="size-3.5" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
               {secondaryActionLabel}
             </motion.button>
           </div>
@@ -317,7 +327,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full items-center gap-3.5 bg-[#f4f8ff] py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50 dark:bg-[#0d1b3e]",
+              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e]",
             )}
           >
             {rowContent}
@@ -335,8 +345,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full items-center gap-3.5 bg-[#f4f8ff] py-3 text-left transition-colors hover:bg-white/30 active:bg-white/50 dark:bg-[#0d1b3e]",
-            statusAccent,
+            "flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e]",
           )}
         >
           {rowContent}
