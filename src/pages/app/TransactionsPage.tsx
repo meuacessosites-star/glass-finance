@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import { HorizontalScroll } from "@/components/app/HorizontalScroll";
 import {
@@ -394,6 +395,7 @@ export default function TransactionsPage() {
     deleteTransactions,
   } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [categorySearchQuery, setCategorySearchQuery] = useState<string>("");
   const [scope, setScope] = useState<"month" | "all">("month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
@@ -518,6 +520,7 @@ export default function TransactionsPage() {
     setSelectedMonths([]);
     setPaymentStatus("all");
     setSelectedCategories([]);
+    setCategorySearchQuery("");
     setSearchQuery("");
     setScope("month");
   };
@@ -533,6 +536,13 @@ export default function TransactionsPage() {
         .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
     [categories, consolidatedTransactions],
   );
+  const filteredCategoryOptions = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(categorySearchQuery.trim());
+    if (!normalizedQuery) return availableCategories;
+    return availableCategories.filter((category) =>
+      normalizeSearchText(category.label).includes(normalizedQuery),
+    );
+  }, [availableCategories, categorySearchQuery]);
 
   const filtered = useMemo(() => {
     const normalizedQuery = normalizeSearchText(searchQuery.trim());
@@ -1067,30 +1077,66 @@ export default function TransactionsPage() {
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="glass-strong w-64">
-            <DropdownMenuItem
-              disabled={selectedCategories.length === 0}
-              onSelect={() => setSelectedCategories([])}
-            >
-              <X className="size-4" />
-              Remover filtro
-            </DropdownMenuItem>
-            {availableCategories.map((category) => (
-              <DropdownMenuCheckboxItem
-                key={category.id}
-                checked={selectedCategories.includes(category.id)}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  toggleCategory(category.id);
-                }}
-              >
-                <span
-                  className="size-2 rounded-full"
-                  style={{ backgroundColor: category.color }}
+          <DropdownMenuContent
+            align="end"
+            className="glass-strong w-72 max-w-[calc(100vw-2rem)] max-h-[24rem] overflow-hidden p-0"
+          >
+            <div className="sticky top-0 z-10 space-y-2 border-b border-glass-ink/10 bg-white/95 p-2.5 backdrop-blur-xl dark:border-white/10 dark:bg-[#f4f8ff]/95">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-glass-faint" />
+                <input
+                  type="search"
+                  value={categorySearchQuery}
+                  onChange={(event) => setCategorySearchQuery(event.target.value)}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  placeholder="Buscar categoria..."
+                  aria-label="Buscar categoria"
+                  autoComplete="off"
+                  className="h-9 w-full rounded-xl border border-glass-ink/10 bg-white/70 pl-9 pr-3 text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 focus:ring-2 focus:ring-primary/10 dark:border-white/10 dark:bg-white/60"
                 />
-                {category.label}
-              </DropdownMenuCheckboxItem>
-            ))}
+              </div>
+              <DropdownMenuItem
+                disabled={selectedCategories.length === 0}
+                onSelect={() => setSelectedCategories([])}
+                className="h-8 justify-start rounded-xl px-2.5 text-[11px] font-bold text-primary"
+              >
+                <X className="size-3.5" />
+                Remover filtro
+              </DropdownMenuItem>
+            </div>
+            <div className="max-h-64 overflow-y-auto overscroll-contain px-1.5 py-1.5">
+              {filteredCategoryOptions.length > 0 ? (
+                filteredCategoryOptions.map((category) => (
+                  <DropdownMenuCheckboxItem
+                    key={category.id}
+                    checked={selectedCategories.includes(category.id)}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      toggleCategory(category.id);
+                    }}
+                    className="min-h-10 rounded-xl pr-2"
+                  >
+                    <CategoryIcon
+                      categoryId={category.id}
+                      size="size-7"
+                      iconSize="size-3.5"
+                    />
+                    <span className="min-w-0 flex-1 truncate font-semibold">
+                      {category.label}
+                    </span>
+                    <span
+                      aria-label={`Cor ${category.label}`}
+                      className="size-2.5 shrink-0 rounded-full ring-2 ring-white/70 dark:ring-white/30"
+                      style={{ backgroundColor: category.color }}
+                    />
+                  </DropdownMenuCheckboxItem>
+                ))
+              ) : (
+                <p className="px-3 py-6 text-center text-[11px] font-medium text-glass-sub">
+                  Nenhuma categoria encontrada.
+                </p>
+              )}
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
