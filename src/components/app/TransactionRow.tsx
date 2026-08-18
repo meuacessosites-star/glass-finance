@@ -152,6 +152,7 @@ export function TransactionRow({
       : transaction.recurrence === "recorrente"
         ? frequencyLabel(transaction.frequency, transaction.frequencyInterval)
         : null;
+  const hasSecondaryMeta = Boolean(installmentLabel || hasAttachments);
   const showDraftOnCard =
     transaction.draftDisplay === "multipleMedia" &&
     Boolean(transaction.note?.trim()) &&
@@ -269,21 +270,21 @@ export function TransactionRow({
       )}
       <div className="min-w-0 flex-1 px-0.5">
         {/* Cabeçalho: ícone, título, categoria e valor */}
-        <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3">
-          <div className="flex min-w-0 items-start gap-2 sm:gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 sm:size-14">
+        <div className="flex min-w-0 items-start justify-between gap-1.5 sm:gap-3">
+          <div className="flex min-w-0 items-start gap-1.5 sm:gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 sm:size-14">
               <CategoryIcon
                 categoryId={transaction.categoryId}
-                size="size-10 sm:size-14"
-                iconSize="size-5 sm:size-6"
+                size="size-9 sm:size-14"
+                iconSize="size-[18px] sm:size-6"
               />
             </div>
             <div className="min-w-0 pt-0">
-              <p className="min-w-0 truncate text-[15px] font-semibold leading-5 tracking-[-0.02em] text-glass-ink lg:text-[21px]">
+              <p className="min-w-0 truncate text-[14px] font-semibold leading-5 tracking-[-0.02em] text-glass-ink lg:text-[21px]">
                 <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
               </p>
               <span
-                className="mt-0.5 inline-flex min-h-5 max-w-full items-center gap-1 rounded-full border border-transparent px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 dark:text-slate-200 lg:text-[13px]"
+                className="mt-0 inline-flex min-h-5 max-w-full items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0 text-[8px] font-semibold text-slate-700 dark:text-slate-200 lg:mt-0.5 lg:gap-1 lg:py-0.5 lg:text-[13px]"
                 style={{
                   borderColor: `${category.color}22`,
                   backgroundColor: `${category.color}14`,
@@ -291,8 +292,8 @@ export function TransactionRow({
               >
                 <CategoryIcon
                   categoryId={transaction.categoryId}
-                  size="size-4"
-                  iconSize="size-2.5"
+                  size="size-3.5"
+                  iconSize="size-2"
                 />
                 <span className="truncate">{category.label}</span>
               </span>
@@ -300,10 +301,10 @@ export function TransactionRow({
           </div>
 
           <div className="shrink-0 pt-0 text-right">
-            <span className="block text-[9px] font-medium text-glass-faint lg:text-xs">Valor</span>
+            <span className="block text-[8px] font-medium text-glass-faint lg:text-xs">Valor</span>
             <p
               className={cn(
-                "amount-tabular text-right text-[15px] font-bold leading-5 lg:text-[21px]",
+                "amount-tabular text-right text-[14px] font-bold leading-5 lg:text-[21px]",
                 isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
               )}
             >
@@ -313,55 +314,87 @@ export function TransactionRow({
           </div>
         </div>
 
-        {/* Painel de metadados: colunas nomeadas */}
-        <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-2 border-t border-glass-ink/10 pt-2 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
-          {paymentPresentation && (
-            <div className="min-w-0 space-y-0.5">
-              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
-              <span
-                className="inline-flex min-h-8 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold lg:text-[13px]"
-                style={{
-                  color: paymentPresentation.color,
-                  borderColor: `${paymentPresentation.color}35`,
-                  backgroundColor: `${paymentPresentation.color}12`,
-                }}
-                title={paymentPresentation.label}
-              >
-                {PaymentIcon && <PaymentIcon className="size-3.5 shrink-0" strokeWidth={2.2} />}
-                <span className="truncate">{paymentPresentation.label}</span>
-              </span>
-            </div>
+        {/* Painel de metadados: o status permanece na coluna direita */}
+        <div className="mt-1.5 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-1.5 border-t border-glass-ink/10 pt-1.5 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
+          {hasSecondaryMeta ? (
+            <>
+              {paymentPresentation ? (
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
+                  <span
+                    className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
+                    style={{
+                      color: paymentPresentation.color,
+                      borderColor: `${paymentPresentation.color}35`,
+                      backgroundColor: `${paymentPresentation.color}12`,
+                    }}
+                    title={paymentPresentation.label}
+                  >
+                    {PaymentIcon && <PaymentIcon className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.2} />}
+                    <span className="truncate">{paymentPresentation.label}</span>
+                  </span>
+                </div>
+              ) : (
+                <div aria-hidden="true" className="invisible min-w-0" />
+              )}
+
+              {installmentLabel ? (
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-[9px] font-medium text-glass-faint lg:text-xs">
+                    {transaction.recurrence === "parcelada" ? "Parcelamento" : "Recorrência"}
+                  </p>
+                  <span className="inline-flex min-h-7 w-fit items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[9px] font-semibold text-violet-700 dark:text-violet-200 lg:min-h-8 lg:py-1 lg:text-[13px]">
+                    {transaction.recurrence === "parcelada" ? (
+                      <Layers className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.4} />
+                    ) : (
+                      <Repeat className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.4} />
+                    )}
+                    <span className="whitespace-nowrap">{installmentLabel}</span>
+                  </span>
+                </div>
+              ) : (
+                <div aria-hidden="true" className="invisible min-w-0" />
+              )}
+
+              {hasAttachments ? (
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Anexos</p>
+                  <span className="inline-flex min-h-7 w-fit items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-0.5 text-[9px] font-semibold text-glass-sub lg:min-h-8 lg:py-1 lg:text-[13px]">
+                    <Paperclip className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.4} />
+                    {transaction.attachments!.length}
+                  </span>
+                </div>
+              ) : (
+                <div aria-hidden="true" className="invisible min-w-0" />
+              )}
+            </>
+          ) : (
+            paymentPresentation && (
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
+                <span
+                  className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
+                  style={{
+                    color: paymentPresentation.color,
+                    borderColor: `${paymentPresentation.color}35`,
+                    backgroundColor: `${paymentPresentation.color}12`,
+                  }}
+                  title={paymentPresentation.label}
+                >
+                  {PaymentIcon && <PaymentIcon className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.2} />}
+                  <span className="truncate">{paymentPresentation.label}</span>
+                </span>
+              </div>
+            )
           )}
 
-          {installmentLabel && (
-            <div className="min-w-0 space-y-0.5">
-              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">
-                {transaction.recurrence === "parcelada" ? "Parcelamento" : "Recorrência"}
-              </p>
-              <span className="inline-flex min-h-8 w-fit items-center gap-1 rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-200 lg:text-[13px]">
-                {transaction.recurrence === "parcelada" ? (
-                  <Layers className="size-3.5 shrink-0" strokeWidth={2.4} />
-                ) : (
-                  <Repeat className="size-3.5 shrink-0" strokeWidth={2.4} />
-                )}
-                <span className="whitespace-nowrap">{installmentLabel}</span>
-              </span>
-            </div>
-          )}
-
-          {hasAttachments && (
-            <div className="min-w-0 space-y-0.5">
-              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Anexos</p>
-              <span className="inline-flex min-h-8 w-fit items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-1 text-[10px] font-semibold text-glass-sub lg:text-[13px]">
-                <Paperclip className="size-3.5 shrink-0" strokeWidth={2.4} />
-                {transaction.attachments!.length}
-              </span>
-            </div>
-          )}
-
-          {paymentLabel && paymentStatus && (
-            <div className="min-w-0 space-y-0.5 sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10">
-              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Status</p>
+          {paymentStatus && (
+            <div className={cn(
+              "col-start-2 min-w-0 space-y-0.5",
+              hasSecondaryMeta ? "row-start-2" : "row-start-1",
+              "sm:col-start-4 sm:row-start-1 sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10",
+            )}>
+              <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Status</p>
               <button
                 type="button"
                 aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
@@ -380,7 +413,7 @@ export function TransactionRow({
                 ) : (
                   <Clock3 className="size-3.5 shrink-0" strokeWidth={2.8} />
                 )}
-                <span className="truncate">{paymentLabel}</span>
+                <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : "Pendente")}</span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
                 <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-glass-faint lg:text-xs">
@@ -393,9 +426,9 @@ export function TransactionRow({
 
         {/* Observação: faixa de largura total */}
         {showDraftOnCard && (
-          <div className="mt-2 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-3 py-2 dark:bg-[#1c2542]/80 sm:mt-3 sm:px-3.5 sm:py-2.5">
-            <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Observação</p>
-            <p className="mt-0.5 line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[12px] leading-4 text-glass-ink/85 dark:text-white/85 lg:text-[15px]">
+          <div className="mt-1.5 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-2.5 py-1.5 dark:bg-[#1c2542]/80 sm:mt-3 sm:px-3.5 sm:py-2.5">
+            <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Observação</p>
+            <p className="mt-0.5 line-clamp-2 border-l-2 border-[#7C6FF2] pl-2 text-[11px] leading-4 text-glass-ink/85 dark:text-white/85 lg:pl-2.5 lg:text-[15px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
