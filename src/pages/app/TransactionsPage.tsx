@@ -1175,7 +1175,7 @@ export default function TransactionsPage() {
             <p className="mb-1 px-2 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground/80 lg:text-[14px]">
               {label}
             </p>
-            <div className="space-y-2 px-4 py-1.5 lg:px-5 lg:py-2">
+            <div className="space-y-2 py-1.5 lg:py-2">
               {list.map((transaction) => {
                 const status = getTransactionPaymentStatus(
                   transaction,
