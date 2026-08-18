@@ -41,6 +41,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
   const [scrollable, setScrollable] = useState(true);
   const [direction, setDirection] = useState<ScrollDirection>("down");
   const hideTimer = useRef<number | null>(null);
+  const settleFrame = useRef<number | null>(null);
   const directionRef = useRef<ScrollDirection>("down");
   const lastScrollTop = useRef(0);
 
@@ -107,6 +108,10 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
       window.removeEventListener("keydown", refreshScrollableState);
       window.removeEventListener("resize", refreshScrollableState);
       clearHideTimer();
+      if (settleFrame.current !== null) {
+        window.cancelAnimationFrame(settleFrame.current);
+        settleFrame.current = null;
+      }
     };
   }, [clearHideTimer, containerId, reveal]);
 
@@ -119,6 +124,25 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
       behavior: "smooth",
     });
     reveal(position);
+
+    if (settleFrame.current !== null) {
+      window.cancelAnimationFrame(settleFrame.current);
+    }
+
+    let frameCount = 0;
+    const settleAtDestination = () => {
+      const currentTop = getScrollTop(target);
+      const reachedDestination = Math.abs(currentTop - top) <= 2;
+      if (reachedDestination || frameCount >= 120) {
+        settleFrame.current = null;
+        reveal(position === "up" ? "down" : "up");
+        return;
+      }
+      frameCount += 1;
+      settleFrame.current = window.requestAnimationFrame(settleAtDestination);
+    };
+
+    settleFrame.current = window.requestAnimationFrame(settleAtDestination);
   };
 
   const controlIsVisible = visible && scrollable;
@@ -127,7 +151,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
     <div
       aria-label="Controles de rolagem"
       className={cn(
-        "pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-30 flex flex-col gap-2 transition-opacity duration-300 sm:right-5 md:bottom-8",
+        "pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-50 flex flex-col gap-2 transition-opacity duration-300 sm:right-5 md:bottom-8",
         controlIsVisible ? "opacity-100" : "opacity-0",
       )}
     >
@@ -135,6 +159,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
         <button
           type="button"
           aria-label="Rolar para o topo"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={() => scrollTo("up")}
           tabIndex={controlIsVisible ? 0 : -1}
           className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
@@ -145,6 +170,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
         <button
           type="button"
           aria-label="Rolar para o final"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={() => scrollTo("down")}
           tabIndex={controlIsVisible ? 0 : -1}
           className="pointer-events-auto flex size-9 items-center justify-center rounded-full border border-white/70 bg-white/80 text-glass-sub shadow-[0_8px_24px_-12px_rgba(35,60,110,0.65)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 dark:border-white/30 dark:bg-white/90"
