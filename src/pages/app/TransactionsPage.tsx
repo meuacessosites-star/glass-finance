@@ -803,7 +803,7 @@ export default function TransactionsPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-5xl space-y-3 lg:space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between pt-[env(safe-area-inset-top)] sm:pt-0">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>

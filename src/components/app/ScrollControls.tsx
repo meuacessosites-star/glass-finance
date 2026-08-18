@@ -151,7 +151,7 @@ export function ScrollControls({ containerId }: ScrollControlsProps) {
     <div
       aria-label="Controles de rolagem"
       className={cn(
-        "pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-3 z-50 flex flex-col gap-2 transition-opacity duration-300 sm:right-5 md:bottom-8",
+        "pointer-events-none fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-3 z-50 flex flex-col gap-2 transition-opacity duration-300 sm:right-5 md:bottom-8",
         controlIsVisible ? "opacity-100" : "opacity-0",
       )}
     >
