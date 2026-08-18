@@ -315,10 +315,13 @@ function PeriodPicker({
         <span className="whitespace-nowrap">Personalizado</span>
       </button>
 
-      {open && popoverPosition && createPortal(
+      {open && typeof document !== "undefined" && createPortal(
         <div
           ref={calendarRef}
-          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+          style={{
+            top: popoverPosition?.top ?? 16,
+            left: popoverPosition?.left ?? 16,
+          }}
           className="relative fixed z-[210] max-h-[calc(100dvh-2rem)] w-[min(19rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 pt-10 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
         >
           <button

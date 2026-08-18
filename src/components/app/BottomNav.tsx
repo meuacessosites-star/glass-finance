@@ -96,7 +96,7 @@ function TabButton({
   return (
     <NavLink
       to={tab.to}
-      aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : undefined}
+      aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : tab.label}
       className={cn(
         "relative flex min-h-11 w-14 flex-col items-center gap-0.5 rounded-2xl py-2 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-2",
         active ? "bg-primary/10" : "hover:bg-primary/5",
