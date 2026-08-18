@@ -19,6 +19,16 @@ import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import { TransactionDetailsSheet } from "./TransactionDetailsSheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 const SWIPE_DISTANCE = 208;
@@ -51,6 +61,7 @@ export function TransactionRow({
 }) {
   const { categoryById, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
   const x = useMotionValue(0);
   const isIncome = transaction.amount > 0;
@@ -116,10 +127,12 @@ export function TransactionRow({
   const handleStatusBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (!hasPaymentAction) return;
-    const nextStatus = paymentStatus === "paid" ? "Pendente" : "Pago";
-    if (window.confirm(`Deseja alterar o status para ${nextStatus}?`)) {
-      handlePaymentAction();
-    }
+    setStatusDialogOpen(true);
+  };
+
+  const confirmStatusChange = () => {
+    setStatusDialogOpen(false);
+    handlePaymentAction();
   };
 
   const handleDelete = () => {
@@ -358,6 +371,28 @@ export function TransactionRow({
           {rowContent}
         </div>
       )}
+
+      <AlertDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <AlertDialogContent className="glass-strong max-w-[calc(100%-2rem)] rounded-2xl border-glass-ink/10 p-5 text-glass-ink dark:border-white/10 dark:text-white sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar status?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja alterar o status para {paymentStatus === "paid" ? "Pendente" : "Pago"}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel className="mt-0 rounded-xl border-glass-ink/10 bg-transparent text-glass-sub hover:bg-glass-ink/5 dark:border-white/10 dark:text-white/80 dark:hover:bg-white/5">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmStatusChange}
+              className="rounded-xl bg-primary text-white hover:bg-primary/90"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <TransactionDetailsSheet
         transaction={transaction}
