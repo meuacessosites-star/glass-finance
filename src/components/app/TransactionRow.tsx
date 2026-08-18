@@ -127,6 +127,7 @@ export function TransactionRow({
   const handleStatusBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (!hasPaymentAction) return;
+    setOpen(false);
     setStatusDialogOpen(true);
   };
 
@@ -252,6 +253,8 @@ export function TransactionRow({
           <button
             type="button"
             aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
             onClick={handleStatusBadgeClick}
             className={cn(
               "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight transition-transform active:scale-95 lg:text-[11px]",
@@ -373,7 +376,7 @@ export function TransactionRow({
       )}
 
       <AlertDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <AlertDialogContent className="glass-strong max-w-[calc(100%-2rem)] rounded-2xl border-glass-ink/10 p-5 text-glass-ink dark:border-white/10 dark:text-white sm:max-w-md">
+        <AlertDialogContent className="glass-strong z-[80] max-w-[calc(100%-2rem)] rounded-2xl border-glass-ink/10 p-5 text-glass-ink dark:border-white/10 dark:text-white sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Alterar status?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -396,7 +399,7 @@ export function TransactionRow({
 
       <TransactionDetailsSheet
         transaction={transaction}
-        open={open}
+        open={open && !statusDialogOpen}
         onClose={() => setOpen(false)}
         onEdit={
           onEdit
