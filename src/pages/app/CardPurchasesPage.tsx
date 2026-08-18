@@ -1864,7 +1864,7 @@ export default function CardPurchasesPage() {
               </div>
             </div>
           ) : (
-            <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
+            <div className="space-y-2 px-4 py-1.5">
               {visibleSelectedCardTransactions.map((transaction) => (
                 <TransactionRow key={transaction.id} transaction={transaction} />
               ))}
