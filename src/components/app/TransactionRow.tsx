@@ -260,7 +260,7 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative isolate overflow-hidden rounded-2xl bg-[#f4f8ff] dark:bg-[#0d1b3e]">
+        <div className="relative overflow-hidden">
           <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl">
             <motion.button
               type="button"
