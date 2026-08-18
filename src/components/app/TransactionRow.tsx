@@ -196,14 +196,29 @@ export function TransactionRow({
         />
       </div>
       <div className="min-w-0 flex-1 px-1">
-        <p className="truncate text-[15px] font-semibold text-glass-ink lg:text-[17px]">
+        <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-glass-ink lg:text-[17px]">
           <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
         </p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-glass-sub lg:text-[15px]">
-          <span className="truncate">
-            {category.label}
-            {showDate && ` · ${shortDate(transaction.date)}`}
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+          <span
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11.5px] font-semibold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
+            style={{
+              borderColor: `${category.color}55`,
+              backgroundColor: `${category.color}18`,
+            }}
+          >
+            <CategoryIcon
+              categoryId={transaction.categoryId}
+              size="size-4"
+              iconSize="size-2.5"
+            />
+            <span className="truncate">{category.label}</span>
           </span>
+          {showDate && (
+            <span className="text-[11px] font-medium text-glass-faint lg:text-[13px]">
+              · {shortDate(transaction.date)}
+            </span>
+          )}
           {hasAttachments && (
             <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
               <Paperclip className="size-2.5" strokeWidth={2.6} />
@@ -225,10 +240,10 @@ export function TransactionRow({
               {transaction.currentInstallment ?? 1}/{transaction.installments ?? 2}
             </span>
           )}
-        </p>
+        </div>
         {showDraftOnCard && (
-          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1.5 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
-            <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] leading-snug text-glass-ink/80 dark:text-white/80 lg:text-[13px]">
+          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
+            <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] font-medium leading-snug text-glass-ink/85 dark:text-white/85 lg:text-[13px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
