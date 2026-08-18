@@ -315,12 +315,12 @@ export function TransactionRow({
         </div>
 
         {/* Painel de metadados: o status permanece na coluna direita */}
-        <div className="mt-1.5 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-1.5 border-t border-glass-ink/10 pt-1.5 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
+        <div className="mt-1 grid min-w-0 grid-cols-4 gap-x-1.5 gap-y-1 border-t border-glass-ink/10 pt-1.5 dark:border-white/10 sm:mt-3 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
           {hasSecondaryMeta ? (
             <>
               {paymentPresentation ? (
                 <div className="min-w-0 space-y-0.5">
-                  <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
+                  <p className="text-[8px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
                   <span
                     className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
                     style={{
@@ -358,7 +358,7 @@ export function TransactionRow({
 
               {hasAttachments ? (
                 <div className="min-w-0 space-y-0.5">
-                  <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Anexos</p>
+                  <p className="text-[8px] font-medium text-glass-faint lg:text-xs">Anexos</p>
                   <span className="inline-flex min-h-7 w-fit items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-0.5 text-[9px] font-semibold text-glass-sub lg:min-h-8 lg:py-1 lg:text-[13px]">
                     <Paperclip className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.4} />
                     {transaction.attachments!.length}
@@ -390,11 +390,10 @@ export function TransactionRow({
 
           {paymentStatus && (
             <div className={cn(
-              "col-start-2 min-w-0 space-y-0.5",
-              hasSecondaryMeta ? "row-start-2" : "row-start-1",
-              "sm:col-start-4 sm:row-start-1 sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10",
+              "col-start-4 row-start-1 min-w-0 space-y-0.5",
+              "sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10",
             )}>
-              <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Status</p>
+              <p className="text-[8px] font-medium text-glass-faint lg:text-xs">Status</p>
               <button
                 type="button"
                 aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
@@ -402,21 +401,21 @@ export function TransactionRow({
                 onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleStatusBadgeClick}
                 className={cn(
-                  "flex min-h-11 w-fit max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
+                  "flex min-h-11 w-full min-w-0 max-w-full items-center gap-0.5 rounded-full border px-1.5 py-1 text-[8px] font-extrabold tracking-tight transition-colors active:scale-95 lg:w-fit lg:gap-1 lg:px-2 lg:text-[13px]",
                   paymentStatus === "paid"
-                    ? "min-w-[9rem] justify-center border-green-200/80 bg-green-50/80 px-3 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300 lg:min-w-[10rem]"
+                    ? "justify-center border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300 lg:min-w-[10rem] lg:px-3"
                     : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
                 )}
               >
                 {paymentStatus === "paid" ? (
-                  <Check className="size-3.5 shrink-0" strokeWidth={2.8} />
+                  <Check className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
                 ) : (
-                  <Clock3 className="size-3.5 shrink-0" strokeWidth={2.8} />
+                  <Clock3 className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
                 )}
                 <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : "Pendente")}</span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
-                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-glass-faint lg:text-xs">
+                <span className="mt-0 block text-[9px] font-semibold leading-4 text-glass-faint lg:mt-0.5 lg:text-xs">
                   Pago em {shortDate(transaction.paymentDate)}
                 </span>
               )}
