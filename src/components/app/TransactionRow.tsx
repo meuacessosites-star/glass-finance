@@ -51,6 +51,7 @@ export function TransactionRow({
 }) {
   const { categoryById, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
+  const [swipeOpen, setSwipeOpen] = useState(false);
   const x = useMotionValue(0);
   const isIncome = transaction.amount > 0;
   const category = categoryById[transaction.categoryId] ?? fallback;
@@ -80,10 +81,12 @@ export function TransactionRow({
   }, [selectable, swipeable, x]);
 
   const closeSwipe = () => {
+    setSwipeOpen(false);
     animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
   };
 
   const snapSwipe = () => {
+    setSwipeOpen(true);
     animate(x, -SWIPE_DISTANCE, {
       type: "spring",
       stiffness: 420,
@@ -264,8 +267,13 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative overflow-hidden rounded-2xl">
-          <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden">
+        <div className="relative isolate overflow-hidden rounded-2xl">
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-2xl",
+              swipeOpen && "pointer-events-auto",
+            )}
+          >
             <motion.button
               type="button"
               aria-label={secondaryActionLabel}
