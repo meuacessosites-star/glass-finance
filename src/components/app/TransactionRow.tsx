@@ -32,7 +32,10 @@ import {
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 const SWIPE_DISTANCE = 208;
-const SWIPE_THRESHOLD = 52;
+const SWIPE_OPEN_THRESHOLD = 32;
+const SWIPE_CLOSE_THRESHOLD = 20;
+const SWIPE_OPEN_VELOCITY = -220;
+const SWIPE_CLOSE_VELOCITY = 180;
 
 export function TransactionRow({
   transaction,
@@ -75,15 +78,21 @@ export function TransactionRow({
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const closeSwipe = () => {
     setSwipeOpen(false);
-    animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
+    animate(x, 0, {
+      type: "spring",
+      stiffness: 520,
+      damping: 34,
+      mass: 0.65,
+    });
   };
 
   const snapSwipe = () => {
     setSwipeOpen(true);
     animate(x, -SWIPE_DISTANCE, {
       type: "spring",
-      stiffness: 420,
-      damping: 32,
+      stiffness: 520,
+      damping: 34,
+      mass: 0.65,
     });
   };
 
@@ -311,12 +320,23 @@ export function TransactionRow({
           <motion.div
             drag="x"
             dragConstraints={{ left: -SWIPE_DISTANCE, right: 0 }}
-            dragElastic={0.12}
+            dragElastic={0.08}
+            dragDirectionLock
             dragMomentum={false}
             style={{ x }}
             onDragEnd={(_, info) => {
               const offset = info.offset.x;
-              if (offset <= -SWIPE_THRESHOLD) {
+              const velocity = info.velocity.x;
+              const shouldClose =
+                swipeOpen &&
+                (offset >= SWIPE_CLOSE_THRESHOLD || velocity >= SWIPE_CLOSE_VELOCITY);
+              const shouldOpen =
+                !swipeOpen &&
+                (offset <= -SWIPE_OPEN_THRESHOLD || velocity <= SWIPE_OPEN_VELOCITY);
+
+              if (shouldClose) {
+                closeSwipe();
+              } else if (shouldOpen || swipeOpen) {
                 snapSwipe();
               } else {
                 closeSwipe();
