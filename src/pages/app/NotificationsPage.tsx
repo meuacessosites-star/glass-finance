@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import { formatCurrency, shortDate } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
 
 const bankColors: Record<string, string> = {
   Nubank: "#AF52DE",

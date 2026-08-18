@@ -35,16 +35,16 @@ function DashboardShell() {
   const [appUnlocked, setAppUnlocked] = useState(() => !appLock);
 
   return (
-    <div className="min-h-screen w-full bg-[#e8eefb] dark:bg-[#0a1122]">
+    <div className="min-h-screen w-full min-w-0 bg-[#e8eefb] dark:bg-[#0a1122]">
       <div
         id="app-screen"
-        className="relative mx-auto flex min-h-screen w-full max-w-[1440px] flex-col overflow-hidden"
+        className="relative mx-auto flex min-h-screen w-full min-w-0 max-w-[1440px] flex-col overflow-hidden"
       >
           {!isTransactionEdit && <AppBackground />}
 
           {/* Scrollable content */}
-          <main className="no-scrollbar relative z-10 flex-1 overflow-y-auto overflow-x-hidden">
-            <div className={isTransactionEdit ? "h-full" : "px-5 pb-52"}>
+          <main className="no-scrollbar relative z-10 flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+            <div className={isTransactionEdit ? "h-full min-w-0" : "min-w-0 px-5 pb-52"}>
               <Outlet />
             </div>
           </main>

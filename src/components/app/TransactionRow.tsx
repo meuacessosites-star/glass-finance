@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Check,
@@ -73,24 +73,6 @@ export function TransactionRow({
     (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
-  useEffect(() => {
-    if (!swipeable || selectable) return;
-    let cancelled = false;
-    let restoreTimer: number | undefined;
-    const hintTimer = window.setTimeout(() => {
-      if (cancelled || Math.abs(x.get()) > 1) return;
-      animate(x, -18, { duration: 0.22, ease: "easeOut" });
-      restoreTimer = window.setTimeout(() => {
-        if (!cancelled) animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
-      }, 240);
-    }, 650);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(hintTimer);
-      if (restoreTimer !== undefined) window.clearTimeout(restoreTimer);
-    };
-  }, [selectable, swipeable, x]);
-
   const closeSwipe = () => {
     setSwipeOpen(false);
     animate(x, 0, { type: "spring", stiffness: 420, damping: 32 });
@@ -283,10 +265,10 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative isolate overflow-hidden rounded-2xl border-0 outline-none shadow-none ring-0 before:hidden after:hidden">
+        <div className="relative isolate w-full min-w-0 max-w-full border-0 outline-none shadow-none ring-0 before:hidden after:hidden">
           <div
             className={cn(
-              "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-none border-0 outline-none shadow-none ring-0 before:hidden after:hidden",
+              "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl border-0 outline-none shadow-none ring-0 before:hidden after:hidden",
               swipeOpen && "pointer-events-auto",
             )}
           >
@@ -350,7 +332,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
+              "relative z-10 flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
             )}
           >
             {rowContent}
@@ -368,7 +350,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
+            "flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
           )}
         >
           {rowContent}

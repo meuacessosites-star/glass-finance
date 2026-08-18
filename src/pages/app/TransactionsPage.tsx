@@ -782,7 +782,7 @@ export default function TransactionsPage() {
       : `Nada registrado em ${selectedPeriodLabel} para os filtros selecionados.`;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <SidebarTrigger />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Check,
   LockKeyhole,
@@ -74,14 +74,13 @@ export default function ProfilesPage() {
   const [firstPin, setFirstPin] = useState("");
   const [pinError, setPinError] = useState("");
 
-  // When the active profile changes, reset the PIN section to its status view.
-  useEffect(() => {
+  const resetPinFlow = () => {
     setPinMode("menu");
     setPinStep("first");
     setPinDigits("");
     setFirstPin("");
     setPinError("");
-  }, [activeProfileId]);
+  };
 
   // ---- Profile switching (PIN-gated) ----
   const selectProfile = (profile: AppProfile) => {
@@ -90,6 +89,7 @@ export default function ProfilesPage() {
       setGateProfile(profile);
       return;
     }
+    resetPinFlow();
     setActiveProfile(profile.id);
     toast(`Agora usando "${profile.name}"`);
   };
@@ -118,18 +118,11 @@ export default function ProfilesPage() {
       });
       return;
     }
+    if (id === activeProfileId) resetPinFlow();
     toast(`Perfil "${profileName}" excluído`);
   };
 
   // ---- PIN section flow (active profile) ----
-  const resetPinFlow = () => {
-    setPinMode("menu");
-    setPinStep("first");
-    setPinDigits("");
-    setFirstPin("");
-    setPinError("");
-  };
-
   const handlePinDigit = (d: string) => {
     if (pinDigits.length >= 4) return;
     const next = pinDigits + d;
@@ -396,6 +389,7 @@ export default function ProfilesPage() {
           onVerified={() => {
             const target = gateProfile;
             setGateProfile(null);
+            resetPinFlow();
             setActiveProfile(target.id);
             toast(`Agora usando "${target.name}"`);
           }}

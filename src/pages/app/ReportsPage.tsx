@@ -13,16 +13,29 @@ import {
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-function GlassTooltip({ active, payload, label }: any) {
+type GlassTooltipEntry = {
+  name?: string | number;
+  value?: number | string;
+  color?: string;
+  payload?: { fill?: string };
+};
+
+type GlassTooltipProps = {
+  active?: boolean;
+  payload?: GlassTooltipEntry[];
+  label?: string | number;
+};
+
+function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="glass glass-strong rounded-2xl px-3 py-2 text-[12px]">
       {label && (
         <p className="mb-1 font-bold text-glass-ink">{label}</p>
       )}
-      {payload.map((entry: any) => (
-        <p key={entry.name} className="font-semibold" style={{ color: entry.color ?? entry.payload?.fill }}>
-          {entry.name}: {formatCurrency(entry.value)}
+      {payload.map((entry) => (
+        <p key={String(entry.name)} className="font-semibold" style={{ color: entry.color ?? entry.payload?.fill }}>
+          {entry.name}: {formatCurrency(Number(entry.value ?? 0))}
         </p>
       ))}
     </div>
@@ -49,28 +62,24 @@ export default function ReportsPage() {
         color: categoryById[categoryId]?.color ?? "#8E8E93",
       }))
       .sort((a, b) => b.value - a.value);
-  }, [list]);
+  }, [categoryById, list]);
 
   const totalExpense = byCategory.reduce((s, c) => s + c.value, 0);
 
-  const budgetRows = useMemo(
-    () =>
-      budgets
-        .map((budget) => {
-          const used = byCategory.find((c) => c.categoryId === budget.categoryId)?.value ?? 0;
-          const pct = Math.min(100, (used / budget.limit) * 100);
-          return {
-            ...budget,
-            label: categoryById[budget.categoryId]?.label ?? "Outros",
-            color: categoryById[budget.categoryId]?.color ?? "#8E8E93",
-            used,
-            pct,
-            over: used > budget.limit,
-          };
-        })
-        .sort((a, b) => b.pct - a.pct),
-    [byCategory],
-  );
+  const budgetRows = budgets
+    .map((budget) => {
+      const used = byCategory.find((c) => c.categoryId === budget.categoryId)?.value ?? 0;
+      const pct = Math.min(100, (used / budget.limit) * 100);
+      return {
+        ...budget,
+        label: categoryById[budget.categoryId]?.label ?? "Outros",
+        color: categoryById[budget.categoryId]?.color ?? "#8E8E93",
+        used,
+        pct,
+        over: used > budget.limit,
+      };
+    })
+    .sort((a, b) => b.pct - a.pct);
 
   return (
     <div className="space-y-4">
