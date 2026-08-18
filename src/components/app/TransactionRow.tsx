@@ -1,12 +1,19 @@
 import { useState, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
+  Banknote,
+  Barcode,
   Check,
   Clock3,
+  CreditCard,
   Layers,
   Paperclip,
+  QrCode,
   Repeat,
+  Send,
   Trash2,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -15,7 +22,7 @@ import {
   shortDate,
   type Transaction,
 } from "@/lib/mock-data";
-import { useAppStore } from "@/lib/app-store";
+import { useAppStore, type AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import { SearchHighlight, scrollToSearchResult } from "./SearchHighlight";
@@ -32,6 +39,69 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  pix: "Pix",
+  dinheiro: "Dinheiro",
+  cartao: "Cartão",
+  boleto: "Boleto",
+  transferencia: "Transferência",
+  saldo: "Saldo",
+};
+
+function getPaymentPresentation(
+  transaction: Transaction,
+  cards: AppCard[],
+): { label: string; icon: LucideIcon; color: string } | null {
+  const rawMethod = transaction.paymentMethod?.toLowerCase().trim();
+  if (!rawMethod) return null;
+
+  const methodId =
+    rawMethod === "credito" || rawMethod === "debito" ? "cartao" : rawMethod;
+  const methodLabel = PAYMENT_METHOD_LABELS[methodId] ?? rawMethod;
+  const card =
+    methodId === "cartao" && transaction.cardId
+      ? cards.find((item) => item.id === transaction.cardId)
+      : undefined;
+  const cardLabel = card
+    ? `${card.institution ?? card.name} •••• ${card.last4}`
+    : methodLabel;
+  const modeLabel =
+    methodId === "cartao" && transaction.cardMode === "credito"
+      ? "Crédito"
+      : methodId === "cartao" && transaction.cardMode === "debito"
+        ? "Débito"
+        : null;
+  const label = modeLabel && !card ? `${cardLabel} · ${modeLabel}` : cardLabel;
+
+  const icon =
+    methodId === "pix"
+      ? QrCode
+      : methodId === "dinheiro"
+        ? Banknote
+        : methodId === "boleto"
+          ? Barcode
+          : methodId === "transferencia"
+            ? Send
+            : methodId === "saldo"
+              ? Wallet
+              : CreditCard;
+  const color = card?.color ??
+    (methodId === "pix"
+      ? "#16A34A"
+      : methodId === "dinheiro"
+        ? "#A16207"
+        : methodId === "boleto"
+          ? "#7C3AED"
+          : methodId === "transferencia"
+            ? "#2563EB"
+            : methodId === "saldo"
+              ? "#0F766E"
+              : "#2563EB");
+
+  return { label, icon, color };
+}
+
 const SWIPE_DISTANCE = 208;
 const SWIPE_OPEN_THRESHOLD = 32;
 const SWIPE_CLOSE_THRESHOLD = 20;
@@ -65,13 +135,15 @@ export function TransactionRow({
   onEdit?: () => void;
   searchQuery?: string;
 }) {
-  const { categoryById, deleteTransaction } = useAppStore();
+  const { categoryById, cards, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
   const x = useMotionValue(0);
   const isIncome = transaction.amount > 0;
   const category = categoryById[transaction.categoryId] ?? fallback;
+  const paymentPresentation = getPaymentPresentation(transaction, cards);
+  const PaymentIcon = paymentPresentation?.icon;
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
   const showDraftOnCard =
     transaction.draftDisplay === "multipleMedia" &&
@@ -195,13 +267,13 @@ export function TransactionRow({
           iconSize="size-5 lg:size-6"
         />
       </div>
-      <div className="min-w-0 flex-1 px-1">
-        <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-glass-ink lg:text-[17px]">
+      <div className="min-w-0 flex-1 px-0.5">
+        <p className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-glass-ink lg:text-[17px]">
           <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
         </p>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
           <span
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11.5px] font-semibold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
+            className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-xl border px-2 py-1 text-[11px] font-bold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
             style={{
               borderColor: `${category.color}55`,
               backgroundColor: `${category.color}18`,
@@ -219,25 +291,41 @@ export function TransactionRow({
               · {shortDate(transaction.date)}
             </span>
           )}
+        </div>
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+          {paymentPresentation && (
+            <span
+              className="inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-2 py-1 text-[10.5px] font-bold lg:text-[12px]"
+              style={{
+                color: paymentPresentation.color,
+                borderColor: `${paymentPresentation.color}45`,
+                backgroundColor: `${paymentPresentation.color}12`,
+              }}
+              title={paymentPresentation.label}
+            >
+              {PaymentIcon && <PaymentIcon className="size-3.5 shrink-0" strokeWidth={2.4} />}
+              <span className="truncate">{paymentPresentation.label}</span>
+            </span>
+          )}
           {hasAttachments && (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
-              <Paperclip className="size-2.5" strokeWidth={2.6} />
+            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-glass-ink/10 px-2 py-1 text-[10.5px] font-bold text-glass-sub">
+              <Paperclip className="size-3" strokeWidth={2.6} />
               {transaction.attachments!.length}
             </span>
           )}
           {transaction.recurrence === "recorrente" && (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
-              <Repeat className="size-2.5" strokeWidth={2.6} />
-              {frequencyLabel(
+            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-glass-ink/10 px-2 py-1 text-[10.5px] font-bold text-glass-sub">
+              <Repeat className="size-3" strokeWidth={2.6} />
+              <span className="truncate">{frequencyLabel(
                 transaction.frequency,
                 transaction.frequencyInterval,
-              )}
+              )}</span>
             </span>
           )}
           {transaction.recurrence === "parcelada" && (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-glass-ink/10 px-1.5 py-0.5 text-[10.5px] font-bold text-glass-sub">
-              <Layers className="size-2.5" strokeWidth={2.6} />
-              {transaction.currentInstallment ?? 1}/{transaction.installments ?? 2}
+            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-violet-500/10 px-2 py-1 text-[10.5px] font-bold text-violet-700 dark:text-violet-200">
+              <Layers className="size-3" strokeWidth={2.6} />
+              <span className="whitespace-nowrap">{transaction.currentInstallment ?? 1}/{transaction.installments ?? 2}</span>
             </span>
           )}
         </div>
@@ -249,7 +337,7 @@ export function TransactionRow({
           </div>
         )}
       </div>
-      <div className="ml-auto flex min-w-[84px] shrink-0 flex-col items-end gap-1 lg:min-w-[112px] lg:gap-1.5">
+      <div className="ml-auto flex min-w-[76px] shrink-0 flex-col items-end gap-1 lg:min-w-[112px] lg:gap-1.5">
         <p
           className={cn(
             "amount-tabular text-right text-[15px] font-bold lg:text-[18px]",
