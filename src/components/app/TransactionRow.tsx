@@ -404,7 +404,7 @@ export function TransactionRow({
                 className={cn(
                   "flex min-h-11 w-fit max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
                   paymentStatus === "paid"
-                    ? "border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300"
+                    ? "min-w-[9rem] justify-center border-green-200/80 bg-green-50/80 px-3 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300 lg:min-w-[10rem]"
                     : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
                 )}
               >
