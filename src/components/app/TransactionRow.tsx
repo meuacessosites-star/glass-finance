@@ -172,18 +172,18 @@ export function TransactionRow({
           {selected && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       )}
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10">
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 lg:size-14">
         <CategoryIcon
           categoryId={transaction.categoryId}
-          size="size-12"
-          iconSize="size-5"
+          size="size-12 lg:size-14"
+          iconSize="size-5 lg:size-6"
         />
       </div>
       <div className="min-w-0 flex-1 px-1">
-        <p className="truncate text-[15px] font-semibold text-glass-ink">
+        <p className="truncate text-[15px] font-semibold text-glass-ink lg:text-[17px]">
           {transaction.title}
         </p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-glass-sub">
+        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-glass-sub lg:text-[15px]">
           <span className="truncate">
             {category.label}
             {showDate && ` · ${shortDate(transaction.date)}`}
@@ -214,18 +214,18 @@ export function TransactionRow({
           <div className="mt-1 flex items-start gap-1.5">
             <span
               aria-hidden="true"
-              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70"
+              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70 lg:h-5"
             />
-            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub">
+            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub lg:text-[13px]">
               {transaction.note}
             </p>
           </div>
         )}
       </div>
-      <div className="ml-auto flex min-w-[84px] shrink-0 flex-col items-end gap-1">
+      <div className="ml-auto flex min-w-[84px] shrink-0 flex-col items-end gap-1 lg:min-w-[112px] lg:gap-1.5">
         <p
           className={cn(
-            "amount-tabular text-right text-[15px] font-bold",
+            "amount-tabular text-right text-[15px] font-bold lg:text-[18px]",
             isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
           )}
         >
@@ -238,7 +238,7 @@ export function TransactionRow({
             aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
             onClick={handleStatusBadgeClick}
             className={cn(
-              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight transition-transform active:scale-95",
+              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight transition-transform active:scale-95 lg:text-[11px]",
               paymentStatus === "paid"
                 ? "border-[#1FBF4F] bg-[#1FBF4F] text-white"
                 : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",
@@ -253,7 +253,7 @@ export function TransactionRow({
           </button>
         )}
         {paymentStatus === "paid" && transaction.paymentDate && (
-          <span className="text-right text-[9px] font-semibold text-glass-faint">
+          <span className="text-right text-[9px] font-semibold text-glass-faint lg:text-[11px]">
             Pago em {shortDate(transaction.paymentDate)}
           </span>
         )}
@@ -272,7 +272,7 @@ export function TransactionRow({
               onClick={handleSecondaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
-                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white lg:text-[12px]",
                 isSyntheticLoan ? "bg-glass-ink/60" : "bg-[#E5484D]",
               )}
             >
@@ -289,7 +289,7 @@ export function TransactionRow({
               onClick={handlePrimaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
-                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight",
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight lg:text-[12px]",
                 primaryActionClass,
               )}
             >
@@ -326,7 +326,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e]",
+              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
             )}
           >
             {rowContent}
@@ -344,7 +344,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e]",
+            "flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
           )}
         >
           {rowContent}
