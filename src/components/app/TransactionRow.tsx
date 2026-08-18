@@ -24,7 +24,6 @@ import {
 } from "@/lib/mock-data";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-import { CategoryIcon } from "./CategoryIcon";
 import { SearchHighlight, scrollToSearchResult } from "./SearchHighlight";
 import { TransactionDetailsSheet } from "./TransactionDetailsSheet";
 import {
@@ -268,24 +267,24 @@ export function TransactionRow({
         </p>
 
         {/* Linha 2: todas as tags em um único agrupamento */}
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
           <span
-            className="inline-flex min-h-6 max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
+            className="inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-lg border border-transparent px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200 lg:text-[13px]"
             style={{
-              borderColor: `${category.color}55`,
-              backgroundColor: `${category.color}18`,
+              borderColor: `${category.color}22`,
+              backgroundColor: `${category.color}14`,
             }}
           >
-            <CategoryIcon
-              categoryId={transaction.categoryId}
-              size="size-4"
-              iconSize="size-2.5"
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: category.color }}
             />
             <span className="truncate">{category.label}</span>
           </span>
           {paymentPresentation && (
             <span
-              className="inline-flex min-h-6 min-w-0 max-w-[12rem] items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold lg:max-w-[16rem] lg:text-[12px]"
+              className="inline-flex min-h-6 min-w-0 max-w-[12rem] items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-semibold lg:max-w-[16rem] lg:text-[12px]"
               style={{
                 color: paymentPresentation.color,
                 borderColor: `${paymentPresentation.color}45`,
@@ -322,14 +321,14 @@ export function TransactionRow({
 
         {/* Linha 3: rascunho/anotação */}
         {showDraftOnCard && (
-          <div className="mt-2 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
+          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-2.5 py-0.5 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
             <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] font-medium leading-snug text-glass-ink/85 dark:text-white/85 lg:text-[13px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
         )}
       </div>
-      <div className="ml-auto flex min-w-[68px] shrink-0 flex-col items-end gap-1 pt-0.5 lg:min-w-[112px] lg:gap-1.5">
+      <div className="ml-auto flex min-w-[68px] shrink-0 flex-col items-end gap-0.5 pt-0.5 lg:min-w-[112px] lg:gap-1">
         <p
           className={cn(
             "amount-tabular text-right text-[14px] font-bold leading-5 lg:text-[18px]",
@@ -347,10 +346,10 @@ export function TransactionRow({
             onPointerUp={(event) => event.stopPropagation()}
             onClick={handleStatusBadgeClick}
             className={cn(
-              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9px] font-extrabold tracking-tight transition-transform active:scale-95 lg:text-[11px]",
+              "flex min-h-7 max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[11px]",
               paymentStatus === "paid"
-                ? "border-[#1FBF4F] bg-[#1FBF4F] text-white"
-                : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",
+                ? "border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300"
+                : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
             )}
           >
             {paymentStatus === "paid" ? (
@@ -455,7 +454,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3.5 py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
+              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-4 py-2.5 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
             )}
           >
             {rowContent}
@@ -475,7 +474,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3.5 py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
+            "flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-4 py-2.5 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
           )}
         >
           {rowContent}
