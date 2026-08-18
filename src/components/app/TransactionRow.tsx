@@ -3,7 +3,6 @@ import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Check,
   Clock3,
-  Edit3,
   Layers,
   Paperclip,
   Repeat,
@@ -74,7 +73,10 @@ export function TransactionRow({
   const isIncome = transaction.amount > 0;
   const category = categoryById[transaction.categoryId] ?? fallback;
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
-  const showDraftOnCard = Boolean(transaction.note?.trim());
+  const showDraftOnCard =
+    transaction.draftDisplay === "multipleMedia" &&
+    Boolean(transaction.note?.trim()) &&
+    (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const showPaymentDateOnCard =
@@ -148,11 +150,6 @@ export function TransactionRow({
   };
 
   const handlePrimaryAction = () => {
-    if (onEdit) {
-      closeSwipe();
-      onEdit();
-      return;
-    }
     if (!hasPaymentAction) {
       closeSwipe();
       return;
@@ -164,11 +161,10 @@ export function TransactionRow({
     handleDelete();
   };
 
-  const primaryActionLabel = onEdit ? "Editar" : paymentActionLabel ?? "Alterar status";
+  const primaryActionLabel = paymentActionLabel ?? "Alterar status";
   const secondaryActionLabel = isSyntheticLoan ? "Empréstimos" : "Excluir";
-  const primaryActionClass = onEdit
-    ? "bg-[#7C6FF2] text-white"
-    : paymentStatus === "paid"
+  const primaryActionClass =
+    paymentStatus === "paid"
       ? "bg-[#FF9F0A] text-[#4A2A00]"
       : "bg-[#1FBF4F] text-white";
   const rowContent = (
@@ -296,8 +292,6 @@ export function TransactionRow({
             <motion.button
               type="button"
               aria-label={secondaryActionLabel}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
               onClick={handleSecondaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
@@ -315,8 +309,6 @@ export function TransactionRow({
             <motion.button
               type="button"
               aria-label={primaryActionLabel}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
               onClick={handlePrimaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
@@ -324,9 +316,7 @@ export function TransactionRow({
                 primaryActionClass,
               )}
             >
-              {onEdit ? (
-                <Edit3 className="size-3.5" />
-              ) : paymentStatus === "paid" ? (
+              {paymentStatus === "paid" ? (
                 <Clock3 className="size-3.5" />
               ) : (
                 <Check className="size-3.5" />
