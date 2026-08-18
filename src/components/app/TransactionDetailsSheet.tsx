@@ -434,7 +434,7 @@ export function TransactionDetailsSheet({
             {/* Info rows */}
             <div className="mt-4 space-y-2.5">
               <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
-                <CalendarDays className="size-4 shrink-0 text-glass-sub" />
+                <CalendarDays className="size-4 shrink-0 text-[#5E5CE6]" />
                 <p className="text-[13px] font-medium text-glass-ink">{dateLabel}</p>
               </div>
               {transaction.paymentStatus === "paid" && (
@@ -487,7 +487,7 @@ export function TransactionDetailsSheet({
               )}
               {attachments.length > 0 && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
-                  <ImageIcon className="size-4 shrink-0 text-glass-sub" />
+                  <ImageIcon className="size-4 shrink-0 text-[#FF9500]" />
                   <p className="text-[13px] font-medium text-glass-ink">
                     {attachments.length}{" "}
                     {attachments.length === 1 ? "nota anexada" : "notas anexadas"}
@@ -496,7 +496,7 @@ export function TransactionDetailsSheet({
               )}
               {transaction.time && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
-                  <Clock className="size-4 shrink-0 text-glass-sub" />
+                  <Clock className="size-4 shrink-0 text-[#2F6BFF]" />
                   <p className="text-[13px] font-medium text-glass-ink">
                     Registrada às {transaction.time}
                   </p>
@@ -504,24 +504,35 @@ export function TransactionDetailsSheet({
               )}
               {paymentLabel && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
-                  <CreditCard className="size-4 shrink-0 text-glass-sub" />
-                  <p className="text-[13px] font-medium text-glass-ink">
+                  <CreditCard
+                    className="size-4 shrink-0"
+                    style={{ color: paymentCard?.color ?? "#17A443" }}
+                  />
+                  <p className="min-w-0 text-[13px] font-medium text-glass-ink">
                     Pagamento · {paymentLabel}
                     {methodId === "cartao" && mode
                       ? ` · ${CARD_MODE_LABELS[mode as "credito" | "debito"] ?? mode}`
                       : ""}
-                    {paymentCard
-                      ? ` · ${paymentCard.name} ····${paymentCard.last4}`
-                      : ""}
+                    {paymentCard && (
+                      <>
+                        {" · "}
+                        <span
+                          className="font-bold"
+                          style={{ color: paymentCard.color ?? "#17A443" }}
+                        >
+                          {paymentCard.name} ····{paymentCard.last4}
+                        </span>
+                      </>
+                    )}
                   </p>
                 </div>
               )}
               {recurrenceLabel(transaction) && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
                   {transaction.recurrence === "parcelada" ? (
-                    <Layers className="size-4 shrink-0 text-glass-sub" />
+                    <Layers className="size-4 shrink-0 text-[#AF52DE]" />
                   ) : (
-                    <Repeat className="size-4 shrink-0 text-glass-sub" />
+                    <Repeat className="size-4 shrink-0 text-[#5E5CE6]" />
                   )}
                   <p className="text-[13px] font-medium text-glass-ink">
                     {recurrenceLabel(transaction)}
@@ -532,11 +543,11 @@ export function TransactionDetailsSheet({
 
             {/* Draft / notes */}
             {transaction.note && (
-              <div className="mt-4 rounded-2xl bg-white/40 p-3.5">
-                <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+              <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3.5 dark:border-white/10 dark:bg-[#1c2542]/35">
+                <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-[#6B5CC5] dark:text-[#B9AEFF]">
                   <FileText className="size-3.5" /> Rascunho
                 </p>
-                <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-glass-ink">
+                <p className="mt-1 whitespace-pre-wrap text-[13px] italic leading-relaxed text-slate-700 dark:text-slate-200">
                   {transaction.note}
                 </p>
               </div>

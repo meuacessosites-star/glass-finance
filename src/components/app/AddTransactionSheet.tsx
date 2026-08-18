@@ -551,7 +551,7 @@ export function AddTransactionSheet({
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                 Categoria
               </p>
-              <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
+              <HorizontalScroll className="-mx-5 mt-2 w-[calc(100%+2.5rem)] max-w-none gap-2 overflow-x-auto px-5 pb-0.5">
                 {visibleCategories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
@@ -560,7 +560,7 @@ export function AddTransactionSheet({
                       type="button"
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
-                        "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                        "flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
                         selected ? "text-glass-ink" : "glass text-glass-sub",
                       )}
                       style={
