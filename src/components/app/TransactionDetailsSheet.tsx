@@ -152,6 +152,7 @@ export function TransactionDetailsSheet({
   const paymentCard = transaction.cardId
     ? cards.find((c) => c.id === transaction.cardId)
     : undefined;
+  const cardDisplayMode = transaction.cardDisplayMode ?? "last4";
 
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
@@ -181,6 +182,11 @@ export function TransactionDetailsSheet({
   const handlePaymentDateVisibilityChange = (checked: boolean) => {
     updateTransaction(transaction.id, { showPaymentDateOnCard: checked });
     toast.success(checked ? "Data exibida no card" : "Data ocultada no card");
+  };
+
+  const handleCardDisplayModeChange = (mode: "name" | "last4") => {
+    updateTransaction(transaction.id, { cardDisplayMode: mode });
+    toast.success(mode === "name" ? "Nome do cartão exibido" : "Número do cartão exibido");
   };
 
   const resetLightboxViewport = () => {
@@ -525,6 +531,47 @@ export function TransactionDetailsSheet({
                       </>
                     )}
                   </p>
+                </div>
+              )}
+              {paymentCard && (
+                <div className="rounded-2xl bg-white/40 px-3.5 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-glass-ink">
+                        Exibir no card da transação
+                      </p>
+                      <p className="mt-0.5 truncate text-[10.5px] font-medium text-glass-sub">
+                        {cardDisplayMode === "name"
+                          ? paymentCard.name
+                          : `•••• ${paymentCard.last4}`}
+                      </p>
+                    </div>
+                    <CreditCard
+                      className="size-4 shrink-0"
+                      style={{ color: paymentCard.color ?? "#17A443" }}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {([
+                      { id: "last4" as const, label: `•••• ${paymentCard.last4}` },
+                      { id: "name" as const, label: "Nome do cartão" },
+                    ]).map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={cardDisplayMode === option.id}
+                        onClick={() => handleCardDisplayModeChange(option.id)}
+                        className={cn(
+                          "min-h-10 rounded-xl px-2 text-[11px] font-bold transition-all active:scale-[0.98]",
+                          cardDisplayMode === option.id
+                            ? "bg-glass-ink text-white shadow-sm dark:bg-white dark:text-slate-900"
+                            : "bg-white/60 text-glass-sub dark:bg-white/10",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {recurrenceLabel(transaction) && (

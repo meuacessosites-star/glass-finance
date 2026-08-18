@@ -664,6 +664,7 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
         typeof t.showPaymentDateOnCard === "boolean"
           ? t.showPaymentDateOnCard
           : true,
+      cardDisplayMode: t.cardDisplayMode === "name" ? "name" : "last4",
       cardId: normalizedCardId,
       cardMode: normalizedCardMode,
       personId:
@@ -943,6 +944,7 @@ type AppStoreValue = {
     paymentStatus?: "paid" | "pending";
     paymentDate?: string;
     showPaymentDateOnCard?: boolean;
+    cardDisplayMode?: "name" | "last4";
     draftDisplay?: "hidden" | "multipleMedia";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
@@ -971,6 +973,7 @@ type AppStoreValue = {
         | "paymentStatus"
         | "paymentDate"
         | "showPaymentDateOnCard"
+        | "cardDisplayMode"
       >
     >,
   ) => void;
@@ -1410,6 +1413,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                   ? undefined
                   : data.paymentDate ?? new Date().toISOString().slice(0, 10),
               showPaymentDateOnCard: data.showPaymentDateOnCard ?? true,
+              cardDisplayMode: data.cardDisplayMode ?? "last4",
             },
             ...d.transactions,
           ],
@@ -1443,6 +1447,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 : undefined;
             const nextShowPaymentDateOnCard =
               patch.showPaymentDateOnCard ?? transaction.showPaymentDateOnCard ?? true;
+            const nextCardDisplayMode =
+              patch.cardDisplayMode ?? transaction.cardDisplayMode ?? "last4";
             return {
               ...transaction,
               ...patch,
@@ -1451,6 +1457,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               paymentStatus: nextPaymentStatus,
               paymentDate: nextPaymentDate,
               showPaymentDateOnCard: nextShowPaymentDateOnCard,
+              cardDisplayMode: nextCardDisplayMode,
             };
           }),
         })),

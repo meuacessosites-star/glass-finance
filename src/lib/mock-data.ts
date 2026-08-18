@@ -83,6 +83,8 @@ export type Transaction = {
   paymentDate?: string;
   /** Define se a data de pagamento aparece no card da lista. */
   showPaymentDateOnCard?: boolean;
+  /** Define se o card mostra o nome do cartão ou apenas os quatro últimos dígitos. */
+  cardDisplayMode?: "name" | "last4";
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */

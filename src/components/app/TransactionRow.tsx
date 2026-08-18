@@ -64,7 +64,9 @@ function getPaymentPresentation(
       ? cards.find((item) => item.id === transaction.cardId)
       : undefined;
   const cardLabel = card
-    ? `${card.institution ?? card.name} •••• ${card.last4}`
+    ? transaction.cardDisplayMode === "name"
+      ? card.name
+      : `•••• ${card.last4}`
     : methodLabel;
   const modeLabel =
     methodId === "cartao" && transaction.cardMode === "credito"
@@ -260,20 +262,20 @@ export function TransactionRow({
           {selected && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       )}
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 lg:size-14">
+      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 lg:size-14">
         <CategoryIcon
           categoryId={transaction.categoryId}
-          size="size-12 lg:size-14"
-          iconSize="size-5 lg:size-6"
+          size="size-11 lg:size-14"
+          iconSize="size-4.5 lg:size-6"
         />
       </div>
       <div className="min-w-0 flex-1 px-0.5">
-        <p className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-glass-ink lg:text-[17px]">
+        <p className="min-w-0 truncate text-[14px] font-semibold leading-5 tracking-[-0.01em] text-glass-ink lg:text-[17px]">
           <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
         </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
           <span
-            className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-xl border px-2 py-1 text-[11px] font-bold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
+            className="inline-flex min-h-6 max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold text-glass-ink/80 dark:text-white/80 lg:text-[13px]"
             style={{
               borderColor: `${category.color}55`,
               backgroundColor: `${category.color}18`,
@@ -292,10 +294,10 @@ export function TransactionRow({
             </span>
           )}
         </div>
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           {paymentPresentation && (
             <span
-              className="inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-2 py-1 text-[10.5px] font-bold lg:text-[12px]"
+              className="inline-flex min-h-6 min-w-0 max-w-[12rem] items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold lg:max-w-[16rem] lg:text-[12px]"
               style={{
                 color: paymentPresentation.color,
                 borderColor: `${paymentPresentation.color}45`,
@@ -303,18 +305,18 @@ export function TransactionRow({
               }}
               title={paymentPresentation.label}
             >
-              {PaymentIcon && <PaymentIcon className="size-3.5 shrink-0" strokeWidth={2.4} />}
+              {PaymentIcon && <PaymentIcon className="size-3 shrink-0" strokeWidth={2.4} />}
               <span className="truncate">{paymentPresentation.label}</span>
             </span>
           )}
           {hasAttachments && (
-            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-glass-ink/10 px-2 py-1 text-[10.5px] font-bold text-glass-sub">
+            <span className="flex min-h-6 shrink-0 items-center gap-1 rounded-lg bg-glass-ink/10 px-1.5 py-0.5 text-[10px] font-bold text-glass-sub">
               <Paperclip className="size-3" strokeWidth={2.6} />
               {transaction.attachments!.length}
             </span>
           )}
           {transaction.recurrence === "recorrente" && (
-            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-glass-ink/10 px-2 py-1 text-[10.5px] font-bold text-glass-sub">
+            <span className="flex min-h-6 shrink-0 items-center gap-1 rounded-lg bg-glass-ink/10 px-1.5 py-0.5 text-[10px] font-bold text-glass-sub">
               <Repeat className="size-3" strokeWidth={2.6} />
               <span className="truncate">{frequencyLabel(
                 transaction.frequency,
@@ -323,24 +325,24 @@ export function TransactionRow({
             </span>
           )}
           {transaction.recurrence === "parcelada" && (
-            <span className="flex min-h-7 shrink-0 items-center gap-1 rounded-xl bg-violet-500/10 px-2 py-1 text-[10.5px] font-bold text-violet-700 dark:text-violet-200">
+            <span className="flex min-h-6 shrink-0 items-center gap-1 rounded-lg bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-200">
               <Layers className="size-3" strokeWidth={2.6} />
               <span className="whitespace-nowrap">{transaction.currentInstallment ?? 1}/{transaction.installments ?? 2}</span>
             </span>
           )}
         </div>
         {showDraftOnCard && (
-          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
+          <div className="mt-2 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
             <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] font-medium leading-snug text-glass-ink/85 dark:text-white/85 lg:text-[13px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
         )}
       </div>
-      <div className="ml-auto flex min-w-[76px] shrink-0 flex-col items-end gap-1 lg:min-w-[112px] lg:gap-1.5">
+      <div className="ml-auto flex min-w-[68px] shrink-0 flex-col items-end gap-1 pt-0.5 lg:min-w-[112px] lg:gap-1.5">
         <p
           className={cn(
-            "amount-tabular text-right text-[15px] font-bold lg:text-[18px]",
+            "amount-tabular text-right text-[14px] font-bold leading-5 lg:text-[18px]",
             isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
           )}
         >
@@ -355,7 +357,7 @@ export function TransactionRow({
             onPointerUp={(event) => event.stopPropagation()}
             onClick={handleStatusBadgeClick}
             className={cn(
-              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-tight transition-transform active:scale-95 lg:text-[11px]",
+              "flex max-w-full items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[9px] font-extrabold tracking-tight transition-transform active:scale-95 lg:text-[11px]",
               paymentStatus === "paid"
                 ? "border-[#1FBF4F] bg-[#1FBF4F] text-white"
                 : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",

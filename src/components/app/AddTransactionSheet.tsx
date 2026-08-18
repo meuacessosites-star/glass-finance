@@ -93,6 +93,7 @@ export type TransactionFormValues = {
   personId?: string | null;
   paymentStatus?: "paid" | "pending";
   paymentDate?: string;
+  cardDisplayMode?: "name" | "last4";
 };
 
 const inputClass =
@@ -206,9 +207,11 @@ export function AddTransactionSheet({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | "">("");
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
+  const selectedCard = cardId ? cards.find((card) => card.id === cardId) : undefined;
   const [personId, setPersonId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [cardDisplayMode, setCardDisplayMode] = useState<"name" | "last4">("last4");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
@@ -248,6 +251,7 @@ export function AddTransactionSheet({
     setPersonId(null);
     setPaymentStatus("paid");
     setPaymentDate(new Date().toISOString().slice(0, 10));
+    setCardDisplayMode("last4");
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
     setPickerOpen(false);
@@ -288,6 +292,7 @@ export function AddTransactionSheet({
           ? ""
           : initial.paymentDate ?? initial.date ?? new Date().toISOString().slice(0, 10),
       );
+      setCardDisplayMode(initial.cardDisplayMode ?? "last4");
     }
   }, [open, categories, initial]);
 
@@ -425,6 +430,7 @@ export function AddTransactionSheet({
       personId: personId ?? undefined,
       paymentStatus,
       paymentDate: paymentStatus === "paid" ? paymentDate || date || undefined : undefined,
+      cardDisplayMode: paymentMethod === "cartao" ? cardDisplayMode : undefined,
     };
 
     if (editTransactionId) {
@@ -766,6 +772,34 @@ export function AddTransactionSheet({
                 onCardChange={setCardId}
                 cards={cards}
               />
+              {paymentMethod === "cartao" && cardId && (
+                <div className="mt-2.5 rounded-2xl bg-glass-ink/[0.04] p-2 dark:bg-white/[0.04]">
+                  <p className="mb-1.5 px-1 text-[11px] font-semibold text-glass-sub">
+                    Exibir no card da transação
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { id: "last4" as const, label: `•••• ${selectedCard?.last4 ?? "0000"}` },
+                      { id: "name" as const, label: selectedCard?.name ?? "Nome do cartão" },
+                    ]).map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={cardDisplayMode === option.id}
+                        onClick={() => setCardDisplayMode(option.id)}
+                        className={cn(
+                          "min-h-10 rounded-xl px-2 text-[11px] font-bold transition-all active:scale-[0.98]",
+                          cardDisplayMode === option.id
+                            ? "bg-glass-ink text-white shadow-sm dark:bg-white dark:text-slate-900"
+                            : "bg-white/60 text-glass-sub dark:bg-white/10",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Payment status */}

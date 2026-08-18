@@ -40,6 +40,7 @@ function transactionToFormValues(transaction: Transaction): TransactionFormValue
     personId: transaction.personId ?? null,
     paymentStatus: transaction.paymentStatus ?? "paid",
     paymentDate: transaction.paymentDate ?? "",
+    cardDisplayMode: transaction.cardDisplayMode ?? "last4",
   };
 }
 
