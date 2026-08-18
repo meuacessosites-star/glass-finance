@@ -283,10 +283,10 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative isolate overflow-hidden rounded-2xl">
+        <div className="relative isolate overflow-hidden rounded-2xl border-0 outline-none shadow-none ring-0 before:hidden after:hidden">
           <div
             className={cn(
-              "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-2xl",
+              "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-none border-0 outline-none shadow-none ring-0 before:hidden after:hidden",
               swipeOpen && "pointer-events-auto",
             )}
           >
@@ -296,7 +296,7 @@ export function TransactionRow({
               onClick={handleSecondaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
-                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white lg:text-[12px]",
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 border-0 px-2 text-[10.5px] font-bold leading-tight text-white outline-none shadow-none ring-0 lg:text-[12px]",
                 isSyntheticLoan ? "bg-glass-ink/60" : "bg-[#E5484D]",
               )}
             >
@@ -313,7 +313,7 @@ export function TransactionRow({
               onClick={handlePrimaryAction}
               whileTap={{ scale: 0.96 }}
               className={cn(
-                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight lg:text-[12px]",
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 border-0 px-2 text-[10.5px] font-bold leading-tight outline-none shadow-none ring-0 lg:text-[12px]",
                 primaryActionClass,
               )}
             >
@@ -350,7 +350,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
+              "relative z-10 flex w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
             )}
           >
             {rowContent}
