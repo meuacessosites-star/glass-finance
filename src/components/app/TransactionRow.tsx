@@ -227,8 +227,8 @@ export function TransactionRow({
           )}
         </p>
         {showDraftOnCard && (
-          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-slate-50/85 px-3 py-1.5 dark:bg-white/[0.045]">
-            <p className="line-clamp-2 border-l-2 border-[#7C6FF2]/75 pl-2.5 text-[11px] leading-snug text-glass-sub lg:text-[13px]">
+          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-[#dfe4ff]/90 px-3 py-1.5 shadow-sm ring-1 ring-inset ring-[#7C6FF2]/12 dark:bg-[#1c2542]/80 dark:ring-[#A79BFF]/20">
+            <p className="line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[11px] leading-snug text-glass-ink/80 dark:text-white/80 lg:text-[13px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
