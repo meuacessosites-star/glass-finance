@@ -21,8 +21,9 @@ import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import {
   SearchHighlight,
-  scrollToFirstSearchResult,
+  SearchNavigationControls,
   scrollToSearchResult,
+  useSearchNavigation,
 } from "@/components/app/SearchHighlight";
 import { HorizontalScroll } from "@/components/app/HorizontalScroll";
 import {
@@ -401,6 +402,11 @@ export default function TransactionsPage() {
   } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>("");
+  const {
+    activeIndex: activeSearchResultIndex,
+    goToPrevious: goToPreviousSearchResult,
+    goToNext: goToNextSearchResult,
+  } = useSearchNavigation(searchQuery);
   const [scope, setScope] = useState<"month" | "all">("month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
@@ -571,16 +577,14 @@ export default function TransactionsPage() {
       )
       .filter((transaction) => {
         if (!normalizedQuery) return true;
-        const categoryLabel = categoryById[transaction.categoryId]?.label ?? "";
         const searchableText = normalizeSearchText(
-          `${transaction.title} ${transaction.note ?? ""} ${transaction.categoryId} ${categoryLabel}`,
+          `${transaction.title} ${transaction.note ?? ""}`,
         );
         return searchableText.includes(normalizedQuery);
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [
     cards,
-    categoryById,
     consolidatedTransactions,
     loanReceivables,
     paymentStatus,
@@ -1049,12 +1053,19 @@ export default function TransactionsPage() {
             onKeyDown={(event) => {
               if (event.key === "Enter" && searchQuery.trim()) {
                 event.preventDefault();
-                scrollToFirstSearchResult();
+                goToNextSearchResult();
               }
             }}
-            placeholder="Buscar transações, categorias..."
+            placeholder="Buscar transações e anotações..."
             aria-label="Buscar transações"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-glass-ink outline-none placeholder:text-glass-faint lg:text-[15px]"
+          />
+          <SearchNavigationControls
+            query={searchQuery}
+            resultCount={filtered.length}
+            activeIndex={activeSearchResultIndex}
+            onPrevious={goToPreviousSearchResult}
+            onNext={goToNextSearchResult}
           />
           {searchQuery && (
             <button

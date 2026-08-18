@@ -201,7 +201,7 @@ export function TransactionRow({
         </p>
         <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-glass-sub lg:text-[15px]">
           <span className="truncate">
-            <SearchHighlight query={searchQuery}>{category.label}</SearchHighlight>
+            {category.label}
             {showDate && ` · ${shortDate(transaction.date)}`}
           </span>
           {hasAttachments && (
@@ -281,6 +281,7 @@ export function TransactionRow({
         <div
           className="relative isolate w-full min-w-0 max-w-full border-0 outline-none shadow-none ring-0 before:hidden after:hidden"
           data-search-result-id={transaction.id}
+          data-search-match-result={searchQuery?.trim() ? "true" : undefined}
         >
           <div
             className={cn(
@@ -370,6 +371,7 @@ export function TransactionRow({
           role="button"
           tabIndex={0}
           data-search-result-id={transaction.id}
+          data-search-match-result={searchQuery?.trim() ? "true" : undefined}
           onClick={handleRowActivate}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {

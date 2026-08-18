@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -6,6 +7,8 @@ type MatchSegment = {
   text: string;
   highlighted: boolean;
 };
+
+const SEARCH_MATCH_SELECTOR = '[data-search-match-result="true"]';
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -73,6 +76,15 @@ function getMatchSegments(value: string, query: string): MatchSegment[] {
   return segments.length > 0 ? segments : [{ text: value, highlighted: false }];
 }
 
+function getSearchMatchElements(): HTMLElement[] {
+  if (typeof document === "undefined") return [];
+  return Array.from(document.querySelectorAll<HTMLElement>(SEARCH_MATCH_SELECTOR));
+}
+
+function scrollElementIntoView(element: HTMLElement | undefined): void {
+  element?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 export function SearchHighlight({
   children,
   query,
@@ -111,14 +123,91 @@ export function scrollToSearchResult(resultId: string): void {
   const result = Array.from(
     document.querySelectorAll<HTMLElement>("[data-search-result-id]"),
   ).find((element) => element.dataset.searchResultId === resultId);
-  result?.scrollIntoView({ behavior: "smooth", block: "center" });
+  scrollElementIntoView(result);
 }
 
 export function scrollToFirstSearchResult(): void {
-  if (typeof document === "undefined") return;
-  document
-    .querySelector<HTMLElement>("[data-search-result-id]")
-    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  scrollElementIntoView(getSearchMatchElements()[0]);
+}
+
+export function useSearchNavigation(query?: string) {
+  const normalizedQuery = query?.trim() ?? "";
+  const [navigationState, setNavigationState] = useState({
+    query: "",
+    index: -1,
+  });
+  const activeIndex =
+    navigationState.query === normalizedQuery ? navigationState.index : -1;
+
+  const navigateResults = (direction: -1 | 1) => {
+    const results = getSearchMatchElements();
+    if (results.length === 0) return;
+
+    const nextIndex =
+      activeIndex < 0
+        ? direction === 1
+          ? 0
+          : results.length - 1
+        : (activeIndex + direction + results.length) % results.length;
+
+    setNavigationState({ query: normalizedQuery, index: nextIndex });
+    scrollElementIntoView(results[nextIndex]);
+  };
+
+  return {
+    activeIndex,
+    goToPrevious: () => navigateResults(-1),
+    goToNext: () => navigateResults(1),
+  };
+}
+
+export function SearchNavigationControls({
+  query,
+  resultCount,
+  activeIndex,
+  onPrevious,
+  onNext,
+}: {
+  query?: string;
+  resultCount: number;
+  activeIndex: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  if (!query?.trim()) return null;
+
+  const hasResults = resultCount > 0;
+  const visibleIndex = hasResults
+    ? Math.min(activeIndex >= 0 ? activeIndex + 1 : 1, resultCount)
+    : 0;
+
+  return (
+    <div className="flex shrink-0 items-center gap-0.5" aria-label="Navegação pelos resultados">
+      <span className="mr-0.5 min-w-[2.75rem] text-center text-[10px] font-semibold tabular-nums text-glass-faint">
+        {visibleIndex}/{resultCount}
+      </span>
+      <button
+        type="button"
+        aria-label="Resultado anterior"
+        title="Resultado anterior"
+        disabled={!hasResults}
+        onClick={onPrevious}
+        className="flex size-7 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
+      >
+        <ChevronUp className="size-3.5" strokeWidth={2.4} />
+      </button>
+      <button
+        type="button"
+        aria-label="Próximo resultado"
+        title="Próximo resultado"
+        disabled={!hasResults}
+        onClick={onNext}
+        className="flex size-7 items-center justify-center rounded-lg text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-glass-ink active:scale-95 disabled:pointer-events-none disabled:opacity-35"
+      >
+        <ChevronDown className="size-3.5" strokeWidth={2.4} />
+      </button>
+    </div>
+  );
 }
 
 export function withSearchResultId(resultId: string): {

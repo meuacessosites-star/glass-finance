@@ -38,7 +38,8 @@ import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
 import {
-  scrollToFirstSearchResult,
+  SearchNavigationControls,
+  useSearchNavigation,
 } from "@/components/app/SearchHighlight";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import {
@@ -1291,6 +1292,11 @@ export default function CardPurchasesPage() {
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
   const [transactionSearch, setTransactionSearch] = useState("");
+  const {
+    activeIndex: activeTransactionSearchIndex,
+    goToPrevious: goToPreviousTransactionResult,
+    goToNext: goToNextTransactionResult,
+  } = useSearchNavigation(transactionSearch);
   const [transactionSearchScope, setTransactionSearchScope] =
     useState<TransactionSearchScope>("month");
   const [transactionCategory, setTransactionCategory] = useState("todas");
@@ -1427,9 +1433,8 @@ export default function CardPurchasesPage() {
       : selectedCardTransactions;
     const query = normalizeSearchText(transactionSearch.trim());
     return source.filter((transaction) => {
-      const categoryLabel = categoryById[transaction.categoryId]?.label ?? transaction.categoryId;
       const searchableText = normalizeSearchText(
-        `${transaction.title} ${transaction.note ?? ""} ${categoryLabel}`,
+        `${transaction.title} ${transaction.note ?? ""}`,
       );
       return (
         (!query || searchableText.includes(query)) &&
@@ -1437,7 +1442,6 @@ export default function CardPurchasesPage() {
       );
     });
   }, [
-    categoryById,
     selectedCard,
     selectedCardHistoryTransactions,
     selectedCardTransactions,
@@ -1796,12 +1800,21 @@ export default function CardPurchasesPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && transactionSearch.trim()) {
                       event.preventDefault();
-                      scrollToFirstSearchResult();
+                      goToNextTransactionResult();
                     }
                   }}
-                  placeholder="Buscar compra ou categoria"
-                  className="h-10 w-full rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-3 text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  placeholder="Buscar compra ou anotação"
+                  className="h-10 w-full rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-[8.75rem] text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
                 />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <SearchNavigationControls
+                    query={transactionSearch}
+                    resultCount={visibleSelectedCardTransactions.length}
+                    activeIndex={activeTransactionSearchIndex}
+                    onPrevious={goToPreviousTransactionResult}
+                    onNext={goToNextTransactionResult}
+                  />
+                </div>
               </div>
               <label htmlFor="card-transaction-category" className="sr-only">
                 Filtrar por categoria
