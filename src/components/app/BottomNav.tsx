@@ -43,7 +43,7 @@ export function BottomNav({
       : pathname.startsWith(to);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-2 pt-2 safe-bottom md:absolute md:bottom-5 md:z-30 md:px-5 md:pb-0">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex justify-center px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 md:px-5">
       <div className="pointer-events-auto glass glass-strong flex w-full max-w-[640px] items-center justify-between rounded-[1.8rem] px-1.5 py-1.5 sm:rounded-[2.1rem] sm:px-3 sm:py-2">
         {tabs.slice(0, 2).map((tab) => (
           <TabButton
