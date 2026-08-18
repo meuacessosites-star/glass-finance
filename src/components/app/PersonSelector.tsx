@@ -11,6 +11,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PersonAvatar } from "./PersonAvatar";
+import {
+  SearchHighlight,
+  scrollToSearchResult,
+} from "./SearchHighlight";
 
 type PersonRecord = {
   _id: string;
@@ -129,7 +133,13 @@ export function PersonSelector({
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === "Enter" && filteredPeople[0]) {
+                    event.preventDefault();
+                    scrollToSearchResult(filteredPeople[0]._id);
+                  }
+                }}
                 placeholder="Buscar pessoa..."
                 aria-label="Buscar pessoa"
                 autoComplete="off"
@@ -154,7 +164,11 @@ export function PersonSelector({
                   <button
                     key={person._id}
                     type="button"
-                    onClick={() => selectPerson(person._id)}
+                    data-search-result-id={person._id}
+                    onClick={() => {
+                      scrollToSearchResult(person._id);
+                      selectPerson(person._id);
+                    }}
                     className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-black/5"
                   >
                     <PersonAvatar
@@ -165,7 +179,7 @@ export function PersonSelector({
                       size="sm"
                     />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-glass-ink">
-                      {person.name}
+                      <SearchHighlight query={searchTerm}>{person.name}</SearchHighlight>
                     </span>
                     {person._id === value && (
                       <Check className="size-4 shrink-0 text-primary" />

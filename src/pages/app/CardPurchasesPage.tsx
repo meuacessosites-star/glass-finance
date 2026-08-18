@@ -37,6 +37,9 @@ import { useNavigate } from "react-router";
 import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import {
+  scrollToFirstSearchResult,
+} from "@/components/app/SearchHighlight";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import {
   currentMonthKey,
@@ -1790,6 +1793,12 @@ export default function CardPurchasesPage() {
                     setTransactionSearch(value);
                     if (!value.trim()) setTransactionSearchScope("month");
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && transactionSearch.trim()) {
+                      event.preventDefault();
+                      scrollToFirstSearchResult();
+                    }
+                  }}
                   placeholder="Buscar compra ou categoria"
                   className="h-10 w-full rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-3 text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
                 />
@@ -1866,7 +1875,11 @@ export default function CardPurchasesPage() {
           ) : (
             <div className="space-y-2 py-1.5">
               {visibleSelectedCardTransactions.map((transaction) => (
-                <TransactionRow key={transaction.id} transaction={transaction} />
+                <TransactionRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  searchQuery={transactionSearch}
+                />
               ))}
             </div>
           )}

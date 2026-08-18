@@ -26,6 +26,10 @@ import type {
   RecurrenceMode,
 } from "@/lib/mock-data";
 import { CategoryIcon } from "./CategoryIcon";
+import {
+  SearchHighlight,
+  scrollToSearchResult,
+} from "./SearchHighlight";
 import { HorizontalScroll } from "./HorizontalScroll";
 import { SquircleIcon } from "./ThemeToggle";
 import {
@@ -1049,6 +1053,12 @@ export function AddTransactionSheet({
                       ref={searchRef}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && filteredCategories[0]) {
+                          event.preventDefault();
+                          scrollToSearchResult(filteredCategories[0].id);
+                        }
+                      }}
                       placeholder="Buscar categoria…"
                       inputMode="search"
                       enterKeyHint="search"
@@ -1091,6 +1101,7 @@ export function AddTransactionSheet({
                             <button
                               key={c.id}
                               type="button"
+                              data-search-result-id={c.id}
                               onClick={() => {
                                 setCategoryId(c.id);
                                 setPickerOpen(false);
@@ -1114,7 +1125,7 @@ export function AddTransactionSheet({
                                     selected ? "text-primary" : "text-glass-ink",
                                   )}
                                 >
-                                  {c.label}
+                                  <SearchHighlight query={query}>{c.label}</SearchHighlight>
                                 </span>
                               </span>
                               {selected && (

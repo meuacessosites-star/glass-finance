@@ -18,6 +18,7 @@ import {
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
+import { SearchHighlight, scrollToSearchResult } from "./SearchHighlight";
 import { TransactionDetailsSheet } from "./TransactionDetailsSheet";
 import {
   AlertDialog,
@@ -49,6 +50,7 @@ export function TransactionRow({
   selected = false,
   onSelect,
   onEdit,
+  searchQuery,
 }: {
   transaction: Transaction;
   showDate?: boolean;
@@ -61,6 +63,7 @@ export function TransactionRow({
   selected?: boolean;
   onSelect?: (id: string) => void;
   onEdit?: () => void;
+  searchQuery?: string;
 }) {
   const { categoryById, deleteTransaction } = useAppStore();
   const [open, setOpen] = useState(false);
@@ -101,6 +104,7 @@ export function TransactionRow({
   };
 
   const handleRowActivate = () => {
+    if (searchQuery?.trim()) scrollToSearchResult(transaction.id);
     if (selectable) {
       onSelect?.(transaction.id);
       return;
@@ -193,11 +197,11 @@ export function TransactionRow({
       </div>
       <div className="min-w-0 flex-1 px-1">
         <p className="truncate text-[15px] font-semibold text-glass-ink lg:text-[17px]">
-          {transaction.title}
+          <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
         </p>
         <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-glass-sub lg:text-[15px]">
           <span className="truncate">
-            {category.label}
+            <SearchHighlight query={searchQuery}>{category.label}</SearchHighlight>
             {showDate && ` · ${shortDate(transaction.date)}`}
           </span>
           {hasAttachments && (
@@ -229,7 +233,7 @@ export function TransactionRow({
               className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70 lg:h-5"
             />
             <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub lg:text-[13px]">
-              {transaction.note}
+              <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
         )}
@@ -278,7 +282,10 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative isolate w-full min-w-0 max-w-full border-0 outline-none shadow-none ring-0 before:hidden after:hidden">
+        <div
+          className="relative isolate w-full min-w-0 max-w-full border-0 outline-none shadow-none ring-0 before:hidden after:hidden"
+          data-search-result-id={transaction.id}
+        >
           <div
             className={cn(
               "pointer-events-none absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl border-0 outline-none shadow-none ring-0 before:hidden after:hidden",
@@ -366,6 +373,7 @@ export function TransactionRow({
         <div
           role="button"
           tabIndex={0}
+          data-search-result-id={transaction.id}
           onClick={handleRowActivate}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {

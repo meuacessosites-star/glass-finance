@@ -19,6 +19,11 @@ import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import {
+  SearchHighlight,
+  scrollToFirstSearchResult,
+  scrollToSearchResult,
+} from "@/components/app/SearchHighlight";
 import { HorizontalScroll } from "@/components/app/HorizontalScroll";
 import {
   DropdownMenu,
@@ -1041,6 +1046,12 @@ export default function TransactionsPage() {
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && searchQuery.trim()) {
+                event.preventDefault();
+                scrollToFirstSearchResult();
+              }
+            }}
             placeholder="Buscar transações, categorias..."
             aria-label="Buscar transações"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-glass-ink outline-none placeholder:text-glass-faint lg:text-[15px]"
@@ -1088,7 +1099,13 @@ export default function TransactionsPage() {
                   type="search"
                   value={categorySearchQuery}
                   onChange={(event) => setCategorySearchQuery(event.target.value)}
-                  onKeyDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === "Enter" && filteredCategoryOptions[0]) {
+                      event.preventDefault();
+                      scrollToSearchResult(filteredCategoryOptions[0].id);
+                    }
+                  }}
                   placeholder="Buscar categoria..."
                   aria-label="Buscar categoria"
                   autoComplete="off"
@@ -1109,6 +1126,7 @@ export default function TransactionsPage() {
                 filteredCategoryOptions.map((category) => (
                   <DropdownMenuCheckboxItem
                     key={category.id}
+                    data-search-result-id={category.id}
                     checked={selectedCategories.includes(category.id)}
                     onSelect={(event) => {
                       event.preventDefault();
@@ -1122,7 +1140,9 @@ export default function TransactionsPage() {
                       iconSize="size-3.5"
                     />
                     <span className="min-w-0 flex-1 truncate font-semibold">
-                      {category.label}
+                      <SearchHighlight query={categorySearchQuery}>
+                        {category.label}
+                      </SearchHighlight>
                     </span>
                     <span
                       aria-label={`Cor ${category.label}`}
@@ -1142,10 +1162,11 @@ export default function TransactionsPage() {
       </div>
 
       {/* Search scope */}
-      <div className="glass-soft flex w-full items-center gap-1 rounded-2xl p-0.5 lg:p-1">
-        <button
-          type="button"
-          onClick={() => setScope("month")}
+      {searchQuery.trim() && (
+        <div className="glass-soft flex w-full items-center gap-1 rounded-2xl p-0.5 lg:p-1">
+          <button
+            type="button"
+            onClick={() => setScope("month")}
           className={cn(
             "flex-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all lg:px-3 lg:py-2 lg:text-[14px]",
             scope === "month"
@@ -1154,10 +1175,10 @@ export default function TransactionsPage() {
           )}
         >
           Mês selecionado
-        </button>
-        <button
-          type="button"
-          onClick={() => setScope("all")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setScope("all")}
           className={cn(
             "flex-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all lg:px-3 lg:py-2 lg:text-[14px]",
             scope === "all"
@@ -1166,8 +1187,9 @@ export default function TransactionsPage() {
           )}
         >
           Todo o histórico
-        </button>
-      </div>
+          </button>
+        </div>
+      )}
 
       {hasFilters && (
         <div className="flex justify-end">
@@ -1274,6 +1296,7 @@ export default function TransactionsPage() {
                     paymentStatus={status}
                     paymentActionLabel={paymentActionLabel}
                     onPaymentAction={handlePaymentAction}
+                    searchQuery={searchQuery}
                     selectable={selectMode}
                     selected={selectedIds.has(transaction.id)}
                     onSelect={toggleSelectedTransaction}
