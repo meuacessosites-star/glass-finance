@@ -157,7 +157,7 @@ function MonthMultiPicker({
           onSelect={() => onSelectedMonthsChange([])}
         >
           <X className="size-4" />
-          Limpar meses
+          Remover filtro
         </DropdownMenuItem>
         {monthOptions.map((monthOption) => (
           <DropdownMenuCheckboxItem
@@ -360,7 +360,7 @@ function PeriodPicker({
                     }}
                     className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
                   >
-                    Limpar
+                    Remover filtro
                   </button>
                 )}
               </div>
@@ -496,6 +496,29 @@ export default function TransactionsPage() {
       setMonth(months[0]);
       setPeriodMode(months[0] === currentMonthKey ? "current" : "month");
     }
+  };
+
+  const hasFilters = Boolean(
+    month !== currentMonthKey ||
+      periodMode !== "current" ||
+      rangeStart ||
+      rangeEnd ||
+      selectedMonths.length > 0 ||
+      paymentStatus !== "all" ||
+      selectedCategories.length > 0 ||
+      searchQuery.trim() ||
+      scope !== "month",
+  );
+  const clearFilters = () => {
+    setMonth(currentMonthKey);
+    setPeriodMode("current");
+    setRangeStart(null);
+    setRangeEnd(null);
+    setSelectedMonths([]);
+    setPaymentStatus("all");
+    setSelectedCategories([]);
+    setSearchQuery("");
+    setScope("month");
   };
 
   const availableCategories = useMemo(
@@ -1047,8 +1070,8 @@ export default function TransactionsPage() {
               disabled={selectedCategories.length === 0}
               onSelect={() => setSelectedCategories([])}
             >
-              <Check className="size-4" />
-              Todas as categorias
+              <X className="size-4" />
+              Remover filtro
             </DropdownMenuItem>
             {availableCategories.map((category) => (
               <DropdownMenuCheckboxItem
@@ -1097,6 +1120,19 @@ export default function TransactionsPage() {
           Todo o histórico
         </button>
       </div>
+
+      {hasFilters && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95 lg:text-[13px]"
+          >
+            <X className="size-3.5" />
+            Remover filtro
+          </button>
+        </div>
+      )}
 
       {/* Summary of the filter */}
       <div className="glass flex items-center justify-between rounded-2xl px-4 py-3 lg:px-5 lg:py-3.5">

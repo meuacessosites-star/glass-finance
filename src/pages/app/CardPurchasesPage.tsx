@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   Trash2,
   TrendingUp,
+  X,
 } from "lucide-react";
 import {
   Cell,
@@ -295,7 +296,7 @@ function PeriodPicker({
                     }}
                     className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
                   >
-                    Limpar
+                    Remover filtro
                   </button>
                 )}
               </div>
@@ -1342,6 +1343,26 @@ export default function CardPurchasesPage() {
     setRangeStart(null);
     setRangeEnd(null);
   };
+  const hasInvoiceFilters = Boolean(
+    month !== currentMonthKey ||
+      periodMode !== "current" ||
+      rangeStart ||
+      rangeEnd ||
+      invoiceStatusFilter !== "all",
+  );
+  const clearInvoiceFilters = () => {
+    setMonth(currentMonthKey);
+    setPeriodMode("current");
+    setRangeStart(null);
+    setRangeEnd(null);
+    setInvoiceStatusFilter("all");
+  };
+  const clearTransactionFilters = () => {
+    setTransactionSearch("");
+    setTransactionSearchScope("month");
+    setTransactionCategory("todas");
+  };
+
   const visibleCards = useMemo(
     () =>
       cards.filter((card) => {
@@ -1624,6 +1645,18 @@ export default function CardPurchasesPage() {
             );
           })}
         </div>
+        {hasInvoiceFilters && (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={clearInvoiceFilters}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
+            >
+              <X className="size-3.5" />
+              Remover filtro
+            </button>
+          </div>
+        )}
       </div>
 
       {cards.length === 0 ? (
@@ -1798,6 +1831,18 @@ export default function CardPurchasesPage() {
                     {scope === "month" ? "Mês selecionado" : "Todos os meses"}
                   </button>
                 ))}
+              </div>
+            )}
+            {hasTransactionFilters && (
+              <div className="mt-2 flex justify-end border-t border-glass-ink/5 pt-2 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={clearTransactionFilters}
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95"
+                >
+                  <X className="size-3.5" />
+                  Remover filtro
+                </button>
               </div>
             )}
           </div>
