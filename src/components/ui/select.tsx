@@ -3,11 +3,33 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useExclusiveOverlay } from "@/lib/overlay-manager"
 
 function Select({
+  open: controlledOpen,
+  defaultOpen,
+  onOpenChange,
+  overlayParentId,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+}: React.ComponentProps<typeof SelectPrimitive.Root> & {
+  overlayParentId?: string
+}) {
+  const overlay = useExclusiveOverlay({
+    name: "select",
+    open: controlledOpen,
+    defaultOpen,
+    parentId: overlayParentId,
+    onOpenChange,
+  })
+
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      {...props}
+      open={overlay.open}
+      onOpenChange={overlay.setOpen}
+    />
+  )
 }
 
 function SelectGroup({

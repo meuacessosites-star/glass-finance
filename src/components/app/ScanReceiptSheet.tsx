@@ -21,6 +21,7 @@ import type { ReceiptResult } from "@/convex/aiVision";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { normalizePaymentMethod } from "./PaymentMethodSelector";
 import {
   AddTransactionSheet,
@@ -66,6 +67,13 @@ export function ScanReceiptSheet({
   const { categories } = useAppStore();
   const applySuggestedCategory = useSuggestedCategory();
   const extractReceipt = useAction(api.aiVision.extractReceipt);
+  const overlay = useExclusiveOverlay({
+    name: "scan-receipt-sheet",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
 
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
@@ -711,7 +719,8 @@ export function ScanReceiptSheet({
       <div className={open && step === "review" ? "block" : "hidden"}>
         <AddTransactionSheet
           key="view-form"
-          open={true}
+          open={open && step === "review"}
+          overlayParentId={overlay.overlayId}
           onClose={handleReviewClose}
           initial={prefill ?? null}
         />

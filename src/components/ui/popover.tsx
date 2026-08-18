@@ -4,11 +4,33 @@ import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
+import { useExclusiveOverlay } from "@/lib/overlay-manager"
 
 function Popover({
+  open: controlledOpen,
+  defaultOpen,
+  onOpenChange,
+  overlayParentId,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+}: React.ComponentProps<typeof PopoverPrimitive.Root> & {
+  overlayParentId?: string
+}) {
+  const overlay = useExclusiveOverlay({
+    name: "popover",
+    open: controlledOpen,
+    defaultOpen,
+    parentId: overlayParentId,
+    onOpenChange,
+  })
+
+  return (
+    <PopoverPrimitive.Root
+      data-slot="popover"
+      {...props}
+      open={overlay.open}
+      onOpenChange={overlay.setOpen}
+    />
+  )
 }
 
 function PopoverTrigger({

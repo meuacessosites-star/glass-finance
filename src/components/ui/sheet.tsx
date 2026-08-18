@@ -3,9 +3,33 @@ import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useExclusiveOverlay } from "@/lib/overlay-manager"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  open: controlledOpen,
+  defaultOpen,
+  onOpenChange,
+  overlayParentId,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root> & {
+  overlayParentId?: string
+}) {
+  const overlay = useExclusiveOverlay({
+    name: "sheet",
+    open: controlledOpen,
+    defaultOpen,
+    parentId: overlayParentId,
+    onOpenChange,
+  })
+
+  return (
+    <SheetPrimitive.Root
+      data-slot="sheet"
+      {...props}
+      open={overlay.open}
+      onOpenChange={overlay.setOpen}
+    />
+  )
 }
 
 function SheetTrigger({

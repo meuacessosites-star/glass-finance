@@ -43,6 +43,7 @@ import {
   type Transaction,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { toast } from "sonner";
 
 function shiftMonth(key: string, offset: number): string {
@@ -200,6 +201,14 @@ function PeriodPicker({
   const [draftEnd, setDraftEnd] = useState<string | null>(rangeEnd);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  useExclusiveOverlay({
+    name: "period-picker",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) setOpen(false);
+    },
+  });
   const calendarDays = calendarDaysForMonth(calendarMonth);
 
   useEffect(() => {
@@ -223,6 +232,20 @@ function PeriodPicker({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (triggerRef.current?.contains(target) || calendarRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [open]);
 
   const openCustomCalendar = () => {
@@ -290,9 +313,18 @@ function PeriodPicker({
 
       {open && popoverPosition && createPortal(
         <div
+          ref={calendarRef}
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
-          className="fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
+          className="relative fixed z-[210] w-[min(19rem,calc(100vw-2rem))] rounded-2xl border border-glass-ink/10 bg-[#f4f8ff] p-3 pt-10 text-glass-ink shadow-[0_18px_45px_-18px_rgba(15,40,90,0.55)] dark:border-white/10 dark:bg-[#0d1b3e] dark:text-white"
         >
+          <button
+            type="button"
+            aria-label="Fechar calendário"
+            onClick={() => setOpen(false)}
+            className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-glass-ink/10 hover:text-primary active:scale-95"
+          >
+            <X className="size-3.5" />
+          </button>
           {mode === "custom" && (
             <>
               <div className="mt-3 flex items-center justify-between gap-2">

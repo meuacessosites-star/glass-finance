@@ -3,11 +3,33 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useExclusiveOverlay } from "@/lib/overlay-manager"
 
 function DropdownMenu({
+  open: controlledOpen,
+  defaultOpen,
+  onOpenChange,
+  overlayParentId,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Root> & {
+  overlayParentId?: string
+}) {
+  const overlay = useExclusiveOverlay({
+    name: "dropdown-menu",
+    open: controlledOpen,
+    defaultOpen,
+    parentId: overlayParentId,
+    onOpenChange,
+  })
+
+  return (
+    <DropdownMenuPrimitive.Root
+      data-slot="dropdown-menu"
+      {...props}
+      open={overlay.open}
+      onOpenChange={overlay.setOpen}
+    />
+  )
 }
 
 function DropdownMenuPortal({

@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
 import type {
   DraftDisplayMode,
@@ -161,6 +162,7 @@ export function AddTransactionSheet({
   initial,
   editTransactionId,
   fullScreen = false,
+  overlayParentId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -175,8 +177,18 @@ export function AddTransactionSheet({
   editTransactionId?: string | null;
   /** Faz o sheet ocupar o conteúdo inteiro da rota dedicada de edição. */
   fullScreen?: boolean;
+  /** ID do overlay pai quando o formulário é aberto dentro de outro fluxo. */
+  overlayParentId?: string;
 }) {
   const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
+  const overlay = useExclusiveOverlay({
+    name: "add-transaction-sheet",
+    open,
+    parentId: overlayParentId,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
   const [type, setType] = useState<TxType>("expense");
   const [cents, setCents] = useState(0);
   const [title, setTitle] = useState("");
@@ -201,6 +213,14 @@ export function AddTransactionSheet({
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
   const [pickerOpen, setPickerOpen] = useState(false);
+  useExclusiveOverlay({
+    name: "category-picker",
+    open: pickerOpen,
+    parentId: overlay.overlayId,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) setPickerOpen(false);
+    },
+  });
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -566,6 +586,7 @@ export function AddTransactionSheet({
             </div>
 
             <PersonSelector
+              overlayParentId={overlay.overlayId}
               value={personId}
               onValueChange={setPersonId}
               onNavigateToPeople={onClose}

@@ -4,11 +4,33 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
+import { useExclusiveOverlay } from "@/lib/overlay-manager"
 
 function Drawer({
+  open: controlledOpen,
+  defaultOpen,
+  onOpenChange,
+  overlayParentId,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />
+}: React.ComponentProps<typeof DrawerPrimitive.Root> & {
+  overlayParentId?: string
+}) {
+  const overlay = useExclusiveOverlay({
+    name: "drawer",
+    open: controlledOpen,
+    defaultOpen,
+    parentId: overlayParentId,
+    onOpenChange,
+  })
+
+  return (
+    <DrawerPrimitive.Root
+      data-slot="drawer"
+      {...props}
+      open={overlay.open}
+      onOpenChange={overlay.setOpen}
+    />
+  )
 }
 
 function DrawerTrigger({

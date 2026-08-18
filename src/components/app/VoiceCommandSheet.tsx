@@ -12,6 +12,7 @@ import { useSuggestedCategory } from "@/hooks/use-suggested-category";
 import { SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { normalizePaymentMethod } from "./PaymentMethodSelector";
 import {
   AddTransactionSheet,
@@ -86,6 +87,13 @@ export function VoiceCommandSheet({
   const converseFinancialTransaction = useAction(
     api.aiVision.converseFinancialTransaction,
   );
+  const overlay = useExclusiveOverlay({
+    name: "voice-command-sheet",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
 
   const [supported] = useState(() => getSRCtor() !== null);
   const [messages, setMessages] = useState<ChatMessage[]>([initialAssistantMessage]);
@@ -457,7 +465,8 @@ export function VoiceCommandSheet({
 
           <div className={reviewOpen ? "block" : "hidden"}>
             <AddTransactionSheet
-              open={true}
+              open={open && reviewOpen}
+              overlayParentId={overlay.overlayId}
               onClose={handleFormClose}
               initial={formInitial ?? null}
             />

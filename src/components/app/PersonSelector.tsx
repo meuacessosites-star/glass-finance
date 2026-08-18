@@ -33,6 +33,7 @@ type PersonSelectorProps = {
   label?: string;
   placeholder?: string;
   className?: string;
+  overlayParentId?: string;
 };
 
 export function PersonSelector({
@@ -43,6 +44,7 @@ export function PersonSelector({
   label = "Pessoa",
   placeholder = "Selecionar pessoa",
   className,
+  overlayParentId,
 }: PersonSelectorProps) {
   const navigate = useNavigate();
   const people = useQuery(api.people.list) as PersonRecord[] | undefined;
@@ -89,7 +91,11 @@ export function PersonSelector({
       </div>
 
       <div className="flex items-stretch gap-2">
-        <Popover open={open} onOpenChange={handleOpenChange}>
+        <Popover
+          open={open}
+          onOpenChange={handleOpenChange}
+          overlayParentId={overlayParentId}
+        >
           <PopoverTrigger asChild>
             <button
               type="button"

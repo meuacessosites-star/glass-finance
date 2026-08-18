@@ -34,6 +34,7 @@ import {
   type Transaction,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { CategoryIcon } from "./CategoryIcon";
 import {
   CARD_MODE_LABELS,
@@ -99,7 +100,22 @@ export function TransactionDetailsSheet({
   onEdit?: () => void;
 }) {
   const { categoryById, cards, updateTransaction } = useAppStore();
+  const overlay = useExclusiveOverlay({
+    name: "transaction-details-sheet",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  useExclusiveOverlay({
+    name: "attachment-lightbox",
+    open: lightboxIndex !== null,
+    parentId: overlay.overlayId,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) setLightboxIndex(null);
+    },
+  });
   const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
   const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
   const [lightboxImageSize, setLightboxImageSize] =

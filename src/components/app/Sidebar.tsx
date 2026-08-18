@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { PinUsageSelector } from "./PinUsageSelector";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfilePinGate } from "./ProfilePinGate";
@@ -49,13 +50,13 @@ const SidebarContext = createContext<{
 } | null>(null);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const overlay = useExclusiveOverlay({ name: "sidebar" });
   return (
     <SidebarContext.Provider
       value={{
-        isOpen,
-        open: () => setIsOpen(true),
-        close: () => setIsOpen(false),
+        isOpen: overlay.open,
+        open: overlay.requestOpen,
+        close: () => overlay.setOpen(false),
       }}
     >
       {children}

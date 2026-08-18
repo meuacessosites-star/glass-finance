@@ -16,6 +16,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { HorizontalScroll } from "./HorizontalScroll";
 import type { PaymentMethodId } from "./PaymentMethodSelector";
 import { PersonSelector } from "./PersonSelector";
@@ -95,6 +96,13 @@ export function LoanTransactionSheet({
   onClose: () => void;
 }) {
   const { createLoanRecord, categories } = useAppStore();
+  const overlay = useExclusiveOverlay({
+    name: "loan-transaction-sheet",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
   const people = useQuery(api.people.list) as Array<{ _id: string; name: string }> | undefined;
   const [cents, setCents] = useState(0);
   const [personId, setPersonId] = useState<string | null>(null);
@@ -231,6 +239,7 @@ export function LoanTransactionSheet({
             </div>
 
             <PersonSelector
+              overlayParentId={overlay.overlayId}
               value={personId}
               onValueChange={setPersonId}
               onNavigateToPeople={onClose}

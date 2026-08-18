@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import { SquircleIcon } from "./ThemeToggle";
+import { useExclusiveOverlay } from "@/lib/overlay-manager";
 
 const options: {
   id: string;
@@ -67,6 +68,14 @@ export function AddMenu({
   /** Called when “Emprestar/Cartão” is chosen — opens the loans screen. */
   onLoan?: () => void;
 }) {
+  useExclusiveOverlay({
+    name: "add-menu",
+    open,
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onClose();
+    },
+  });
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
