@@ -559,15 +559,19 @@ export function AddTransactionSheet({
                       key={c.id}
                       type="button"
                       onClick={() => setCategoryId(c.id)}
+                      aria-pressed={selected}
                       className={cn(
-                        "flex min-h-11 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                        selected ? "text-glass-ink" : "glass text-glass-sub",
+                        "flex min-h-11 min-w-fit shrink-0 whitespace-nowrap items-center gap-2 rounded-2xl border px-3.5 py-2 text-[12px] font-semibold shadow-[0_6px_18px_-14px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]",
+                        selected
+                          ? "text-glass-ink"
+                          : "border-white/75 bg-white/60 text-glass-sub hover:bg-white/80 dark:border-white/10 dark:bg-white/[0.06] dark:hover:bg-white/[0.1]",
                       )}
                       style={
                         selected
                           ? {
-                              backgroundColor: `${c.color}1f`,
-                              boxShadow: `0 0 0 2px ${c.color}`,
+                              borderColor: `${c.color}80`,
+                              backgroundColor: `${c.color}18`,
+                              boxShadow: `0 0 0 1.5px ${c.color}aa, 0 8px 20px -14px ${c.color}`,
                             }
                           : undefined
                       }
@@ -586,7 +590,7 @@ export function AddTransactionSheet({
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="glass flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold text-glass-sub transition-all"
+                  className="flex min-h-11 min-w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-dashed border-[#2F6BFF]/35 bg-[#2F6BFF]/[0.06] px-3.5 py-2 text-[12px] font-semibold text-[#2F6BFF] shadow-[0_6px_18px_-14px_rgba(47,107,255,0.7)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#2F6BFF]/[0.1] active:translate-y-0 active:scale-[0.98]"
                 >
                   <SquircleIcon
                     icon={Plus}
