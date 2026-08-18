@@ -332,7 +332,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
+              "relative z-10 flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3.5 py-3 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
             )}
           >
             {rowContent}
@@ -350,7 +350,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:py-4",
+            "flex w-full min-w-0 max-w-full items-center gap-3.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3.5 py-3 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-4",
           )}
         >
           {rowContent}
