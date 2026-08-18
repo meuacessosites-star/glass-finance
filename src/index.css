@@ -165,7 +165,17 @@
 
 @layer base {
   html {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     scroll-behavior: smooth;
+  }
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   * {
     @apply border-border outline-ring/50;

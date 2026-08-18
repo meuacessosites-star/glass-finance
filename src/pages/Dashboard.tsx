@@ -13,6 +13,7 @@ import { HomeIndicator } from "@/components/app/StatusBar";
 import { ScrollControls } from "@/components/app/ScrollControls";
 import { DueTodayAlerts } from "@/components/app/DueTodayAlerts";
 import { AppStoreProvider, useAppStore } from "@/lib/app-store";
+import { cn } from "@/lib/utils";
 
 /**
  * The GranaScan app shell: a fluid viewport-native layout that hosts the app.
@@ -26,6 +27,7 @@ function DashboardShell() {
   const { pathname } = useLocation();
   const isTransactionEdit =
     pathname.startsWith("/dashboard/transacoes/") && pathname.endsWith("/editar");
+  const isTransactionsPage = pathname === "/dashboard/transacoes";
   const { activeProfile, pinUsage } = useAppStore();
 
   // Lock on app open only when the active profile has a PIN AND the "Uso do
@@ -36,25 +38,32 @@ function DashboardShell() {
   const [appUnlocked, setAppUnlocked] = useState(() => !appLock);
 
   return (
-    <div className="h-dvh min-h-screen w-full min-w-0 bg-[#e8eefb] dark:bg-[#0a1122]">
+    <div className="flex h-[100dvh] min-h-0 w-full min-w-0 overflow-hidden overscroll-none bg-[#e8eefb] dark:bg-[#0a1122]">
       <div
         id="app-screen"
-        className="relative mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1440px] flex-col overflow-hidden"
+        className="relative mx-auto flex h-[100dvh] min-h-0 w-full min-w-0 max-w-[1440px] flex-col overflow-hidden overscroll-none"
       >
           {!isTransactionEdit && <AppBackground />}
 
           {/* Scrollable content */}
           <main
-              id="app-content-scroll"
-              className="no-scrollbar relative z-10 min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain"
-            >
+            id="app-content-scroll"
+            className={cn(
+              "relative z-10 min-h-0 min-w-0 flex-1",
+              isTransactionsPage
+                ? "flex flex-col overflow-hidden overscroll-none"
+                : "no-scrollbar overflow-y-auto overflow-x-hidden overscroll-contain",
+            )}
+          >
             <div
-                className={
-                  isTransactionEdit
-                    ? "min-h-full min-w-0"
+              className={
+                isTransactionEdit
+                  ? "min-h-full min-w-0"
+                  : isTransactionsPage
+                    ? "h-full min-h-0 min-w-0 px-5"
                     : "min-h-full min-w-0 px-5 pb-24 lg:pb-36"
-                }
-              >
+              }
+            >
               <Outlet />
             </div>
           </main>
@@ -66,7 +75,11 @@ function DashboardShell() {
               onToggleAdd={() => setAddOpen((open) => !open)}
             />
           )}
-          {!isTransactionEdit && <ScrollControls containerId="app-content-scroll" />}
+          {!isTransactionEdit && (
+            <ScrollControls
+              containerId={isTransactionsPage ? "transactions-list-scroll" : "app-content-scroll"}
+            />
+          )}
           {!isTransactionEdit && <HomeIndicator />}
           {!isTransactionEdit && (
             <AddMenu

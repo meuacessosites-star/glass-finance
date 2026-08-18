@@ -834,8 +834,9 @@ export default function TransactionsPage() {
       : `Nada registrado em ${selectedPeriodLabel} para os filtros selecionados.`;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-3 lg:space-y-4">
-      <header className="flex items-center justify-between pt-[env(safe-area-inset-top)] sm:pt-0">
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-col gap-3 lg:gap-4">
+      <div className="flex min-h-0 shrink-0 flex-col gap-3 lg:gap-4">
+        <header className="flex items-center justify-between pt-[env(safe-area-inset-top)] sm:pt-0">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>
@@ -1262,8 +1263,14 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Grouped list */}
-      {grouped.length === 0 ? (
+      </div>
+
+      <div
+        id="transactions-list-scroll"
+        className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-24 lg:pb-36"
+      >
+        {/* Grouped list */}
+        {grouped.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
             <ReceiptText className="size-6 text-glass-faint" />
@@ -1354,7 +1361,8 @@ export default function TransactionsPage() {
             </div>
           </motion.section>
         ))
-      )}
+        )}
+      </div>
 
       <AnimatePresence initial={false}>
         {selectMode && selectedIds.size > 0 && (
