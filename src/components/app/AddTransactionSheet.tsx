@@ -129,7 +129,7 @@ function Stepper({
   suffix: string;
 }) {
   return (
-    <div className="glass glass-soft flex items-center justify-between rounded-2xl px-2 py-2">
+    <div className="glass glass-soft flex w-full min-w-0 items-center justify-between gap-0 rounded-2xl px-1.5 py-1.5">
       <button
         type="button"
         aria-label="Diminuir"
@@ -139,7 +139,7 @@ function Stepper({
       >
         <Minus className="size-4" strokeWidth={2.6} />
       </button>
-      <p className="text-[14px] font-bold text-glass-ink">
+      <p className="min-w-0 flex-1 whitespace-nowrap text-center text-[13px] font-bold text-glass-ink">
         {value} {suffix}
       </p>
       <button
@@ -269,7 +269,11 @@ export function AddTransactionSheet({
       setNote(initial.note ?? "");
       setDraftDisplay(initial.draftDisplay ?? "hidden");
       setAttachments(initial.attachments ?? []);
-      setRecurrence(initial.recurrence ?? "unica");
+      setRecurrence(
+        initial.paymentMethod === "cartao"
+          ? "parcelada"
+          : initial.recurrence ?? "unica",
+      );
       setFrequency(initial.frequency ?? "mensal");
       setDaysInterval(initial.daysInterval ?? 15);
       setInstallments(initial.installments ?? 2);
@@ -396,15 +400,25 @@ export function AddTransactionSheet({
       attachments: attachments.length
         ? attachments.map((a) => a.src)
         : undefined,
-      recurrence: recurrence === "unica" ? undefined : recurrence,
+      recurrence:
+        paymentMethod === "cartao"
+          ? "parcelada"
+          : recurrence === "unica"
+            ? undefined
+            : recurrence,
       frequency: recurrence === "recorrente" ? frequency : undefined,
       frequencyInterval:
         recurrence === "recorrente" && frequency === "dias"
           ? daysInterval
           : undefined,
-      installments: recurrence === "parcelada" ? installments : undefined,
+      installments:
+        recurrence === "parcelada" || paymentMethod === "cartao"
+          ? installments
+          : undefined,
       currentInstallment:
-        recurrence === "parcelada" ? currentInstallment : undefined,
+        recurrence === "parcelada" || paymentMethod === "cartao"
+          ? currentInstallment
+          : undefined,
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
@@ -690,7 +704,7 @@ export function AddTransactionSheet({
               )}
 
               {/* Parcelada: total + current installment */}
-              {recurrence === "parcelada" && (
+              {(recurrence === "parcelada" || paymentMethod === "cartao") && (
                 <div className="mt-3 grid grid-cols-2 gap-2.5">
                   <div>
                     <p className="mb-1.5 text-[12px] font-semibold text-glass-sub">
@@ -732,7 +746,11 @@ export function AddTransactionSheet({
                 value={paymentMethod}
                 onValueChange={(v) => {
                   setPaymentMethod(v);
-                  if (v === "cartao") setCardMode("credito");
+                  if (v === "cartao") {
+                    setCardMode("credito");
+                    setRecurrence("parcelada");
+                    setCurrentInstallment(1);
+                  }
                   else {
                     setCardMode("");
                     setCardId(null);
@@ -973,7 +991,7 @@ export function AddTransactionSheet({
           {/* Footer */}
           <div className="px-5 pb-7 pt-2">
             {/* Parcelada: quanto fica cada parcela */}
-            {recurrence === "parcelada" && cents > 0 && (
+            {(recurrence === "parcelada" || paymentMethod === "cartao") && cents > 0 && (
               <div className="glass glass-soft mb-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
                 <div>
                   <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
@@ -990,7 +1008,7 @@ export function AddTransactionSheet({
                   <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
                     {installments} × no total
                   </p>
-                  <p className="amount-tabular text-[13.5px] font-semibold leading-tight text-glass-sub">
+                  <p className="amount-tabular whitespace-nowrap text-[12.5px] font-semibold leading-tight text-glass-sub">
                     {amountLabel} · registrando {currentInstallment} de{" "}
                     {installments}
                   </p>
