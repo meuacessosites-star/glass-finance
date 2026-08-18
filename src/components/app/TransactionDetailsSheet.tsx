@@ -1,4 +1,10 @@
-import { useState } from "react";
+import {
+  type TouchEvent as ReactTouchEvent,
+  type WheelEvent as ReactWheelEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -36,6 +42,21 @@ import {
 } from "./PaymentMethodSelector";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
+const LIGHTBOX_MIN_ZOOM = 1;
+const LIGHTBOX_MAX_ZOOM = 3;
+
+function clampLightboxZoom(value: number) {
+  return Math.min(
+    LIGHTBOX_MAX_ZOOM,
+    Math.max(LIGHTBOX_MIN_ZOOM, Math.round(value * 100) / 100),
+  );
+}
+
+function distanceBetweenTouches(touches: TouchList) {
+  const first = touches[0];
+  const second = touches[1];
+  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+}
 
 /**
  * Transaction details — opened by tapping a transaction card. Shows the
@@ -55,7 +76,16 @@ export function TransactionDetailsSheet({
 }) {
   const { categoryById, cards } = useAppStore();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
+  const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+  const [lightboxBackdrop, setLightboxBackdrop] = useState<"light" | "dark">("dark");
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const panRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const category = categoryById[transaction.categoryId] ?? fallback;
   const isIncome = transaction.amount > 0;
   const attachments = transaction.attachments ?? [];
@@ -78,6 +108,30 @@ export function TransactionDetailsSheet({
     ? cards.find((c) => c.id === transaction.cardId)
     : undefined;
 
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        context.drawImage(image, 0, 0, 1, 1);
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+        const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+        setLightboxBackdrop(luminance > 0.68 ? "dark" : "light");
+      } catch {
+        setLightboxBackdrop("dark");
+      }
+    };
+    image.src = lightboxSrc;
+    return () => {
+      image.onload = null;
+    };
+  }, [lightboxSrc]);
+
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
 
@@ -85,9 +139,14 @@ export function TransactionDetailsSheet({
     transaction.time ? ` às ${transaction.time}` : ""
   }`;
 
+  const resetLightboxViewport = () => {
+    setLightboxZoom(LIGHTBOX_MIN_ZOOM);
+    setLightboxPan({ x: 0, y: 0 });
+  };
+
   const closeLightbox = () => {
     setLightboxIndex(null);
-    setLightboxZoom(1);
+    resetLightboxViewport();
   };
 
   const openLightbox = (attachmentIndex: number) => {
@@ -95,23 +154,87 @@ export function TransactionDetailsSheet({
       (item) => item.index === attachmentIndex,
     );
     if (galleryIndex < 0) return;
+    setLightboxBackdrop("dark");
     setLightboxIndex(galleryIndex);
-    setLightboxZoom(1);
+    resetLightboxViewport();
   };
 
   const moveLightbox = (direction: -1 | 1) => {
-    if (lightboxIndex === null || imageAttachments.length < 2) return;
+    if (
+      lightboxIndex === null ||
+      imageAttachments.length < 2 ||
+      lightboxZoom > LIGHTBOX_MIN_ZOOM
+    ) return;
+    setLightboxBackdrop("dark");
     setLightboxIndex(
       (lightboxIndex + direction + imageAttachments.length) %
         imageAttachments.length,
     );
-    setLightboxZoom(1);
+    resetLightboxViewport();
   };
 
   const adjustLightboxZoom = (delta: number) => {
-    setLightboxZoom((current) =>
-      Math.min(3, Math.max(1, Math.round((current + delta) * 100) / 100)),
-    );
+    const nextZoom = clampLightboxZoom(lightboxZoom + delta);
+    setLightboxZoom(nextZoom);
+    if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
+  };
+
+  const handleLightboxWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    adjustLightboxZoom(event.deltaY > 0 ? -0.1 : 0.1);
+  };
+
+  const handleLightboxTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (event.touches.length >= 2) {
+      pinchRef.current = {
+        distance: distanceBetweenTouches(event.touches),
+        zoom: lightboxZoom,
+      };
+      panRef.current = null;
+      event.stopPropagation();
+      return;
+    }
+    if (lightboxZoom > LIGHTBOX_MIN_ZOOM && event.touches.length === 1) {
+      const [touch] = event.touches;
+      panRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        originX: lightboxPan.x,
+        originY: lightboxPan.y,
+      };
+      event.stopPropagation();
+    }
+  };
+
+  const handleLightboxTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (event.touches.length >= 2 && pinchRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      const ratio = distanceBetweenTouches(event.touches) / pinchRef.current.distance;
+      const nextZoom = clampLightboxZoom(pinchRef.current.zoom * ratio);
+      setLightboxZoom(nextZoom);
+      if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
+      return;
+    }
+    if (lightboxZoom <= LIGHTBOX_MIN_ZOOM || !panRef.current || event.touches.length !== 1) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const [touch] = event.touches;
+    const maxPanX = Math.max(0, window.innerWidth * (lightboxZoom - 1) * 0.45);
+    const maxPanY = Math.max(0, window.innerHeight * (lightboxZoom - 1) * 0.45);
+    setLightboxPan({
+      x: Math.min(maxPanX, Math.max(-maxPanX, panRef.current.originX + touch.clientX - panRef.current.startX)),
+      y: Math.min(maxPanY, Math.max(-maxPanY, panRef.current.originY + touch.clientY - panRef.current.startY)),
+    });
+  };
+
+  const handleLightboxTouchEnd = () => {
+    pinchRef.current = null;
+    panRef.current = null;
   };
 
   const handleAttachmentDownload = async (src: string, index: number) => {
@@ -313,13 +436,19 @@ export function TransactionDetailsSheet({
             aria-modal="true"
             aria-label="Visualizador de anexos"
             onClick={closeLightbox}
-            className="absolute inset-0 z-[70] flex items-center justify-center bg-[#0b1630]/85 p-4"
+            className={cn(
+              "absolute inset-0 z-[70] flex items-center justify-center p-4 transition-colors",
+              lightboxBackdrop === "light" ? "bg-[#edf2f7]" : "bg-[#0b1630]/95",
+            )}
           >
             <button
               type="button"
               aria-label="Fechar imagem"
               onClick={closeLightbox}
-              className="glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full text-white"
+              className={cn(
+                "glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full",
+                lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
+              )}
             >
               <X className="size-4" />
             </button>
@@ -329,22 +458,30 @@ export function TransactionDetailsSheet({
                 <button
                   type="button"
                   aria-label="Imagem anterior"
+                  disabled={lightboxZoom > LIGHTBOX_MIN_ZOOM}
                   onClick={(event) => {
                     event.stopPropagation();
                     moveLightbox(-1);
                   }}
-                  className="glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90"
+                  className={cn(
+                    "glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-35",
+                    lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
+                  )}
                 >
                   <ChevronLeft className="size-5" />
                 </button>
                 <button
                   type="button"
                   aria-label="Próxima imagem"
+                  disabled={lightboxZoom > LIGHTBOX_MIN_ZOOM}
                   onClick={(event) => {
                     event.stopPropagation();
                     moveLightbox(1);
                   }}
-                  className="glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90"
+                  className={cn(
+                    "glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-35",
+                    lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
+                  )}
                 >
                   <ChevronRight className="size-5" />
                 </button>
@@ -352,17 +489,28 @@ export function TransactionDetailsSheet({
             )}
 
             <motion.div
-              drag={imageAttachments.length > 1 ? "x" : false}
+              drag={imageAttachments.length > 1 && lightboxZoom === LIGHTBOX_MIN_ZOOM ? "x" : false}
               dragConstraints={{ left: -180, right: 180 }}
               dragElastic={0.18}
               dragMomentum={false}
               onDragEnd={(_, info) => {
+                if (lightboxZoom > LIGHTBOX_MIN_ZOOM) return;
                 if (info.offset.x <= -56) moveLightbox(1);
                 else if (info.offset.x >= 56) moveLightbox(-1);
               }}
+              onWheel={handleLightboxWheel}
+              onTouchStart={handleLightboxTouchStart}
+              onTouchMove={handleLightboxTouchMove}
+              onTouchEnd={handleLightboxTouchEnd}
+              onTouchCancel={handleLightboxTouchEnd}
               onClick={(event) => event.stopPropagation()}
-              style={{ touchAction: "pan-y" }}
-              className="flex max-h-[78vh] max-w-[calc(100vw-4rem)] items-center justify-center overflow-visible rounded-2xl"
+              style={{ touchAction: lightboxZoom > LIGHTBOX_MIN_ZOOM ? "none" : "pan-y" }}
+              className={cn(
+                "flex max-h-[78vh] max-w-[calc(100vw-4rem)] items-center justify-center overflow-visible rounded-2xl p-1 shadow-2xl",
+                lightboxBackdrop === "light"
+                  ? "bg-white ring-1 ring-black/10"
+                  : "bg-[#111827] ring-1 ring-white/15",
+              )}
             >
               <motion.img
                 key={lightboxSrc}
@@ -370,18 +518,23 @@ export function TransactionDetailsSheet({
                 alt={`Anexo ${
                   (imageAttachments[lightboxIndex ?? 0]?.index ?? 0) + 1
                 }`}
-                onDoubleClick={() =>
-                  setLightboxZoom((current) => (current > 1 ? 1 : 2))
-                }
-                animate={{ scale: lightboxZoom }}
+                onDoubleClick={() => {
+                  const nextZoom = lightboxZoom > LIGHTBOX_MIN_ZOOM ? LIGHTBOX_MIN_ZOOM : 2;
+                  setLightboxZoom(nextZoom);
+                  if (nextZoom === LIGHTBOX_MIN_ZOOM) setLightboxPan({ x: 0, y: 0 });
+                }}
+                animate={{ scale: lightboxZoom, x: lightboxPan.x, y: lightboxPan.y }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="max-h-[78vh] max-w-[calc(100vw-4rem)] select-none rounded-2xl object-contain shadow-2xl"
+                className="max-h-[78vh] max-w-[calc(100vw-4rem)] select-none rounded-xl object-contain"
                 draggable={false}
               />
             </motion.div>
 
             <div
-              className="glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-2 py-1.5 text-white"
+              className={cn(
+                "glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-2 py-1.5",
+                lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
+              )}
               onClick={(event) => event.stopPropagation()}
             >
               <button
@@ -394,7 +547,7 @@ export function TransactionDetailsSheet({
                 <ZoomOut className="size-4" />
               </button>
               <span className="min-w-[44px] text-center text-[11px] font-bold">
-                {Math.round(lightboxZoom * 100)}%
+                {Math.round(lightboxZoom * 100)}% · {lightboxZoom.toFixed(2)}×
               </span>
               <button
                 type="button"
@@ -408,8 +561,8 @@ export function TransactionDetailsSheet({
               <button
                 type="button"
                 aria-label="Redefinir zoom"
-                onClick={() => setLightboxZoom(1)}
-                disabled={lightboxZoom === 1}
+                onClick={resetLightboxViewport}
+                disabled={lightboxZoom === LIGHTBOX_MIN_ZOOM && lightboxPan.x === 0 && lightboxPan.y === 0}
                 className="ml-0.5 flex size-8 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-40"
               >
                 <RotateCcw className="size-3.5" />
