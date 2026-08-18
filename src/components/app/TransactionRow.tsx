@@ -227,12 +227,8 @@ export function TransactionRow({
           )}
         </p>
         {showDraftOnCard && (
-          <div className="mt-1 flex items-start gap-1.5">
-            <span
-              aria-hidden="true"
-              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70 lg:h-5"
-            />
-            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub lg:text-[13px]">
+          <div className="mt-1.5 overflow-hidden rounded-r-md rounded-l-[3px] bg-slate-50/85 px-3 py-1.5 dark:bg-white/[0.045]">
+            <p className="line-clamp-2 border-l-2 border-[#7C6FF2]/75 pl-2.5 text-[11px] leading-snug text-glass-sub lg:text-[13px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
