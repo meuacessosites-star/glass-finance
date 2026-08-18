@@ -314,12 +314,12 @@ export function TransactionRow({
         </div>
 
         {/* Painel de metadados: colunas nomeadas */}
-        <div className="mt-2 grid min-w-0 grid-cols-2 gap-x-2 gap-y-2 border-t border-glass-ink/10 pt-2 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
+        <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-2 border-t border-glass-ink/10 pt-2 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
           {paymentPresentation && (
             <div className="min-w-0 space-y-0.5">
               <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
               <span
-                className="inline-flex min-h-8 min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold lg:text-[13px]"
+                className="inline-flex min-h-8 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold lg:text-[13px]"
                 style={{
                   color: paymentPresentation.color,
                   borderColor: `${paymentPresentation.color}35`,
@@ -338,7 +338,7 @@ export function TransactionRow({
               <p className="text-[10px] font-medium text-glass-faint lg:text-xs">
                 {transaction.recurrence === "parcelada" ? "Parcelamento" : "Recorrência"}
               </p>
-              <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-200 lg:text-[13px]">
+              <span className="inline-flex min-h-8 w-fit items-center gap-1 rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-200 lg:text-[13px]">
                 {transaction.recurrence === "parcelada" ? (
                   <Layers className="size-3.5 shrink-0" strokeWidth={2.4} />
                 ) : (
@@ -352,7 +352,7 @@ export function TransactionRow({
           {hasAttachments && (
             <div className="min-w-0 space-y-0.5">
               <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Anexos</p>
-              <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-1 text-[10px] font-semibold text-glass-sub lg:text-[13px]">
+              <span className="inline-flex min-h-8 w-fit items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-1 text-[10px] font-semibold text-glass-sub lg:text-[13px]">
                 <Paperclip className="size-3.5 shrink-0" strokeWidth={2.4} />
                 {transaction.attachments!.length}
               </span>
@@ -369,7 +369,7 @@ export function TransactionRow({
                 onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleStatusBadgeClick}
                 className={cn(
-                  "flex min-h-11 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
+                  "flex min-h-11 w-fit max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
                   paymentStatus === "paid"
                     ? "border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300"
                     : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
@@ -383,7 +383,7 @@ export function TransactionRow({
                 <span className="truncate">{paymentLabel}</span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
-                <span className="block text-[10px] font-semibold leading-4 text-glass-faint lg:text-xs">
+                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-glass-faint lg:text-xs">
                   Pago em {shortDate(transaction.paymentDate)}
                 </span>
               )}
@@ -393,7 +393,7 @@ export function TransactionRow({
 
         {/* Observação: faixa de largura total */}
         {showDraftOnCard && (
-          <div className="mt-2 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-3 py-2 dark:bg-[#1c2542]/80 dark:bg-[#1c2542]/80">
+          <div className="mt-2 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-3 py-2 dark:bg-[#1c2542]/80 sm:mt-3 sm:px-3.5 sm:py-2.5">
             <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Observação</p>
             <p className="mt-0.5 line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[12px] leading-4 text-glass-ink/85 dark:text-white/85 lg:text-[15px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
