@@ -9,7 +9,7 @@ import { ScanReceiptSheet } from "@/components/app/ScanReceiptSheet";
 import { VoiceCommandSheet } from "@/components/app/VoiceCommandSheet";
 import { PinLock } from "@/components/app/PinLock";
 import { Sidebar, SidebarProvider } from "@/components/app/Sidebar";
-import { HomeIndicator, StatusBar } from "@/components/app/StatusBar";
+import { HomeIndicator } from "@/components/app/StatusBar";
 import { DueTodayAlerts } from "@/components/app/DueTodayAlerts";
 import { AppStoreProvider, useAppStore } from "@/lib/app-store";
 
@@ -44,12 +44,11 @@ function DashboardShell() {
 
           {/* Scrollable content */}
           <main className="no-scrollbar relative z-10 flex-1 overflow-y-auto overflow-x-hidden">
-            <div className={isTransactionEdit ? "h-full" : "px-5 pb-52 pt-16"}>
+            <div className={isTransactionEdit ? "h-full" : "px-5 pb-52"}>
               <Outlet />
             </div>
           </main>
 
-          {!isTransactionEdit && <StatusBar />}
           {!isTransactionEdit && <DueTodayAlerts />}
           {!isTransactionEdit && (
             <BottomNav
