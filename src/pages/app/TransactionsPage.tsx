@@ -883,7 +883,7 @@ export default function TransactionsPage() {
 
       <div
         id="transactions-list-scroll"
-        className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3 pb-24 lg:pt-4 lg:pb-36"
+        className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3 pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pt-4 lg:pb-36"
       >
         <div className="flex flex-col gap-3 lg:gap-4">
       <section className="glass rounded-2xl p-3 lg:p-5">

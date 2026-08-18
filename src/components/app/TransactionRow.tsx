@@ -269,21 +269,21 @@ export function TransactionRow({
       )}
       <div className="min-w-0 flex-1 px-0.5">
         {/* Cabeçalho: ícone, título, categoria e valor */}
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 sm:size-14">
+        <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 sm:size-14">
               <CategoryIcon
                 categoryId={transaction.categoryId}
-                size="size-11 sm:size-14"
+                size="size-10 sm:size-14"
                 iconSize="size-5 sm:size-6"
               />
             </div>
-            <div className="min-w-0 pt-0.5">
-              <p className="min-w-0 truncate text-[16px] font-semibold leading-6 tracking-[-0.02em] text-glass-ink lg:text-[21px]">
+            <div className="min-w-0 pt-0">
+              <p className="min-w-0 truncate text-[15px] font-semibold leading-5 tracking-[-0.02em] text-glass-ink lg:text-[21px]">
                 <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
               </p>
               <span
-                className="mt-1 inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-full border border-transparent px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200 lg:text-[13px]"
+                className="mt-0.5 inline-flex min-h-5 max-w-full items-center gap-1 rounded-full border border-transparent px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 dark:text-slate-200 lg:text-[13px]"
                 style={{
                   borderColor: `${category.color}22`,
                   backgroundColor: `${category.color}14`,
@@ -299,11 +299,11 @@ export function TransactionRow({
             </div>
           </div>
 
-          <div className="shrink-0 pt-0.5 text-right">
-            <span className="block text-[10px] font-medium text-glass-faint lg:text-xs">Valor</span>
+          <div className="shrink-0 pt-0 text-right">
+            <span className="block text-[9px] font-medium text-glass-faint lg:text-xs">Valor</span>
             <p
               className={cn(
-                "amount-tabular text-right text-[16px] font-bold leading-6 lg:text-[21px]",
+                "amount-tabular text-right text-[15px] font-bold leading-5 lg:text-[21px]",
                 isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
               )}
             >
@@ -314,12 +314,12 @@ export function TransactionRow({
         </div>
 
         {/* Painel de metadados: colunas nomeadas */}
-        <div className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 border-t border-glass-ink/10 pt-3 dark:border-white/10 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5">
+        <div className="mt-2 grid min-w-0 grid-cols-2 gap-x-2 gap-y-2 border-t border-glass-ink/10 pt-2 dark:border-white/10 sm:mt-3 sm:grid-cols-4 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
           {paymentPresentation && (
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
               <span
-                className="inline-flex min-h-9 min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold lg:text-[13px]"
+                className="inline-flex min-h-8 min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold lg:text-[13px]"
                 style={{
                   color: paymentPresentation.color,
                   borderColor: `${paymentPresentation.color}35`,
@@ -327,22 +327,22 @@ export function TransactionRow({
                 }}
                 title={paymentPresentation.label}
               >
-                {PaymentIcon && <PaymentIcon className="size-4 shrink-0" strokeWidth={2.2} />}
+                {PaymentIcon && <PaymentIcon className="size-3.5 shrink-0" strokeWidth={2.2} />}
                 <span className="truncate">{paymentPresentation.label}</span>
               </span>
             </div>
           )}
 
           {installmentLabel && (
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] font-medium text-glass-faint lg:text-xs">
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">
                 {transaction.recurrence === "parcelada" ? "Parcelamento" : "Recorrência"}
               </p>
-              <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:text-violet-200 lg:text-[13px]">
+              <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-200 lg:text-[13px]">
                 {transaction.recurrence === "parcelada" ? (
-                  <Layers className="size-4 shrink-0" strokeWidth={2.4} />
+                  <Layers className="size-3.5 shrink-0" strokeWidth={2.4} />
                 ) : (
-                  <Repeat className="size-4 shrink-0" strokeWidth={2.4} />
+                  <Repeat className="size-3.5 shrink-0" strokeWidth={2.4} />
                 )}
                 <span className="whitespace-nowrap">{installmentLabel}</span>
               </span>
@@ -350,18 +350,18 @@ export function TransactionRow({
           )}
 
           {hasAttachments && (
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] font-medium text-glass-faint lg:text-xs">Anexos</p>
-              <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-glass-ink/10 px-2.5 py-1 text-[11px] font-semibold text-glass-sub lg:text-[13px]">
-                <Paperclip className="size-4 shrink-0" strokeWidth={2.4} />
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Anexos</p>
+              <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-glass-ink/10 px-2 py-1 text-[10px] font-semibold text-glass-sub lg:text-[13px]">
+                <Paperclip className="size-3.5 shrink-0" strokeWidth={2.4} />
                 {transaction.attachments!.length}
               </span>
             </div>
           )}
 
           {paymentLabel && paymentStatus && (
-            <div className="min-w-0 space-y-1 sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10">
-              <p className="text-[11px] font-medium text-glass-faint lg:text-xs">Status</p>
+            <div className="min-w-0 space-y-0.5 sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10">
+              <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Status</p>
               <button
                 type="button"
                 aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
@@ -369,21 +369,21 @@ export function TransactionRow({
                 onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleStatusBadgeClick}
                 className={cn(
-                  "flex min-h-11 max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
+                  "flex min-h-11 max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-extrabold tracking-tight transition-colors active:scale-95 lg:text-[13px]",
                   paymentStatus === "paid"
                     ? "border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300"
                     : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
                 )}
               >
                 {paymentStatus === "paid" ? (
-                  <Check className="size-4 shrink-0" strokeWidth={2.8} />
+                  <Check className="size-3.5 shrink-0" strokeWidth={2.8} />
                 ) : (
-                  <Clock3 className="size-4 shrink-0" strokeWidth={2.8} />
+                  <Clock3 className="size-3.5 shrink-0" strokeWidth={2.8} />
                 )}
                 <span className="truncate">{paymentLabel}</span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
-                <span className="block text-[11px] font-semibold text-glass-faint lg:text-xs">
+                <span className="block text-[10px] font-semibold leading-4 text-glass-faint lg:text-xs">
                   Pago em {shortDate(transaction.paymentDate)}
                 </span>
               )}
@@ -393,9 +393,9 @@ export function TransactionRow({
 
         {/* Observação: faixa de largura total */}
         {showDraftOnCard && (
-          <div className="mt-3 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-3.5 py-2.5 dark:bg-[#1c2542]/80">
-            <p className="text-[11px] font-medium text-glass-faint lg:text-xs">Observação</p>
-            <p className="mt-1 line-clamp-2 border-l-2 border-[#7C6FF2] pl-3 text-[13px] leading-5 text-glass-ink/85 dark:text-white/85 lg:text-[15px]">
+          <div className="mt-2 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-3 py-2 dark:bg-[#1c2542]/80 dark:bg-[#1c2542]/80">
+            <p className="text-[10px] font-medium text-glass-faint lg:text-xs">Observação</p>
+            <p className="mt-0.5 line-clamp-2 border-l-2 border-[#7C6FF2] pl-2.5 text-[12px] leading-4 text-glass-ink/85 dark:text-white/85 lg:text-[15px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
@@ -489,7 +489,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-4 py-2.5 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3 py-2 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
             )}
           >
             {rowContent}
@@ -509,7 +509,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-start gap-2.5 overflow-hidden rounded-2xl bg-[#f4f8ff] px-4 py-2.5 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+            "flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3 py-2 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
           )}
         >
           {rowContent}
