@@ -1,11 +1,9 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { animate, motion, useMotionValue, useTransform } from "framer-motion";
+import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Check,
   Clock3,
-  Eye,
   Layers,
-  Pencil,
   Paperclip,
   Repeat,
   Trash2,
@@ -63,13 +61,6 @@ export function TransactionRow({
     (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
-  const actionOpacity = useTransform(
-    x,
-    [0, -SWIPE_THRESHOLD, -SWIPE_DISTANCE],
-    [0, 0.7, 1],
-  );
-  const actionScale = useTransform(x, [0, -SWIPE_DISTANCE], [0.96, 1]);
-
   useEffect(() => {
     if (!swipeable || selectable) return;
     let cancelled = false;
@@ -143,20 +134,23 @@ export function TransactionRow({
   };
 
   const handlePrimaryAction = () => {
-    if (onEdit) {
-      onEdit();
+    if (!hasPaymentAction) {
       closeSwipe();
       return;
     }
-    handleRowActivate();
+    handlePaymentAction();
   };
 
   const handleSecondaryAction = () => {
     handleDelete();
   };
 
-  const primaryActionLabel = onEdit ? "Editar" : "Detalhes";
+  const primaryActionLabel = paymentActionLabel ?? "Alterar status";
   const secondaryActionLabel = isSyntheticLoan ? "Empréstimos" : "Excluir";
+  const primaryActionClass =
+    paymentStatus === "paid"
+      ? "bg-[#FF9F0A] text-[#4A2A00]"
+      : "bg-[#1FBF4F] text-white";
   const rowContent = (
     <>
       {selectable && (
@@ -217,12 +211,8 @@ export function TransactionRow({
           )}
         </p>
         {showDraftOnCard && (
-          <div className="mt-1 flex items-start gap-1.5">
-            <span
-              aria-hidden="true"
-              className="mt-0.5 h-4 w-0.5 shrink-0 rounded-full bg-[#7C6FF2]/70"
-            />
-            <p className="line-clamp-2 text-[11px] italic leading-snug text-[#6558C8] dark:text-[#B9B2FF]">
+          <div className="mt-1 rounded-lg bg-[#7C6FF2]/10 px-2 py-1 dark:bg-[#7C6FF2]/15">
+            <p className="line-clamp-2 text-[11px] leading-snug text-glass-sub">
               {transaction.note}
             </p>
           </div>
@@ -270,24 +260,29 @@ export function TransactionRow({
   return (
     <>
       {swipeable && !selectable ? (
-        <div className="relative isolate overflow-hidden rounded-2xl">
+        <div className="relative isolate overflow-hidden rounded-2xl bg-[#f4f8ff] dark:bg-[#0d1b3e]">
           <div className="absolute inset-y-0 right-0 flex w-[208px] items-stretch overflow-hidden rounded-r-2xl">
             <motion.button
               type="button"
               aria-label={primaryActionLabel}
               onClick={handlePrimaryAction}
-              style={{ opacity: actionOpacity, scale: actionScale }}
               whileTap={{ scale: 0.96 }}
-              className="flex w-1/2 shrink-0 items-center justify-center gap-1.5 bg-[#2F6BFF] px-2 text-[10.5px] font-bold leading-tight text-white"
+              className={cn(
+                "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight",
+                primaryActionClass,
+              )}
             >
-              {onEdit ? <Pencil className="size-3.5" /> : hasPaymentAction ? <Check className="size-3.5" /> : <Eye className="size-3.5" />}
+              {paymentStatus === "paid" ? (
+                <Clock3 className="size-3.5" />
+              ) : (
+                <Check className="size-3.5" />
+              )}
               {primaryActionLabel}
             </motion.button>
             <motion.button
               type="button"
               aria-label={secondaryActionLabel}
               onClick={handleSecondaryAction}
-              style={{ opacity: actionOpacity, scale: actionScale }}
               whileTap={{ scale: 0.96 }}
               className={cn(
                 "flex w-1/2 shrink-0 items-center justify-center gap-1.5 px-2 text-[10.5px] font-bold leading-tight text-white",
