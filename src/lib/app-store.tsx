@@ -660,6 +660,10 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
         /^\d{4}-\d{2}-\d{2}/.test(t.paymentDate)
           ? t.paymentDate.slice(0, 10)
           : undefined,
+      showPaymentDateOnCard:
+        typeof t.showPaymentDateOnCard === "boolean"
+          ? t.showPaymentDateOnCard
+          : true,
       cardId: normalizedCardId,
       cardMode: normalizedCardMode,
       personId:
@@ -938,6 +942,7 @@ type AppStoreValue = {
     personId?: string;
     paymentStatus?: "paid" | "pending";
     paymentDate?: string;
+    showPaymentDateOnCard?: boolean;
     draftDisplay?: "hidden" | "multipleMedia";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
@@ -965,6 +970,7 @@ type AppStoreValue = {
         | "personId"
         | "paymentStatus"
         | "paymentDate"
+        | "showPaymentDateOnCard"
       >
     >,
   ) => void;
@@ -1403,6 +1409,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 data.paymentStatus === "pending"
                   ? undefined
                   : data.paymentDate ?? new Date().toISOString().slice(0, 10),
+              showPaymentDateOnCard: data.showPaymentDateOnCard ?? true,
             },
             ...d.transactions,
           ],
@@ -1434,6 +1441,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 ? patch.paymentDate ??
                   (patch.paymentStatus ? new Date().toISOString().slice(0, 10) : transaction.paymentDate)
                 : undefined;
+            const nextShowPaymentDateOnCard =
+              patch.showPaymentDateOnCard ?? transaction.showPaymentDateOnCard ?? true;
             return {
               ...transaction,
               ...patch,
@@ -1441,6 +1450,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               source: transaction.source,
               paymentStatus: nextPaymentStatus,
               paymentDate: nextPaymentDate,
+              showPaymentDateOnCard: nextShowPaymentDateOnCard,
             };
           }),
         })),

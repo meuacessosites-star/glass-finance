@@ -76,6 +76,10 @@ export function TransactionRow({
     (transaction.attachments?.length ?? 0) > 1;
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
+  const showPaymentDateOnCard =
+    paymentStatus === "paid" &&
+    Boolean(transaction.paymentDate) &&
+    transaction.showPaymentDateOnCard !== false;
   const closeSwipe = () => {
     setSwipeOpen(false);
     animate(x, 0, {
@@ -262,7 +266,7 @@ export function TransactionRow({
             <span className="truncate">{paymentLabel}</span>
           </button>
         )}
-        {paymentStatus === "paid" && transaction.paymentDate && (
+        {showPaymentDateOnCard && transaction.paymentDate && (
           <span className="text-right text-[9px] font-semibold text-glass-faint lg:text-[11px]">
             Pago em {shortDate(transaction.paymentDate)}
           </span>

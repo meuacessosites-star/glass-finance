@@ -39,6 +39,7 @@ import {
   CARD_MODE_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "./PaymentMethodSelector";
+import { Switch } from "@/components/ui/switch";
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 const LIGHTBOX_MIN_ZOOM = 1;
@@ -97,13 +98,14 @@ export function TransactionDetailsSheet({
   onClose: () => void;
   onEdit?: () => void;
 }) {
-  const { categoryById, cards } = useAppStore();
+  const { categoryById, cards, updateTransaction } = useAppStore();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
   const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
   const [lightboxImageSize, setLightboxImageSize] =
     useState<LightboxImageSize | null>(null);
   const lightboxImageRef = useRef<HTMLImageElement | null>(null);
+  const paymentDateInputRef = useRef<HTMLInputElement | null>(null);
   const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
   const panRef = useRef<{
@@ -141,6 +143,29 @@ export function TransactionDetailsSheet({
   const dateLabel = `${dayLabel(transaction.date)} · ${shortDate(transaction.date)}${
     transaction.time ? ` às ${transaction.time}` : ""
   }`;
+  const editablePaymentDate = transaction.paymentDate ?? transaction.date;
+  const showPaymentDateOnCard = transaction.showPaymentDateOnCard !== false;
+
+  const openPaymentDatePicker = () => {
+    const input = paymentDateInputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.click();
+    }
+  };
+
+  const handlePaymentDateChange = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    updateTransaction(transaction.id, { paymentDate: value });
+    toast.success("Data de pagamento atualizada");
+  };
+
+  const handlePaymentDateVisibilityChange = (checked: boolean) => {
+    updateTransaction(transaction.id, { showPaymentDateOnCard: checked });
+    toast.success(checked ? "Data exibida no card" : "Data ocultada no card");
+  };
 
   const resetLightboxViewport = () => {
     activePointersRef.current.clear();
@@ -394,13 +419,45 @@ export function TransactionDetailsSheet({
                 <CalendarDays className="size-4 shrink-0 text-glass-sub" />
                 <p className="text-[13px] font-medium text-glass-ink">{dateLabel}</p>
               </div>
-              {transaction.paymentStatus === "paid" && transaction.paymentDate && (
-                <div className="flex items-center gap-3 rounded-2xl bg-[#1FBF4F]/10 px-3.5 py-2.5">
-                  <Check className="size-4 shrink-0 text-[#168A39]" />
-                  <p className="text-[13px] font-semibold text-[#168A39]">
-                    Pago em {shortDate(transaction.paymentDate)}
-                  </p>
-                </div>
+              {transaction.paymentStatus === "paid" && (
+                <>
+                  <div className="flex items-center gap-3 rounded-2xl bg-[#1FBF4F]/10 px-3.5 py-2.5">
+                    <Check className="size-4 shrink-0 text-[#168A39]" />
+                    <button
+                      type="button"
+                      onClick={openPaymentDatePicker}
+                      className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-[13px] font-semibold text-[#168A39] transition-opacity hover:opacity-80 active:scale-[0.99]"
+                    >
+                      <span>Pago em {shortDate(editablePaymentDate)}</span>
+                      <CalendarDays className="size-4 shrink-0" />
+                    </button>
+                    <input
+                      ref={paymentDateInputRef}
+                      type="date"
+                      value={editablePaymentDate}
+                      aria-label="Alterar data de pagamento"
+                      onChange={(event) => handlePaymentDateChange(event.target.value)}
+                      className="sr-only"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
+                    <label
+                      htmlFor={`show-payment-date-${transaction.id}`}
+                      className="min-w-0 cursor-pointer text-[12px] font-semibold text-glass-ink"
+                    >
+                      <span className="block">Mostrar data no card</span>
+                      <span className="mt-0.5 block text-[10.5px] font-medium text-glass-sub">
+                        Exibe “Pago em DD/MM” na lista
+                      </span>
+                    </label>
+                    <Switch
+                      id={`show-payment-date-${transaction.id}`}
+                      checked={showPaymentDateOnCard}
+                      onCheckedChange={handlePaymentDateVisibilityChange}
+                      aria-label="Mostrar data no card"
+                    />
+                  </div>
+                </>
               )}
               {attachments.length > 0 && (
                 <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">

@@ -81,6 +81,8 @@ export type Transaction = {
   paymentStatus?: "paid" | "pending";
   /** Data em que a transação foi efetivamente marcada como paga. */
   paymentDate?: string;
+  /** Define se a data de pagamento aparece no card da lista. */
+  showPaymentDateOnCard?: boolean;
   /** Saved card used (AppCard.id) when paymentMethod is "cartao". */
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */
