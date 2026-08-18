@@ -1,7 +1,6 @@
 import {
   type TouchEvent as ReactTouchEvent,
   type WheelEvent as ReactWheelEvent,
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -78,7 +77,6 @@ export function TransactionDetailsSheet({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_MIN_ZOOM);
   const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
-  const [lightboxBackdrop, setLightboxBackdrop] = useState<"light" | "dark">("dark");
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
   const panRef = useRef<{
     startX: number;
@@ -108,30 +106,6 @@ export function TransactionDetailsSheet({
     ? cards.find((c) => c.id === transaction.cardId)
     : undefined;
 
-  useEffect(() => {
-    if (!lightboxSrc) return;
-    const image = new Image();
-    image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 1;
-        canvas.height = 1;
-        const context = canvas.getContext("2d");
-        if (!context) return;
-        context.drawImage(image, 0, 0, 1, 1);
-        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
-        const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
-        setLightboxBackdrop(luminance > 0.68 ? "dark" : "light");
-      } catch {
-        setLightboxBackdrop("dark");
-      }
-    };
-    image.src = lightboxSrc;
-    return () => {
-      image.onload = null;
-    };
-  }, [lightboxSrc]);
-
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
 
@@ -140,6 +114,8 @@ export function TransactionDetailsSheet({
   }`;
 
   const resetLightboxViewport = () => {
+    pinchRef.current = null;
+    panRef.current = null;
     setLightboxZoom(LIGHTBOX_MIN_ZOOM);
     setLightboxPan({ x: 0, y: 0 });
   };
@@ -154,7 +130,6 @@ export function TransactionDetailsSheet({
       (item) => item.index === attachmentIndex,
     );
     if (galleryIndex < 0) return;
-    setLightboxBackdrop("dark");
     setLightboxIndex(galleryIndex);
     resetLightboxViewport();
   };
@@ -165,11 +140,13 @@ export function TransactionDetailsSheet({
       imageAttachments.length < 2 ||
       lightboxZoom > LIGHTBOX_MIN_ZOOM
     ) return;
-    setLightboxBackdrop("dark");
-    setLightboxIndex(
-      (lightboxIndex + direction + imageAttachments.length) %
-        imageAttachments.length,
-    );
+    setLightboxIndex((currentIndex) => {
+      if (currentIndex === null) return currentIndex;
+      return (
+        (currentIndex + direction + imageAttachments.length) %
+        imageAttachments.length
+      );
+    });
     resetLightboxViewport();
   };
 
@@ -436,19 +413,13 @@ export function TransactionDetailsSheet({
             aria-modal="true"
             aria-label="Visualizador de anexos"
             onClick={closeLightbox}
-            className={cn(
-              "absolute inset-0 z-[70] flex items-center justify-center p-4 transition-colors",
-              lightboxBackdrop === "light" ? "bg-[#edf2f7]" : "bg-[#0b1630]/95",
-            )}
+            className="absolute inset-0 z-[70] flex items-center justify-center bg-[#0b1630]/95 p-4"
           >
             <button
               type="button"
               aria-label="Fechar imagem"
               onClick={closeLightbox}
-              className={cn(
-                "glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full",
-                lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
-              )}
+              className="glass absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full text-white"
             >
               <X className="size-4" />
             </button>
@@ -463,10 +434,7 @@ export function TransactionDetailsSheet({
                     event.stopPropagation();
                     moveLightbox(-1);
                   }}
-                  className={cn(
-                    "glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-35",
-                    lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
-                  )}
+                  className="glass absolute left-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
                 >
                   <ChevronLeft className="size-5" />
                 </button>
@@ -478,10 +446,7 @@ export function TransactionDetailsSheet({
                     event.stopPropagation();
                     moveLightbox(1);
                   }}
-                  className={cn(
-                    "glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full transition-transform active:scale-90 disabled:opacity-35",
-                    lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
-                  )}
+                  className="glass absolute right-3 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-white transition-transform active:scale-90 disabled:opacity-35"
                 >
                   <ChevronRight className="size-5" />
                 </button>
@@ -505,12 +470,7 @@ export function TransactionDetailsSheet({
               onTouchCancel={handleLightboxTouchEnd}
               onClick={(event) => event.stopPropagation()}
               style={{ touchAction: lightboxZoom > LIGHTBOX_MIN_ZOOM ? "none" : "pan-y" }}
-              className={cn(
-                "flex max-h-[78vh] max-w-[calc(100vw-4rem)] items-center justify-center overflow-visible rounded-2xl p-1 shadow-2xl",
-                lightboxBackdrop === "light"
-                  ? "bg-white ring-1 ring-black/10"
-                  : "bg-[#111827] ring-1 ring-white/15",
-              )}
+              className="flex max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] items-center justify-center overflow-visible rounded-[1.5rem] bg-[#e5e7eb] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-2 ring-[#111827]"
             >
               <motion.img
                 key={lightboxSrc}
@@ -525,16 +485,13 @@ export function TransactionDetailsSheet({
                 }}
                 animate={{ scale: lightboxZoom, x: lightboxPan.x, y: lightboxPan.y }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="max-h-[78vh] max-w-[calc(100vw-4rem)] select-none rounded-xl object-contain"
+                className="h-auto w-auto max-h-[calc(84vh-1.5rem)] max-w-[calc(100vw-3.5rem)] select-none rounded-xl border border-[#4b5563]/60 object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
                 draggable={false}
               />
             </motion.div>
 
             <div
-              className={cn(
-                "glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-2 py-1.5",
-                lightboxBackdrop === "light" ? "text-glass-ink" : "text-white",
-              )}
+              className="glass absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#111827]/90 px-2 py-1.5 text-white"
               onClick={(event) => event.stopPropagation()}
             >
               <button
