@@ -39,6 +39,8 @@ export function SquircleIcon({
   iconSize = "size-[19px]",
   image,
   className,
+  backgroundColor,
+  strokeWidth = 2.2,
 }: {
   icon: LucideIcon;
   color: string;
@@ -46,6 +48,8 @@ export function SquircleIcon({
   iconSize?: string;
   image?: string;
   className?: string;
+  backgroundColor?: string;
+  strokeWidth?: number;
 }) {
   return (
     <div
@@ -54,7 +58,7 @@ export function SquircleIcon({
         size,
         className,
       )}
-      style={{ backgroundColor: `${color}1f` }}
+      style={{ backgroundColor: backgroundColor ?? `${color}1f` }}
     >
       {image ? (
         <img
@@ -63,7 +67,7 @@ export function SquircleIcon({
           className="size-full rounded-2xl object-cover"
         />
       ) : (
-        <Icon className={iconSize} style={{ color }} strokeWidth={2.2} />
+        <Icon className={iconSize} style={{ color }} strokeWidth={strokeWidth} />
       )}
     </div>
   );

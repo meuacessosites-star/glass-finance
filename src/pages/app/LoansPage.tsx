@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Banknote, CreditCard } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
@@ -12,6 +12,7 @@ import {
   loans,
   shortDate,
   type CardLoan,
+  type DraftDisplayMode,
   type Loan,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -39,7 +40,30 @@ function StatusPill({ status }: { status: "pago" | "pendente" }) {
   );
 }
 
-type LoanRowData = Loan & { dateLabel?: string };
+type DraftMeta = {
+  note?: string;
+  draftDisplay?: DraftDisplayMode;
+  attachments?: string[];
+};
+
+type LoanRowData = Loan & DraftMeta & { dateLabel?: string };
+type CardLoanRowData = CardLoan & DraftMeta;
+
+const shouldShowDraft = ({ note, draftDisplay }: DraftMeta) =>
+  draftDisplay === "multipleMedia" && Boolean(note?.trim());
+
+function DraftBlock({ note, draftDisplay }: DraftMeta) {
+  if (!shouldShowDraft({ note, draftDisplay })) return null;
+
+  return (
+    <div className="mt-1.5 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-2.5 py-1.5 dark:bg-[#1c2542]/80 sm:mt-2 sm:px-3 sm:py-2">
+      <p className="text-[9px] font-medium text-glass-faint sm:text-[10px]">Rascunho</p>
+      <p className="mt-0.5 line-clamp-2 whitespace-pre-line border-l-2 border-[#7C6FF2] pl-2 text-[11px] leading-4 text-glass-ink/85 dark:text-white/85 sm:pl-2.5 sm:text-[12px]">
+        {note}
+      </p>
+    </div>
+  );
+}
 
 function LoanRow({ loan }: { loan: LoanRowData }) {
   const receiving = loan.direction === "receber";
@@ -58,6 +82,11 @@ function LoanRow({ loan }: { loan: LoanRowData }) {
         <p className="mt-0.5 text-[12.5px] text-glass-sub">
           {loan.dateLabel ?? dayLabel(loan.date)}
         </p>
+        <DraftBlock
+          note={loan.note}
+          draftDisplay={loan.draftDisplay}
+          attachments={loan.attachments}
+        />
       </div>
       <div className="flex flex-col items-end gap-1.5">
         <p
@@ -99,7 +128,7 @@ function InstallmentDots({
   );
 }
 
-function CardLoanRow({ loan }: { loan: CardLoan }) {
+function CardLoanRow({ loan }: { loan: CardLoanRowData }) {
   const done = loan.status === "pago";
   return (
     <div className="flex items-center gap-3.5 py-3">
@@ -128,6 +157,11 @@ function CardLoanRow({ loan }: { loan: CardLoan }) {
             Próxima em {shortDate(loan.nextDue)}
           </p>
         )}
+        <DraftBlock
+          note={loan.note}
+          draftDisplay={loan.draftDisplay}
+          attachments={loan.attachments}
+        />
       </div>
       <div className="flex flex-col items-end gap-1.5">
         <p className="amount-tabular text-[15px] font-bold text-glass-ink">
@@ -150,20 +184,39 @@ function CardLoanRow({ loan }: { loan: CardLoan }) {
 
 export default function LoansPage() {
   const [tab, setTab] = useState<Tab>("dinheiro");
-  const { loanReceivables } = useAppStore();
+  const { loanReceivables, transactions } = useAppStore();
+  const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const draftMetaFor = (item: (typeof loanReceivables)[number]): DraftMeta => {
+    const relatedTransaction =
+      (item.transactionId ? transactionById.get(item.transactionId) : undefined) ??
+      transactions.find(
+        (transaction) =>
+          transaction.source === "loan" &&
+          transaction.note?.includes(`Referência: ${item.loanId}`),
+      );
 
-  const recordedReceivables: LoanRowData[] = loanReceivables.map((item) => ({
-    id: item.id,
-    name: item.contact,
-    amount: item.amount,
-    date: item.dueDate ?? item.createdAt,
-    status: "pendente",
-    direction: "receber",
-    dateLabel:
-      item.status === "open"
-        ? "Dívida em aberto"
-        : `Vence em ${shortDate(item.dueDate ?? item.createdAt)}`,
-  }));
+    return {
+      note: item.note ?? relatedTransaction?.note,
+      draftDisplay: item.draftDisplay ?? relatedTransaction?.draftDisplay,
+      attachments: item.attachments ?? relatedTransaction?.attachments,
+    };
+  };
+
+  const recordedReceivables: LoanRowData[] = loanReceivables
+    .filter((item) => item.operationType !== "card")
+    .map((item) => ({
+      id: item.id,
+      name: item.contact,
+      amount: item.amount,
+      date: item.dueDate ?? item.createdAt,
+      ...draftMetaFor(item),
+      status: "pendente",
+      direction: "receber",
+      dateLabel:
+        item.status === "open"
+          ? "Dívida em aberto"
+          : `Vence em ${shortDate(item.dueDate ?? item.createdAt)}`,
+    }));
   const receivable = [
     ...recordedReceivables,
     ...loans.filter((l) => l.direction === "receber"),
@@ -175,15 +228,24 @@ export default function LoansPage() {
   const pendingPayable = payable
     .filter((l) => l.status === "pendente")
     .reduce((s, l) => s + l.amount, 0);
-  const activeCards = useMemo(
-    () => cardLoans.filter((c) => c.status === "ativo"),
-    [],
-  );
+  const recordedCardLoans: CardLoan[] = loanReceivables
+    .filter((item) => item.operationType === "card")
+    .map((item) => ({
+      id: item.id,
+      name: item.contact,
+      amount: item.amount,
+      installments: item.installments ?? 1,
+      currentInstallment: item.installment ?? 1,
+      ...draftMetaFor(item),
+      status: item.status === "paid" ? "pago" : "ativo",
+      nextDue: item.dueDate ?? item.createdAt,
+    }));
+  const activeCards = [...cardLoans, ...recordedCardLoans].filter((c) => c.status === "ativo");
   const activeCardTotal = activeCards.reduce((s, c) => s + c.amount, 0);
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>

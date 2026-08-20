@@ -15,7 +15,7 @@ export function SettingsHeader({
   onBack?: () => void;
 }) {
   return (
-    <header className="flex items-center justify-between">
+    <header className="flex items-center justify-between pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
       {onBack ? (
         <button
           type="button"

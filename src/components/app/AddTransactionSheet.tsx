@@ -212,6 +212,7 @@ export function AddTransactionSheet({
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [cardDisplayMode, setCardDisplayMode] = useState<"name" | "last4">("last4");
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seletor híbrido de categorias: pílulas rápidas + bottom sheet de busca.
@@ -386,6 +387,7 @@ export function AddTransactionSheet({
         toast(`Não foi possível ler "${file.name}"`);
       }
     }
+    if (imageInputRef.current) imageInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -557,7 +559,7 @@ export function AddTransactionSheet({
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                 Categoria
               </p>
-              <HorizontalScroll className="-mx-5 mt-2 w-[calc(100%+2.5rem)] max-w-none gap-2 overflow-x-auto px-5 pb-0.5">
+              <HorizontalScroll className="mt-2 w-full min-w-0 gap-2 px-1 py-1">
                 {visibleCategories.map((c) => {
                   const selected = categoryId === c.id;
                   return (
@@ -567,7 +569,7 @@ export function AddTransactionSheet({
                       onClick={() => setCategoryId(c.id)}
                       aria-pressed={selected}
                       className={cn(
-                        "flex min-h-11 min-w-fit shrink-0 whitespace-nowrap items-center gap-2 rounded-2xl border px-3.5 py-2 text-[12px] font-semibold shadow-[0_6px_18px_-14px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]",
+                        "flex min-h-11 min-w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-2xl border px-1.5 py-2 text-[10px] font-semibold shadow-[0_6px_18px_-14px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] sm:gap-2 sm:px-3.5 sm:text-[12px]",
                         selected
                           ? "text-glass-ink"
                           : "border-white/75 bg-white/60 text-glass-sub hover:bg-white/80 dark:border-white/10 dark:bg-white/[0.06] dark:hover:bg-white/[0.1]",
@@ -584,25 +586,24 @@ export function AddTransactionSheet({
                     >
                       <CategoryIcon
                         categoryId={c.id}
-                        size="size-4"
-                        iconSize="size-2.5"
+                        size="size-3.5 sm:size-4"
+                        iconSize="size-2.5 sm:size-2.5"
                       />
                       {c.label}
                     </button>
                   );
                 })}
-                {/* Outras — sempre no final da linha e NUNCA com estado ativo;
-                    serve apenas para abrir o seletor completo. */}
+                {/* Outras — permanece na mesma faixa e fica acessível pelo deslize horizontal em telas estreitas. */}
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="flex min-h-11 min-w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-dashed border-[#2F6BFF]/35 bg-[#2F6BFF]/[0.06] px-3.5 py-2 text-[12px] font-semibold text-[#2F6BFF] shadow-[0_6px_18px_-14px_rgba(47,107,255,0.7)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#2F6BFF]/[0.1] active:translate-y-0 active:scale-[0.98]"
+                  className="flex min-h-11 min-w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-2xl border border-dashed border-[#2F6BFF]/35 bg-[#2F6BFF]/[0.06] px-1.5 py-2 text-[10px] font-semibold text-[#2F6BFF] shadow-[0_6px_18px_-14px_rgba(47,107,255,0.7)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#2F6BFF]/[0.1] active:translate-y-0 active:scale-[0.98] sm:gap-2 sm:px-3.5 sm:text-[12px]"
                 >
                   <SquircleIcon
                     icon={Plus}
                     color="#2F6BFF"
-                    size="size-4"
-                    iconSize="size-2.5"
+                    size="size-3.5 sm:size-4"
+                    iconSize="size-2.5 sm:size-2.5"
                   />
                   Outras
                 </button>
@@ -900,17 +901,57 @@ export function AddTransactionSheet({
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
                 Anexos{" "}
                 <span className="normal-case text-glass-faint">
-                  (imagens ou arquivos)
+                  (imagens, documentos ou outros arquivos)
                 </span>
               </p>
               <input
-                ref={fileInputRef}
+                ref={imageInputRef}
                 type="file"
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                accept="image/*"
                 multiple
                 onChange={(e) => handleFiles(e.target.files)}
                 className="hidden"
               />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="*/*"
+                multiple
+                onChange={(e) => handleFiles(e.target.files)}
+                className="hidden"
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="glass flex min-h-[52px] min-w-0 items-center gap-2 rounded-2xl px-3 text-left text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
+                >
+                  <ImagePlus className="size-5 shrink-0 text-[#5E5CE6]" strokeWidth={2.2} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11px] font-bold text-glass-ink">
+                      Adicionar imagem
+                    </span>
+                    <span className="block truncate text-[10px] font-medium text-glass-faint">
+                      Galeria ou câmera
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="glass flex min-h-[52px] min-w-0 items-center gap-2 rounded-2xl px-3 text-left text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
+                >
+                  <FileText className="size-5 shrink-0 text-[#2F6BFF]" strokeWidth={2.2} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11px] font-bold text-glass-ink">
+                      Adicionar arquivo
+                    </span>
+                    <span className="block truncate text-[10px] font-medium text-glass-faint">
+                      PDF, Word, ZIP e outros
+                    </span>
+                  </span>
+                </button>
+              </div>
               <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                 {attachments.map((att, i) =>
                   att.isImage ? (
@@ -956,16 +997,7 @@ export function AddTransactionSheet({
                     </div>
                   ),
                 )}
-                {attachments.length < 6 && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="glass flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-2xl text-glass-sub transition-all hover:bg-white/60 active:scale-95"
-                  >
-                    <ImagePlus className="size-5" strokeWidth={2.2} />
-                    <span className="text-[10px] font-semibold">Anexar</span>
-                  </button>
-                )}
+
               </HorizontalScroll>
               {attachments.length > 0 && (
                 <p className="mt-1.5 flex items-center gap-1 text-[11.5px] text-glass-faint">
@@ -1002,7 +1034,7 @@ export function AddTransactionSheet({
                       { id: "hidden" as const, label: "Ocultar no card" },
                       {
                         id: "multipleMedia" as const,
-                        label: "Mostrar com mais de 1 anexo",
+                        label: "Mostrar no card",
                       },
                     ]
                   ).map((option) => (

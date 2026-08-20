@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useRef, useState, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Banknote,
@@ -136,14 +136,25 @@ export function TransactionRow({
   onEdit?: () => void;
   searchQuery?: string;
 }) {
-  const { categoryById, cards, deleteTransaction } = useAppStore();
+  const { categoryById, cards, deleteTransaction, showCategoryNameOnCard } = useAppStore();
   const [open, setOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
+  const lastDragAt = useRef(0);
   const x = useMotionValue(0);
   const isIncome = transaction.amount > 0;
   const category = categoryById[transaction.categoryId] ?? fallback;
+  const categoryLabelFontSize =
+    category.label.length > 12 ? "5px" : category.label.length > 8 ? "6px" : "7px";
+  const titleNeedsMobileWrap = transaction.title.trim().length > 22;
   const paymentPresentation = getPaymentPresentation(transaction, cards);
+  const formattedAmount = formatCurrency(transaction.amount);
+  const amountTextSizeClass =
+    formattedAmount.length > 15
+      ? "text-[11px] lg:text-[18px]"
+      : formattedAmount.length > 12
+        ? "text-[12px] lg:text-[19px]"
+        : "text-[14px] lg:text-[21px]";
   const PaymentIcon = paymentPresentation?.icon;
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
   const installmentLabel =
@@ -155,8 +166,7 @@ export function TransactionRow({
   const hasSecondaryMeta = Boolean(installmentLabel || hasAttachments);
   const showDraftOnCard =
     transaction.draftDisplay === "multipleMedia" &&
-    Boolean(transaction.note?.trim()) &&
-    (transaction.attachments?.length ?? 0) > 1;
+    Boolean(transaction.note?.trim());
   const isSyntheticLoan = transaction.id.startsWith("loan-receivable-");
   const hasPaymentAction = Boolean(paymentActionLabel && onPaymentAction);
   const showPaymentDateOnCard =
@@ -184,6 +194,9 @@ export function TransactionRow({
   };
 
   const handleRowActivate = () => {
+    // Framer Motion pode disparar onTap logo após onDragEnd. Ignore apenas
+    // esse tap sintético para não fechar o card imediatamente após o snap.
+    if (Date.now() - lastDragAt.current < 350) return;
     if (searchQuery?.trim()) scrollToSearchResult(transaction.id);
     if (selectable) {
       onSelect?.(transaction.id);
@@ -269,53 +282,73 @@ export function TransactionRow({
         </button>
       )}
       <div className="min-w-0 flex-1 px-0.5">
-        {/* Cabeçalho: ícone, título, categoria e valor */}
+        {/* Cabeçalho: bloco único da categoria, título e valor */}
         <div className="flex min-w-0 items-start justify-between gap-1.5 sm:gap-3">
-          <div className="flex min-w-0 items-start gap-1.5 sm:gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-glass-ink/5 ring-1 ring-glass-ink/10 dark:bg-white/5 dark:ring-white/10 sm:size-14">
-              <CategoryIcon
-                categoryId={transaction.categoryId}
-                size="size-9 sm:size-14"
-                iconSize="size-[18px] sm:size-6"
-              />
-            </div>
-            <div className="min-w-0 pt-0">
-              <p className="min-w-0 truncate text-[14px] font-semibold leading-5 tracking-[-0.02em] text-glass-ink lg:text-[21px]">
-                <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
-              </p>
-              <span
-                className="mt-0 inline-flex min-h-5 max-w-full items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0 text-[8px] font-semibold text-slate-700 dark:text-slate-200 lg:mt-0.5 lg:gap-1 lg:py-0.5 lg:text-[13px]"
+          <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:gap-3.5">
+            <div className="flex w-9 shrink-0 translate-y-1 flex-col items-center gap-0.5 sm:w-11 sm:gap-1">
+              <div
+                className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border px-0.5 py-0.5 sm:h-11 sm:w-11 sm:px-1 sm:py-1"
                 style={{
-                  borderColor: `${category.color}22`,
-                  backgroundColor: `${category.color}14`,
+                  backgroundColor: `${category.color}2B`,
+                  borderColor: `${category.color}66`,
                 }}
+                aria-label={`Categoria: ${category.label}`}
               >
                 <CategoryIcon
                   categoryId={transaction.categoryId}
-                  size="size-3.5"
-                  iconSize="size-2"
+                  size="size-5 sm:size-7"
+                  iconSize="size-4 sm:size-5"
+                  strokeWidth={2.8}
+                  useImage={false}
+                  backgroundColor="transparent"
+                  className="relative z-0 rounded-none bg-transparent shadow-none ring-0"
                 />
-                <span className="truncate">{category.label}</span>
-              </span>
+              </div>
+              {showCategoryNameOnCard && (
+                <span
+                  className="pointer-events-none block w-[calc(100%+18px)] max-w-[calc(100%+18px)] truncate whitespace-nowrap text-center leading-none opacity-60"
+                  style={{
+                    color: category.color,
+                    fontFamily: "'Caveat', 'Segoe Script', 'Bradley Hand', cursive",
+                    fontSize: categoryLabelFontSize,
+                    fontStyle: "normal",
+                    fontWeight: 400,
+                    letterSpacing: "0.01em",
+                  }}
+                >
+                  {category.label.toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 translate-y-2 pt-0.5 sm:pt-1">
+              <p
+                className={cn(
+                  "min-w-0 whitespace-normal break-words text-[14px] font-semibold leading-5 tracking-[-0.02em] text-glass-ink lg:text-[21px]",
+                  titleNeedsMobileWrap ? "max-w-[10rem] sm:max-w-none" : "max-w-full",
+                )}
+              >
+                <SearchHighlight query={searchQuery}>{transaction.title}</SearchHighlight>
+              </p>
             </div>
           </div>
 
-          <div className="shrink-0 pt-0 text-right">
+          <div className="min-w-0 max-w-[48%] shrink-0 translate-y-2 pt-0 text-right">
             <span className="block text-[8px] font-medium text-glass-faint lg:text-xs">Valor</span>
             <p
               className={cn(
-                "amount-tabular text-right text-[14px] font-bold leading-5 lg:text-[21px]",
+                "amount-tabular whitespace-nowrap text-right font-bold leading-5 tracking-[-0.04em]",
+                amountTextSizeClass,
                 isIncome ? "text-[#1FBF4F]" : "text-glass-ink",
               )}
             >
               {isIncome ? "+" : "−"}
-              {formatCurrency(transaction.amount)}
+              {formattedAmount}
             </p>
           </div>
         </div>
 
         {/* Painel de metadados: o status permanece na coluna direita */}
-        <div className="mt-1 grid min-w-0 grid-cols-4 gap-x-1.5 gap-y-1 border-t border-glass-ink/10 pt-1.5 dark:border-white/10 sm:mt-3 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
+        <div className="mt-2.5 grid min-w-0 grid-cols-4 gap-x-1.5 gap-y-1 border-t border-glass-ink/10 pt-1.5 dark:border-white/10 sm:mt-3 sm:gap-x-4 sm:gap-y-2.5 sm:pt-3">
           {hasSecondaryMeta ? (
             <>
               {paymentPresentation ? (
@@ -325,8 +358,8 @@ export function TransactionRow({
                     className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
                     style={{
                       color: paymentPresentation.color,
-                      borderColor: `${paymentPresentation.color}35`,
-                      backgroundColor: `${paymentPresentation.color}12`,
+                      borderColor: `${paymentPresentation.color}55`,
+                      backgroundColor: `${paymentPresentation.color}26`,
                     }}
                     title={paymentPresentation.label}
                   >
@@ -376,8 +409,8 @@ export function TransactionRow({
                   className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
                   style={{
                     color: paymentPresentation.color,
-                    borderColor: `${paymentPresentation.color}35`,
-                    backgroundColor: `${paymentPresentation.color}12`,
+                    borderColor: `${paymentPresentation.color}55`,
+                    backgroundColor: `${paymentPresentation.color}26`,
                   }}
                   title={paymentPresentation.label}
                 >
@@ -390,32 +423,36 @@ export function TransactionRow({
 
           {paymentStatus && (
             <div className={cn(
-              "col-start-4 row-start-1 min-w-0 space-y-0.5",
+              "col-start-4 row-start-1 flex min-w-0 flex-col items-center space-y-0.5",
               "sm:border-l sm:border-glass-ink/10 sm:pl-4 sm:dark:border-white/10",
             )}>
-              <p className="text-[8px] font-medium text-glass-faint lg:text-xs">Status</p>
+              <p className="w-full text-center text-[8px] font-medium text-glass-faint lg:text-xs">Status</p>
               <button
                 type="button"
                 aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
                 onPointerDown={(event) => event.stopPropagation()}
                 onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleStatusBadgeClick}
-                className={cn(
-                  "flex min-h-11 w-full min-w-0 max-w-full items-center gap-0.5 rounded-full border px-1.5 py-1 text-[8px] font-extrabold tracking-tight transition-colors active:scale-95 lg:w-fit lg:gap-1 lg:px-2 lg:text-[13px]",
-                  paymentStatus === "paid"
-                    ? "justify-center border-green-200/80 bg-green-50/80 text-green-700 dark:border-green-400/25 dark:bg-green-400/10 dark:text-green-300 lg:min-w-[10rem] lg:px-3"
-                    : "border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
-                )}
+                className="flex min-h-11 w-full min-w-0 max-w-full items-start justify-center rounded-full p-0 transition-transform active:scale-95 lg:w-fit"
               >
-                {paymentStatus === "paid" ? (
-                  <Check className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
-                ) : (
-                  <Clock3 className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
-                )}
-                <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : "Pendente")}</span>
+                <span
+                  className={cn(
+                    "inline-flex min-h-7 min-w-0 max-w-full items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold tracking-tight lg:min-h-8 lg:gap-1 lg:px-2 lg:py-1 lg:text-[13px]",
+                    paymentStatus === "paid"
+                      ? "w-full justify-center border-green-300 bg-green-100/90 text-green-800 dark:border-green-400/40 dark:bg-green-400/15 dark:text-green-200 lg:w-fit lg:min-w-[10rem] lg:px-3"
+                      : "border-amber-300 bg-amber-100/90 text-amber-800 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-200",
+                  )}
+                >
+                  {paymentStatus === "paid" ? (
+                    <Check className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
+                  ) : (
+                    <Clock3 className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
+                  )}
+                  <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : "Pendente")}</span>
+                </span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
-                <span className="mt-0 block text-[9px] font-semibold leading-4 text-glass-faint lg:mt-0.5 lg:text-xs">
+                <span className="-mt-3 block whitespace-nowrap text-center text-[9px] font-semibold leading-4 text-glass-faint lg:-mt-2 lg:text-xs">
                   Pago em {shortDate(transaction.paymentDate)}
                 </span>
               )}
@@ -427,7 +464,7 @@ export function TransactionRow({
         {showDraftOnCard && (
           <div className="mt-1.5 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-2.5 py-1.5 dark:bg-[#1c2542]/80 sm:mt-3 sm:px-3.5 sm:py-2.5">
             <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Observação</p>
-            <p className="mt-0.5 line-clamp-2 border-l-2 border-[#7C6FF2] pl-2 text-[11px] leading-4 text-glass-ink/85 dark:text-white/85 lg:pl-2.5 lg:text-[15px]">
+            <p className="mt-0.5 line-clamp-2 whitespace-pre-line border-l-2 border-[#7C6FF2] pl-2 text-[11px] leading-4 text-glass-ink/85 dark:text-white/85 lg:pl-2.5 lg:text-[15px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
           </div>
@@ -488,12 +525,16 @@ export function TransactionRow({
 
           <motion.div
             drag="x"
+            onDragStart={() => {
+              lastDragAt.current = Date.now();
+            }}
             dragConstraints={{ left: -SWIPE_DISTANCE, right: 0 }}
             dragElastic={0.08}
             dragDirectionLock
             dragMomentum={false}
             style={{ x }}
             onDragEnd={(_, info) => {
+              lastDragAt.current = Date.now();
               const offset = info.offset.x;
               const velocity = info.velocity.x;
               const shouldClose =
@@ -521,7 +562,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3 py-2 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3 py-2.5 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
             )}
           >
             {rowContent}
@@ -541,7 +582,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3 py-2 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+            "flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3 py-2.5 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
           )}
         >
           {rowContent}

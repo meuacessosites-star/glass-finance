@@ -12,6 +12,8 @@ import {
   seedNotifications,
   transactions as seedTransactions,
   type BankNotification,
+  type DraftDisplayMode,
+  type LoanOperationType,
   type Transaction,
 } from "./mock-data";
 
@@ -124,6 +126,10 @@ export type LoanReceivable = {
   transactionId?: string;
   description?: string;
   paymentMethod?: string;
+  note?: string;
+  draftDisplay?: DraftDisplayMode;
+  attachments?: string[];
+  operationType?: LoanOperationType;
   createdAt: string;
 };
 
@@ -141,6 +147,8 @@ export type ProfileData = {
   financings: AppFinancing[];
   /** true = parcelas dos financiamentos aparecem junto com as transações. */
   financingsInFlow: boolean;
+  /** true = o nome da categoria aparece abaixo do ícone no card. */
+  showCategoryNameOnCard: boolean;
   goals: AppGoal[];
   pin: string | null; // 4-digit PIN, null = disabled
 };
@@ -191,6 +199,7 @@ function defaultData(): ProfileData {
     notifications: seedNotifications.map((n) => ({ ...n })),
     financings: [],
     financingsInFlow: false,
+    showCategoryNameOnCard: true,
     goals: [],
     pin: null,
   };
@@ -526,6 +535,12 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
         transactionId: typeof item.transactionId === "string" ? item.transactionId : undefined,
         description: typeof item.description === "string" ? item.description.slice(0, 120) : undefined,
         paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod.slice(0, 20) : undefined,
+        note: typeof item.note === "string" ? item.note.slice(0, 300) : undefined,
+        draftDisplay: item.draftDisplay === "multipleMedia" ? "multipleMedia" : "hidden",
+        attachments: Array.isArray(item.attachments)
+          ? item.attachments.filter((attachment): attachment is string => typeof attachment === "string").slice(0, 6)
+          : undefined,
+        operationType: item.operationType === "card" ? "card" : "loan",
         createdAt:
           typeof item.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(item.createdAt)
             ? item.createdAt.slice(0, 10)
@@ -672,6 +687,10 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
           ? t.personId.trim().slice(0, 80)
           : undefined,
       source: t.source === "loan" ? "loan" : undefined,
+      operationType:
+        t.operationType === "card" || t.operationType === "loan"
+          ? t.operationType
+          : undefined,
       };
     })
     .filter((t) => t.amount !== 0);
@@ -746,6 +765,10 @@ function buildProfiles(raw: unknown): AppProfile[] {
             typeof nested.financingsInFlow === "boolean"
               ? nested.financingsInFlow
               : false,
+          showCategoryNameOnCard:
+            typeof nested.showCategoryNameOnCard === "boolean"
+              ? nested.showCategoryNameOnCard
+              : true,
           goals: sanitizeGoals(nested.goals),
           pin: pin4(nested.pin),
         },
@@ -765,6 +788,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
         notifications: seedNotifications.map((n) => ({ ...n })),
         financings: [],
         financingsInFlow: false,
+        showCategoryNameOnCard: true,
         goals: [],
         pin:
           legacy && base.id === parsed.activeProfileId
@@ -831,6 +855,7 @@ type AppStoreValue = {
   notifications: AppNotification[];
   financings: AppFinancing[];
   financingsInFlow: boolean;
+  showCategoryNameOnCard: boolean;
   goals: AppGoal[];
   /** Transações reais + parcelas de financiamento quando integradas ao fluxo. */
   visibleTransactions: Transaction[];
@@ -906,6 +931,7 @@ type AppStoreValue = {
   ) => void;
   deleteFinancing: (id: string) => void;
   setFinancingsInFlow: (value: boolean) => void;
+  setShowCategoryNameOnCard: (value: boolean) => void;
   addGoal: (data: {
     name: string;
     targetAmount: number;
@@ -987,6 +1013,10 @@ type AppStoreValue = {
     date: string;
     categoryId: string;
     paymentMethod: string;
+    operationType?: LoanOperationType;
+    note?: string;
+    draftDisplay?: DraftDisplayMode;
+    attachments?: { src: string; isImage: boolean; name: string }[];
     collectionMode: "fixed" | "open";
     receivables?: { amount: number; dueDate: string; installment: number; installments: number }[];
   }) => void;
@@ -1033,6 +1063,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         notifications: [] as AppNotification[],
         financings: [] as AppFinancing[],
         financingsInFlow: false,
+        showCategoryNameOnCard: true,
         goals: [] as AppGoal[],
         pin: null,
     };
@@ -1092,6 +1123,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       notifications: activeData.notifications,
       financings: activeData.financings,
       financingsInFlow: activeData.financingsInFlow,
+      showCategoryNameOnCard: activeData.showCategoryNameOnCard,
       goals: activeData.goals,
       pin: activeData.pin,
       categoryById,
@@ -1345,6 +1377,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         })),
       setFinancingsInFlow: (value) =>
         patchActiveData((d) => ({ ...d, financingsInFlow: value })),
+      setShowCategoryNameOnCard: (value) =>
+        patchActiveData((d) => ({ ...d, showCategoryNameOnCard: value })),
       addGoal: (data) =>
         patchActiveData((d) => ({
           ...d,
@@ -1495,12 +1529,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => {
           const loanId = uid("loan");
           const createdAt = new Date().toISOString().slice(0, 10);
+          const operationType = data.operationType === "card" ? "card" : "loan";
+          const operationLabel = operationType === "card" ? "Cartão emprestado" : "Empréstimo";
           const collectionLabel =
             data.collectionMode === "fixed"
               ? `${data.receivables?.length ?? 0} parcela(s) agendada(s)`
               : "Dívida em aberto";
           const originalNote = [
+            data.note?.trim() || undefined,
             data.description?.trim() || undefined,
+            `Tipo: ${operationLabel}`,
             `Contato: ${data.contact}`,
             `Cobrança: ${collectionLabel}`,
             `Referência: ${loanId}`,
@@ -1509,17 +1547,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             .join("\n");
           const original = {
             id: uid("t"),
-            title: `Emprestei para ${data.contact}`,
+            title:
+              operationType === "card"
+                ? `Cartão usado por ${data.contact}`
+                : `Emprestei para ${data.contact}`,
             categoryId: data.categoryId,
             amount: -Math.abs(data.amount),
             date: data.date,
             note: originalNote,
+            draftDisplay: data.draftDisplay ?? "hidden",
+            attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
             paymentMethod: data.paymentMethod,
             source: "loan" as const,
+            operationType,
           };
 
           if (data.collectionMode === "open") {
-            const openDebt: LoanReceivable = {
+              const openDebt: LoanReceivable = {
               id: uid("receivable"),
               loanId,
               contact: data.contact,
@@ -1527,6 +1571,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               status: "open",
               description: data.description?.trim() || undefined,
               paymentMethod: data.paymentMethod,
+              note: data.note?.trim() || undefined,
+              draftDisplay: data.draftDisplay ?? "hidden",
+              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
+              operationType,
               createdAt,
             };
             return {
@@ -1550,6 +1598,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               transactionId,
               description: data.description?.trim() || undefined,
               paymentMethod: data.paymentMethod,
+              note: data.note?.trim() || undefined,
+              draftDisplay: data.draftDisplay ?? "hidden",
+              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
+              operationType,
               createdAt,
             };
             return { receivable, transaction: {
@@ -1559,15 +1611,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               amount: Math.abs(item.amount),
               date: item.dueDate,
               note: [
+                data.note?.trim() || undefined,
                 data.description?.trim() || undefined,
-                `Conta a receber de ${data.contact}`,
+                `${operationLabel} para ${data.contact}`,
                 `Parcela ${item.installment}/${item.installments}`,
                 `Referência: ${loanId}`,
               ].filter(Boolean).join("\n"),
+              draftDisplay: data.draftDisplay ?? "hidden",
+              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
               paymentMethod: data.paymentMethod,
               recurrence: "parcelada" as const,
               installments: item.installments,
               source: "loan" as const,
+              operationType,
               currentInstallment: item.installment,
             } };
           });

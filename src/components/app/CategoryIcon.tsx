@@ -121,10 +121,18 @@ export function CategoryIcon({
   categoryId,
   size = "size-11",
   iconSize = "size-[19px]",
+  strokeWidth = 2.2,
+  useImage = true,
+  backgroundColor,
+  className,
 }: {
   categoryId: string;
   size?: string;
   iconSize?: string;
+  strokeWidth?: number;
+  useImage?: boolean;
+  backgroundColor?: string;
+  className?: string;
 }) {
   const { categoryById } = useAppStore();
   const category = categoryById[categoryId] ?? fallbackCategory;
@@ -135,7 +143,10 @@ export function CategoryIcon({
       color={category.color}
       size={size}
       iconSize={iconSize}
-      image={category.image}
+      image={useImage ? category.image : undefined}
+      backgroundColor={backgroundColor}
+      className={className}
+      strokeWidth={strokeWidth}
     />
   );
 }

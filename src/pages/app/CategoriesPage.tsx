@@ -54,8 +54,15 @@ function parseRgb(value: string): string | null {
 }
 
 export default function CategoriesPage() {
-  const { categories, activeProfile, addCategory, updateCategory, deleteCategory } =
-    useAppStore();
+  const {
+    categories,
+    activeProfile,
+    showCategoryNameOnCard,
+    setShowCategoryNameOnCard,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+  } = useAppStore();
   const [label, setLabel] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
   const [hexInput, setHexInput] = useState(PALETTE[0]);
@@ -146,6 +153,43 @@ export default function CategoriesPage() {
         Categorias de <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
         cada perfil tem as suas.
       </p>
+
+      <div className="glass glass-soft rounded-3xl p-4">
+        <div>
+          <p className="text-[15px] font-bold text-glass-ink">Exibição nos cards</p>
+          <p className="mt-1 text-[12px] font-medium leading-4 text-glass-faint">
+            Escolha se os cards mostram o nome da categoria junto do ícone.
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            aria-pressed={showCategoryNameOnCard}
+            onClick={() => setShowCategoryNameOnCard(true)}
+            className={cn(
+              "min-h-11 rounded-2xl px-3 py-2 text-[12px] font-bold transition-colors",
+              showCategoryNameOnCard
+                ? "bg-primary text-white shadow-sm"
+                : "glass glass-soft text-glass-sub hover:text-glass-ink",
+            )}
+          >
+            Nome + ícone
+          </button>
+          <button
+            type="button"
+            aria-pressed={!showCategoryNameOnCard}
+            onClick={() => setShowCategoryNameOnCard(false)}
+            className={cn(
+              "min-h-11 rounded-2xl px-3 py-2 text-[12px] font-bold transition-colors",
+              !showCategoryNameOnCard
+                ? "bg-primary text-white shadow-sm"
+                : "glass glass-soft text-glass-sub hover:text-glass-ink",
+            )}
+          >
+            Somente ícone
+          </button>
+        </div>
+      </div>
 
       {/* List */}
       <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">

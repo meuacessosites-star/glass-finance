@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import {
   Camera,
   Check,
+  FileText,
   ImagePlus,
   RefreshCw,
   ScanLine,
@@ -18,6 +19,7 @@ import {
   draftPurchase,
 } from "@/lib/purchase-format";
 import type { ReceiptResult } from "@/convex/aiVision";
+import { compressAttachmentFile } from "@/lib/attachment-utils";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
@@ -92,6 +94,7 @@ export function ScanReceiptSheet({
 
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   // Bumped on every open/reset so stale scan results never fill a fresh form.
   const runIdRef = useRef(0);
   // Original picked File, kept so "Tentar novamente" re-scans at full quality.
@@ -442,6 +445,31 @@ export function ScanReceiptSheet({
     void lerComprovante(file);
   };
 
+  /** Arquivos não-imagem não passam pelo OCR: entram anexados na revisão manual. */
+  const handleFilePick = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    try {
+      const src = await compressAttachmentFile(file);
+      openReviewForm({
+        ...buildSafeFallbackPrefill(null),
+        attachments: [
+          {
+            src,
+            isImage: file.type.startsWith("image/"),
+            name: file.name,
+          },
+        ],
+      });
+    } catch {
+      toast.error("Não foi possível anexar esse arquivo.");
+    }
+  };
+
   const handleRetry = () => {
     const file = sourceFileRef.current;
     if (!file) return;
@@ -551,6 +579,14 @@ export function ScanReceiptSheet({
                   <ImagePlus className="size-[18px]" />
                   Escolher da galeria
                 </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="glass glass-soft flex w-full items-center justify-center gap-2.5 rounded-full py-3.5 text-[15px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
+                >
+                  <FileText className="size-[18px]" />
+                  Adicionar arquivo
+                </button>
               </div>
 
               <input
@@ -567,6 +603,13 @@ export function ScanReceiptSheet({
                 accept="image/*"
                 className="hidden"
                 onChange={handlePick}
+              />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="*/*"
+                className="hidden"
+                onChange={handleFilePick}
               />
             </div>
           )}

@@ -83,7 +83,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>

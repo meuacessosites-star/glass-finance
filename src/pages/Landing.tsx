@@ -420,7 +420,7 @@ export default function Landing() {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain">
       <AppBackground />
 
       <div className="relative z-10">

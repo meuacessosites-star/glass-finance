@@ -264,13 +264,18 @@ function PeriodPicker({
     if (!draftStart || draftEnd) {
       setDraftStart(date);
       setDraftEnd(null);
-      onRangeChange(null, null);
       return;
     }
     const [start, end] = date < draftStart ? [date, draftStart] : [draftStart, date];
     setDraftStart(start);
     setDraftEnd(end);
-    onRangeChange(start, end);
+  };
+
+  const handleApply = () => {
+    if (!draftStart) return;
+    const appliedEnd = draftEnd ?? draftStart;
+    onRangeChange(draftStart, appliedEnd);
+    onModeChange("custom");
     setOpen(false);
   };
 
@@ -365,7 +370,7 @@ function PeriodPicker({
                 </button>
               </div>
               <p className="mt-2 text-center text-[10px] font-medium text-glass-faint lg:text-[12px]">
-                Escolha a data inicial e depois a data final.
+                Escolha um dia ou selecione duas datas para um intervalo.
               </p>
               <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase text-glass-faint lg:text-[11px]">
                 {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
@@ -398,27 +403,40 @@ function PeriodPicker({
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center justify-between border-t border-glass-ink/5 pt-2 dark:border-white/10">
+              <div className="mt-3 flex flex-col gap-2 border-t border-glass-ink/5 pt-2 dark:border-white/10">
                 <p className="text-[10px] font-medium text-glass-faint lg:text-[12px]">
                   {draftStart && draftEnd
-                    ? `${formatDateLabel(draftStart)} → ${formatDateLabel(draftEnd)}`
+                    ? draftStart === draftEnd
+                      ? `Dia selecionado: ${formatDateLabel(draftStart)}`
+                      : `${formatDateLabel(draftStart)} → ${formatDateLabel(draftEnd)}`
                     : draftStart
-                      ? `Início: ${formatDateLabel(draftStart)}`
-                      : "Nenhum período aplicado"}
+                      ? `Dia selecionado: ${formatDateLabel(draftStart)}`
+                      : "Selecione um dia ou intervalo"}
                 </p>
-                {(rangeStart || rangeEnd) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraftStart(null);
-                      setDraftEnd(null);
-                      onRangeChange(null, null);
-                    }}
-                    className="rounded-full px-2 py-1 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
-                  >
-                    Remover filtro
-                  </button>
-                )}
+                <div className="flex items-center justify-end gap-2">
+                  {(rangeStart || rangeEnd) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftStart(null);
+                        setDraftEnd(null);
+                        onRangeChange(null, null);
+                      }}
+                      className="min-h-11 rounded-full px-3 py-2 text-[10px] font-bold text-primary transition-colors hover:bg-primary/10"
+                    >
+                      Remover filtro
+                    </button>
+                  )}
+                  {draftStart && (
+                    <button
+                      type="button"
+                      onClick={handleApply}
+                      className="min-h-11 rounded-full bg-primary px-4 py-2 text-[11px] font-bold text-white shadow-[0_6px_18px_-6px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-95"
+                    >
+                      Aplicar
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -496,6 +514,7 @@ export default function TransactionsPage() {
           amount: Math.abs(receivable.amount),
           date: receivable.dueDate ?? receivable.createdAt,
           note: [
+            receivable.note,
             receivable.description,
             `Conta a receber de ${receivable.contact}`,
             installmentLabel,
@@ -503,6 +522,8 @@ export default function TransactionsPage() {
           ]
             .filter(Boolean)
             .join("\n"),
+          draftDisplay: receivable.draftDisplay,
+          attachments: receivable.attachments,
           paymentMethod: receivable.paymentMethod,
           recurrence:
             receivable.installment && receivable.installments
@@ -536,10 +557,12 @@ export default function TransactionsPage() {
     : monthOptions.includes(currentMonthKey)
       ? currentMonthKey
       : monthOptions[0] ?? currentMonthKey;
-  const activeRangeStart = periodMode === "custom" && rangeStart && rangeEnd ? rangeStart : null;
-  const activeRangeEnd = periodMode === "custom" && rangeStart && rangeEnd ? rangeEnd : null;
+  const activeRangeStart = periodMode === "custom" && rangeStart ? rangeStart : null;
+  const activeRangeEnd = periodMode === "custom" && rangeStart ? rangeEnd ?? rangeStart : null;
   const selectedPeriodLabel = activeRangeStart && activeRangeEnd
-    ? `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
+    ? activeRangeStart === activeRangeEnd
+      ? formatDateLabel(activeRangeStart)
+      : `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
     : selectedMonths.length > 0
       ? `${selectedMonths.length} ${selectedMonths.length === 1 ? "mês selecionado" : "meses selecionados"}`
       : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;

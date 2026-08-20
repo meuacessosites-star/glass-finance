@@ -54,6 +54,8 @@ export function frequencyLabel(
 
 export type DraftDisplayMode = "hidden" | "multipleMedia";
 
+export type LoanOperationType = "loan" | "card";
+
 export type Transaction = {
   id: string;
   title: string;
@@ -93,6 +95,8 @@ export type Transaction = {
   personId?: string;
   /** Origem estrutural de lançamentos que não pertencem ao extrato normal. */
   source?: "loan";
+  /** Tipo de operação quando source === "loan". */
+  operationType?: LoanOperationType;
 };
 
 /** Short human label for the transaction's recurrence, or null when única. */

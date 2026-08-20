@@ -92,7 +92,7 @@ export function PaymentMethodSelector({
   return (
     <div>
       {/* Method chips */}
-      <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {PAYMENT_METHODS.map((m) => {
           const Icon = m.icon;
           const selected = value === m.id;
@@ -104,7 +104,7 @@ export function PaymentMethodSelector({
                 onValueChange(m.id);
                 if (m.id !== "cartao") onCardChange(null);
               }}                className={cn(
-                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 text-[12px] font-semibold transition-all active:scale-95 sm:px-3.5 sm:text-[12.5px]",
                   selected
                     ? "bg-primary text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
                     : "glass text-glass-sub",
@@ -114,7 +114,7 @@ export function PaymentMethodSelector({
               {m.label}
             </button>
           );            })}
-      </HorizontalScroll>
+      </div>
 
       {/* Expanded card section: Crédito/Débito + saved cards */}
       {expanded && (
@@ -126,7 +126,7 @@ export function PaymentMethodSelector({
                 type="button"
                 onClick={() => onCardModeChange(mode)}
                 className={cn(
-                  "flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13.5px] font-semibold transition-all",
+                  "flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-1.5 py-2.5 text-[13px] font-semibold transition-all sm:px-2 sm:text-[13.5px]",
                   cardMode === mode ? "bg-white shadow-sm" : "text-glass-sub",
                 )}
               >
@@ -155,11 +155,11 @@ export function PaymentMethodSelector({
             ))}
           </div>
 
-          <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
+          <HorizontalScroll className="mt-2 gap-2 pb-1">
             <button
               type="button"
               onClick={() => onCardChange(null)}                className={cn(
-                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-95",
+                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 text-[12px] font-semibold transition-all active:scale-95 sm:px-3.5 sm:text-[12.5px]",
                   cardId === null
                     ? "bg-glass-ink text-white"
                     : "glass text-glass-sub",

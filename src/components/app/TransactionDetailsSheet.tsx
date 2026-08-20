@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -108,6 +109,7 @@ export function TransactionDetailsSheet({
     },
   });
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [installmentsExpanded, setInstallmentsExpanded] = useState(true);
   useExclusiveOverlay({
     name: "attachment-lightbox",
     open: lightboxIndex !== null,
@@ -153,6 +155,7 @@ export function TransactionDetailsSheet({
     ? cards.find((c) => c.id === transaction.cardId)
     : undefined;
   const cardDisplayMode = transaction.cardDisplayMode ?? "last4";
+  const installmentAccent = paymentCard?.color ?? "#AF52DE";
 
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
@@ -162,6 +165,16 @@ export function TransactionDetailsSheet({
   }`;
   const editablePaymentDate = transaction.paymentDate ?? transaction.date;
   const showPaymentDateOnCard = transaction.showPaymentDateOnCard !== false;
+  const installmentCount =
+    transaction.recurrence === "parcelada" ? transaction.installments ?? 0 : 0;
+  const currentInstallment = Math.min(
+    installmentCount || 1,
+    Math.max(1, transaction.currentInstallment ?? 1),
+  );
+  const paidThroughInstallment =
+    transaction.paymentStatus === "paid"
+      ? currentInstallment
+      : Math.max(0, currentInstallment - 1);
 
   const openPaymentDatePicker = () => {
     const input = paymentDateInputRef.current;
@@ -574,17 +587,103 @@ export function TransactionDetailsSheet({
                   </div>
                 </div>
               )}
-              {recurrenceLabel(transaction) && (
-                <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
-                  {transaction.recurrence === "parcelada" ? (
-                    <Layers className="size-4 shrink-0 text-[#AF52DE]" />
-                  ) : (
-                    <Repeat className="size-4 shrink-0 text-[#5E5CE6]" />
+              {transaction.recurrence === "parcelada" && installmentCount > 1 ? (
+                <div
+                  className="rounded-2xl border px-3.5 py-2.5"
+                  style={{
+                    backgroundColor: `${installmentAccent}16`,
+                    borderColor: `${installmentAccent}38`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={installmentsExpanded}
+                    aria-controls={`installments-list-${transaction.id}`}
+                    onClick={() => setInstallmentsExpanded((expanded) => !expanded)}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <Layers className="size-4 shrink-0" style={{ color: installmentAccent }} />
+                      <span className="text-[13px] font-semibold text-glass-ink">
+                        Parcelado · {currentInstallment}/{installmentCount}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 transition-transform duration-200",
+                        installmentsExpanded && "rotate-180",
+                      )}
+                      style={{ color: installmentAccent }}
+                    />
+                  </button>
+                  {installmentsExpanded && (
+                    <div
+                      id={`installments-list-${transaction.id}`}
+                      className="mt-1 max-h-48 space-y-1 overflow-y-auto pr-1"
+                    >
+                      {Array.from({ length: installmentCount }, (_, index) => {
+                        const installmentNumber = index + 1;
+                        const isPaid = installmentNumber <= paidThroughInstallment;
+                        const isCurrent = installmentNumber === currentInstallment;
+                        return (
+                          <div
+                            key={installmentNumber}
+                            className={cn(
+                              "flex items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-[12px]",
+                              isPaid
+                                ? "bg-[#1FBF4F]/10 text-[#168A39]"
+                                : isCurrent
+                                  ? "text-glass-ink"
+                                  : "bg-white/50 text-glass-sub",
+                            )}
+                            style={
+                              isCurrent
+                                ? {
+                                    backgroundColor: `${installmentAccent}1F`,
+                                    color: installmentAccent,
+                                  }
+                                : undefined
+                            }
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5 font-semibold">
+                              {isPaid ? (
+                                <Check
+                                  className="size-3.5 shrink-0"
+                                  strokeWidth={3}
+                                  style={{ color: "#168A39" }}
+                                />
+                              ) : (
+                                <span className="size-3.5 shrink-0" aria-hidden="true" />
+                              )}
+                              <span>{installmentNumber}ª parcela</span>
+                            </span>
+                            <span
+                              className="shrink-0 text-[10.5px] font-semibold"
+                              style={{
+                                color: isPaid
+                                  ? "#168A39"
+                                  : isCurrent
+                                    ? installmentAccent
+                                    : "#C77A00",
+                              }}
+                            >
+                              {isPaid ? "Paga" : isCurrent ? "Atual" : "Pendente"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                  <p className="text-[13px] font-medium text-glass-ink">
-                    {recurrenceLabel(transaction)}
-                  </p>
                 </div>
+              ) : (
+                recurrenceLabel(transaction) && (
+                  <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
+                    <Repeat className="size-4 shrink-0 text-[#5E5CE6]" />
+                    <p className="text-[13px] font-medium text-glass-ink">
+                      {recurrenceLabel(transaction)}
+                    </p>
+                  </div>
+                )
               )}
             </div>
 
