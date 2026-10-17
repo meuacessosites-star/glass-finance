@@ -1,3 +1,4 @@
+import { localDateKey } from "./card-billing";
 // ---------------------------------------------------------------------------
 // Fictional finance data used to illustrate the UI. No real database yet.
 // ---------------------------------------------------------------------------
@@ -62,6 +63,8 @@ export type Transaction = {
   categoryId: string;
   amount: number; // positive = income, negative = expense
   date: string; // ISO yyyy-mm-dd
+  /** Vencimento da conta; compras no crédito usam o vencimento da fatura. */
+  dueDate?: string;
   time?: string; // HH:MM — set when scanned from a receipt
   note?: string; // free text (draft / observations)
   /** Regra de exibição do rascunho no card da transação. */
@@ -91,6 +94,8 @@ export type Transaction = {
   cardId?: string;
   /** When paymentMethod is "cartao": "credito" | "debito". */
   cardMode?: string;
+  /** Fatura escolhida para a compra, pelo mês de vencimento (YYYY-MM). */
+  cardInvoiceMonth?: string;
   /** Convex people record linked to this transaction, when applicable. */
   personId?: string;
   /** Origem estrutural de lançamentos que não pertencem ao extrato normal. */
@@ -320,5 +325,5 @@ export function monthTotals(list: Transaction[], key: string) {
 }
 
 export const currentMonthKey = monthKey(
-  new Date().toISOString().slice(0, 10),
+  localDateKey(),
 );

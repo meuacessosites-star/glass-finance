@@ -95,7 +95,7 @@ export async function downloadAttachment(
     const body = src.slice(src.indexOf(",") + 1);
     const compressed = base64ToBytes(body);
     const decompressed = await new Response(
-      new Blob([compressed]).stream().pipeThrough(new DecompressionStream("gzip")),
+      new Blob([new Uint8Array(compressed)]).stream().pipeThrough(new DecompressionStream("gzip")),
     ).blob();
     const mime =
       metadataFromCompressedUrl(src, "mime") || "application/octet-stream";
