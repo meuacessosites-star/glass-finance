@@ -1,16 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { calendarDate, getCardBillingCycle, getCardBillingChoices, getInvoiceDates, getCardBillingReminders, getTransactionBillingCycle, getTransactionInvoiceMonth, localDateKey, sanitizeInvoiceMonth } from "../src/lib/card-billing";
+import { calendarDate, getCardBillingCycle, getCardBillingChoices, getInvoiceDates, getCardBillingReminders, getInvoicePartsInPeriod, getTransactionBillingCycle, getTransactionInvoiceAmount, getTransactionInvoiceMonth, getTransactionInvoiceSchedule, localDateKey, sanitizeInvoiceMonth } from "../src/lib/card-billing";
 import { getDueTodayAlerts } from "../src/lib/due-today";
 import { createDemoProfile, installDemoExamples, DEMO_PROFILE_ID } from "../src/lib/demo-examples";
 import type { AppCard, ProfileData } from "../src/lib/app-store";
 import { sanitizeTransactions } from "../src/lib/app-store";
+import { getTransactionPaymentStatus } from "../src/lib/transaction-status";
 import type { Transaction } from "../src/lib/mock-data";
 
 const card = (id = "a", closingDay = 10, dueDay = 17): AppCard => ({ id, name: id, last4: "1234", color: "#2F6BFF", closingDay, dueDay });
 const purchase = (id: string, cardId: string, date: string, extra: Partial<Transaction> = {}): Transaction => ({ id, cardId, date, title: "Compra", categoryId: "compras", amount: -100, paymentMethod: "cartao", cardMode: "credito", paymentStatus: "pending", ...extra });
 const now = new Date(2026, 9, 17, 12);
 const emptyData = (): ProfileData => ({ categories: [], cards: [], transactions: [], loanReceivables: [], people: [], reserves: [], reservesInBalance: true, notifications: [], financings: [], financingsInFlow: false, showCategoryNameOnCard: true, goals: [], pin: null });
+
+test("installment invoice totals and reminder balances share exact cents across future months", () => {
+  const t = purchase("installments", "a", "2026-10-08", { recurrence: "parcelada", installments: 3 });
+  const snapshot = structuredClone(t);
+  const parts = getTransactionInvoiceSchedule(t, card());
+  assert.deepEqual(parts.map((p) => [p.month, p.amount]), [["2026-10", 33.34], ["2026-11", 33.33], ["2026-12", 33.33]]);
+  assert.deepEqual(parts.map((p) => getTransactionInvoiceAmount(t, card(), p.month)), [33.34, 33.33, 33.33]);
+  assert.deepEqual(getCardBillingReminders([card()], [t], now).map((r) => r.amount), [33.34, 33.33, 33.33]);
+  assert.deepEqual(getInvoicePartsInPeriod(t, card(), "2026-10", "2026-11-01", "2026-12-17").map((p) => p.number), [2, 3]);
+  assert.equal(getTransactionInvoiceAmount(t, card(), "2027-01"), 0);
+  assert.deepEqual(t, snapshot);
+});
+
+test("a missing credit payment status stays unpaid before and after reloading", () => {
+  const t = purchase("approved", "a", "2026-10-08", { paymentStatus: undefined });
+  assert.equal(getTransactionPaymentStatus(t, [card()], [], "2026-10-17"), "pending");
+  assert.equal(getCardBillingReminders([card()], [t], now)[0].amount, 100);
+  const reloaded = sanitizeTransactions([t], [card()])[0];
+  assert.equal(reloaded.paymentStatus, "pending");
+  assert.equal(getTransactionPaymentStatus(reloaded, [card()], [], "2026-10-17"), "pending");
+  assert.deepEqual(getCardBillingReminders([card()], [reloaded], now), getCardBillingReminders([card()], [t], now));
+});
 
 test("purchases on either side of closing are billed to the correct month", () => {
   assert.deepEqual(getCardBillingCycle(card(), "2026-10-10"), { closingDate: "2026-10-10", dueDate: "2026-10-17", month: "2026-10" });

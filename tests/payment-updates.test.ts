@@ -2,13 +2,71 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppCard, ProfileData } from "../src/lib/app-store";
 import type { Transaction } from "../src/lib/mock-data";
-import { setInvoicePaymentStatus, setTransactionPaymentState } from "../src/lib/payment-updates";
+import { openUnpaidPurchaseInvoices, recordInvoicePayment, setInvoicePaymentStatus, setTransactionPaymentState } from "../src/lib/payment-updates";
 import { getCardBillingReminders } from "../src/lib/card-billing";
+import { getCardInstallmentHistory } from "../src/lib/card-installments";
 import { getTransactionPaymentStatus } from "../src/lib/transaction-status";
 
 const card: AppCard = { id: "card", name: "Cartão", last4: "1234", color: "#000000", closingDay: 10, dueDay: 17 };
 const purchase = (id: string, amount: number, patch: Partial<Transaction> = {}): Transaction => ({ id, title: id, categoryId: "compras", amount, date: "2026-10-05", paymentMethod: "cartao", cardMode: "credito", cardId: card.id, paymentStatus: "pending", ...patch });
 const profile = (patch: Partial<ProfileData> = {}): ProfileData => ({ categories: [], cards: [card], transactions: [], loanReceivables: [], people: [], reserves: [], reservesInBalance: true, notifications: [], financings: [], financingsInFlow: false, showCategoryNameOnCard: true, goals: [], pin: null, ...patch });
+
+test("new installments reopen every affected unpaid invoice and preserve previous payments", () => {
+  const payment = { totalAmount: 50, paidAmount: 50, paymentDate: "2026-11-17" };
+  const data = profile({ cards: [{ ...card, invoicePaidByMonth: { "2026-10": true, "2026-11": true, "2026-12": true, "2027-01": true }, invoicePaymentsByMonth: { "2026-11": payment } }] });
+  const t = purchase("new", -300, { recurrence: "parcelada", installments: 3 });
+  const next = openUnpaidPurchaseInvoices(data, t, "2026-10-17");
+  assert.deepEqual(next.cards[0].invoicePaidByMonth, { "2026-10": false, "2026-11": false, "2026-12": false, "2027-01": true });
+  assert.deepEqual(next.cards[0].invoicePaymentsByMonth?.["2026-11"], payment);
+  const paidFirst = openUnpaidPurchaseInvoices(data, { ...t, paymentStatus: "paid" }, "2026-10-17");
+  assert.equal(paidFirst.cards[0].invoicePaidByMonth?.["2026-10"], true);
+  assert.equal(paidFirst.cards[0].invoicePaidByMonth?.["2026-11"], false);
+  assert.equal(openUnpaidPurchaseInvoices(data, { ...t, source: "loan" }), data);
+  assert.equal(data.cards[0].invoicePaidByMonth?.["2026-11"], true);
+});
+
+test("settling and reopening a future installment changes only its invoice without duplicating the purchase", () => {
+  const data = profile({ transactions: [purchase("three", -300, { recurrence: "parcelada", installments: 3 })] });
+  const october = setInvoicePaymentStatus(data, card.id, "2026-10", true, "2026-10-17");
+  assert.equal(october.cards[0].invoicePaymentsByMonth?.["2026-10"].totalAmount, 100);
+  assert.deepEqual(getCardBillingReminders(october.cards, october.transactions, new Date(2026, 9, 18, 12)).map((r) => [r.month, r.amount]), [["2026-11", 100], ["2026-12", 100]]);
+  const november = recordInvoicePayment(october, card.id, "2026-11", { totalAmount: 100, paidAmount: 100, paymentDate: "2026-11-17" });
+  assert.deepEqual(getCardInstallmentHistory(november.transactions[0], november.cards[0], "2026-11-17").map((p) => p.status), ["paid", "paid", "scheduled"]);
+  const reopened = setInvoicePaymentStatus(november, card.id, "2026-11", false, "2026-11-18");
+  assert.equal(reopened.cards[0].invoicePaymentsByMonth?.["2026-11"], undefined);
+  assert.equal(reopened.cards[0].invoicePaymentsByMonth?.["2026-10"].paidAmount, 100);
+  assert.deepEqual(getCardInstallmentHistory(reopened.transactions[0], reopened.cards[0], "2026-11-18").map((p) => p.status), ["paid", "overdue", "scheduled"]);
+  assert.equal(reopened.transactions.length, 1);
+  assert.equal(reopened.transactions[0].amount, -300);
+  assert.deepEqual(data.transactions, [purchase("three", -300, { recurrence: "parcelada", installments: 3 })]);
+});
+
+test("full payment from the invoice modal synchronizes purchases and reopening clears payment history", () => {
+  const data = profile({ transactions: [purchase("one", -100), purchase("two", -200)] });
+  const paid = recordInvoicePayment(data, card.id, "2026-10", { totalAmount: 300, paidAmount: 300, paymentDate: "2026-10-17", installments: 3 });
+  assert.ok(paid.transactions.every((t) => t.paymentStatus === "paid" && t.paymentDate === "2026-10-17"));
+  assert.equal(paid.cards[0].invoicePaymentsByMonth?.["2026-10"].installments, 3);
+  const reopened = setInvoicePaymentStatus(paid, card.id, "2026-10", false, "2026-10-18");
+  assert.equal(reopened.cards[0].invoicePaymentsByMonth?.["2026-10"], undefined);
+  assert.ok(reopened.transactions.every((t) => t.paymentStatus === "pending" && !t.paymentDate));
+  assert.equal(getCardBillingReminders(reopened.cards, reopened.transactions, new Date(2026, 9, 18, 12))[0].amount, 300);
+});
+
+test("partial modal payment preserves separately paid purchases and only deducts the greater paid balance", () => {
+  const data = profile({ transactions: [purchase("one", -60, { paymentStatus: "paid" }), purchase("two", -40)] });
+  const next = recordInvoicePayment(data, card.id, "2026-10", { totalAmount: 100, paidAmount: 30, paymentDate: "2026-10-17" });
+  assert.equal(next.transactions[0].paymentStatus, "paid");
+  assert.equal(next.transactions[1].paymentStatus, "pending");
+  assert.equal(getCardBillingReminders(next.cards, next.transactions, new Date(2026, 9, 18, 12))[0].amount, 40);
+});
+
+test("manual payment from an existing later installment targets its month only", () => {
+  const data = profile({ transactions: [purchase("three", -300, { recurrence: "parcelada", installments: 3, currentInstallment: 2 })] });
+  const next = setTransactionPaymentState(data, "three", "paid", "2026-11-17");
+  assert.equal(next.cards[0].invoicePaymentsByMonth?.["2026-11"].paidAmount, 100);
+  assert.equal(next.cards[0].invoicePaymentsByMonth?.["2026-10"], undefined);
+  assert.deepEqual(getCardInstallmentHistory(next.transactions[0], next.cards[0], "2026-11-17").map((p) => p.status), ["overdue", "paid", "scheduled"]);
+});
 
 test("reopening an invoice clears its prior payment and makes its own purchases pending again", () => {
   const otherPayment = { totalAmount: 90, paidAmount: 90, paymentDate: "2026-11-17" };
