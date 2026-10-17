@@ -33,7 +33,8 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
+import { getInvoiceDates, getTransactionInvoiceMonth, isInvoiceMarkedPaid } from "@/lib/card-billing";
 import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
@@ -90,7 +91,9 @@ function transactionInPeriod(
   selectedMonth: string,
   untilDate?: string | null,
   fromDate?: string | null,
+  card?: AppCard,
 ): boolean {
+  if (!untilDate && !fromDate && card) return getTransactionInvoiceMonth(transaction, card) === selectedMonth;
   const startDate = fromDate ?? `${selectedMonth}-01`;
   const defaultEndDate = `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
   const endDate = untilDate && untilDate >= startDate ? untilDate : defaultEndDate;
@@ -347,10 +350,7 @@ type InvoiceStatusFilter = "all" | "open" | "paid";
 type TransactionSearchScope = "month" | "all";
 
 function invoiceIsPaid(card: AppCard, month: string): boolean {
-  return (
-    card.invoicePaidByMonth?.[month] ??
-    (month === currentMonthKey && card.invoicePaid === true)
-  );
+  return isInvoiceMarkedPaid(card, month);
 }
 
 function invoicePaymentFor(card: AppCard, month: string): InvoicePaymentRecord | undefined {
@@ -540,7 +540,7 @@ function invoiceDueLabel(card: AppCard, month: string): string {
     .format(new Date(Date.UTC(year, monthNumber - 1, 1)))
     .replace(".", "")
     .toUpperCase();
-  return `${String(card.dueDay).padStart(2, "0")}/${monthLabel}`;
+  return `${getInvoiceDates(card, month)?.dueDate.slice(8) ?? String(card.dueDay).padStart(2, "0")}/${monthLabel}`;
 }
 
 type InvoicePaymentModalProps = {
@@ -1276,6 +1276,7 @@ function InvoiceSummaryCard({
 
 export default function CardPurchasesPage() {
   const navigate = useNavigate();
+  const invoiceRequest = useLocation().state as { cardId?: string; invoiceMonth?: string } | null;
   const {
     transactions,
     cards,
@@ -1291,6 +1292,14 @@ export default function CardPurchasesPage() {
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
+  useEffect(() => {
+    if (!invoiceRequest?.cardId) return;
+    setSelectedCardId(invoiceRequest.cardId);
+    if (invoiceRequest.invoiceMonth && /^\d{4}-\d{2}$/.test(invoiceRequest.invoiceMonth)) {
+      setMonth(invoiceRequest.invoiceMonth);
+      setPeriodMode("month"); setRangeStart(null); setRangeEnd(null);
+    }
+  }, [invoiceRequest?.cardId, invoiceRequest?.invoiceMonth]);
   const [transactionSearch, setTransactionSearch] = useState("");
   const {
     activeIndex: activeTransactionSearchIndex,
@@ -1330,7 +1339,7 @@ export default function CardPurchasesPage() {
     return [
       ...new Set([
         ...navigableMonths,
-        ...cardTransactions.map((transaction) => monthKey(transaction.date)),
+        ...cardTransactions.map((transaction) => getTransactionInvoiceMonth(transaction, cards.find((card) => card.id === transaction.cardId))),
         ...invoiceHistoryMonths,
       ]),
     ].sort((a, b) => b.localeCompare(a));
@@ -1393,7 +1402,7 @@ export default function CardPurchasesPage() {
           .filter(
             (transaction) =>
               transaction.cardId === card.id &&
-              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
+              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart, card),
           )
           .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
         return totals;
@@ -1407,7 +1416,7 @@ export default function CardPurchasesPage() {
         ? cardTransactions.filter(
             (transaction) =>
               transaction.cardId === selectedCard.id &&
-              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart),
+              transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart, selectedCard),
           )
         : [],
     [activeRangeEnd, activeRangeStart, cardTransactions, selectedCard, selectedMonth],
@@ -1782,39 +1791,41 @@ export default function CardPurchasesPage() {
           </div>
 
           <div className="glass rounded-2xl px-3 py-3">
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint" />
-                <label htmlFor="card-transaction-search" className="sr-only">
-                  Buscar no extrato do cartão
-                </label>
-                <input
-                  id="card-transaction-search"
-                  type="search"
-                  value={transactionSearch}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setTransactionSearch(value);
-                    if (!value.trim()) setTransactionSearchScope("month");
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && transactionSearch.trim()) {
-                      event.preventDefault();
-                      goToNextTransactionResult();
-                    }
-                  }}
-                  placeholder="Buscar compra ou anotação"
-                  className="h-10 w-full rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-[8.75rem] text-[12px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <SearchNavigationControls
-                    query={transactionSearch}
-                    resultCount={visibleSelectedCardTransactions.length}
-                    activeIndex={activeTransactionSearchIndex}
-                    onPrevious={goToPreviousTransactionResult}
-                    onNext={goToNextTransactionResult}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <div className="w-full min-w-0 flex-1">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint" />
+                  <label htmlFor="card-transaction-search" className="sr-only">
+                    Buscar no extrato do cartão
+                  </label>
+                  <input
+                    id="card-transaction-search"
+                    type="search"
+                    enterKeyHint="search"
+                    value={transactionSearch}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setTransactionSearch(value);
+                      if (!value.trim()) setTransactionSearchScope("month");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && transactionSearch.trim()) {
+                        event.preventDefault();
+                        goToNextTransactionResult();
+                      }
+                    }}
+                    placeholder="Buscar compra ou anotação"
+                    className="h-11 w-full min-w-0 rounded-xl border border-glass-ink/10 bg-white/50 pl-9 pr-3 text-[16px] font-medium text-glass-ink outline-none transition-colors placeholder:text-glass-faint focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white sm:text-[15px]"
                   />
                 </div>
+                <SearchNavigationControls
+                  query={transactionSearch}
+                  resultCount={visibleSelectedCardTransactions.length}
+                  activeIndex={activeTransactionSearchIndex}
+                  onPrevious={goToPreviousTransactionResult}
+                  onNext={goToNextTransactionResult}
+                  className="mt-1 justify-end"
+                />
               </div>
               <label htmlFor="card-transaction-category" className="sr-only">
                 Filtrar por categoria
@@ -1823,7 +1834,7 @@ export default function CardPurchasesPage() {
                 id="card-transaction-category"
                 value={transactionCategory}
                 onChange={(event) => setTransactionCategory(event.target.value)}
-                className="h-10 max-w-[10.5rem] rounded-xl border border-glass-ink/10 bg-white/50 px-2.5 text-[11px] font-semibold text-glass-ink outline-none transition-colors focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                className="h-11 w-full rounded-xl border border-glass-ink/10 bg-white/50 px-2.5 text-[12px] font-semibold text-glass-ink outline-none transition-colors focus:border-primary/40 dark:border-white/10 dark:bg-white/5 dark:text-white sm:w-auto sm:max-w-[10.5rem]"
               >
                 <option value="todas">Todas as categorias</option>
                 {transactionCategoryOptions.map((category) => (

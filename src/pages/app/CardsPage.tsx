@@ -1,3 +1,4 @@
+import { getTransactionInvoiceMonth, isInvoiceMarkedPaid } from "@/lib/card-billing";
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
@@ -265,6 +266,7 @@ export default function CardsPage() {
     transactions,
     activeProfile,
     addCard,
+    setCardInvoiceStatus,
     updateCard,
     deleteCard,
   } = useAppStore();
@@ -276,7 +278,7 @@ export default function CardsPage() {
         transaction.amount < 0 &&
         transaction.cardMode === "credito" &&
         transaction.cardId &&
-        transaction.date.startsWith(currentMonthKey)
+        getTransactionInvoiceMonth(transaction, cards.find((card) => card.id === transaction.cardId)) === currentMonthKey
       ) {
         totals[transaction.cardId] =
           (totals[transaction.cardId] ?? 0) + Math.abs(transaction.amount);
@@ -430,7 +432,7 @@ export default function CardsPage() {
         {activeCards.map((card) => (
             <CardVisual
             key={card.id}
-            card={card}
+            card={{ ...card, invoicePaid: isInvoiceMarkedPaid(card, currentMonthKey) }}
             openAmount={openAmountByCard[card.id] ?? 0}
             onEdit={() => handleEdit(card)}
             onDelete={() => {
@@ -439,8 +441,8 @@ export default function CardsPage() {
               toast("Cartão removido");
             }}
             onToggleInvoice={() => {
-              const nextPaid = card.invoicePaid !== true;
-              updateCard(card.id, { invoicePaid: nextPaid });
+              const nextPaid = !isInvoiceMarkedPaid(card, currentMonthKey);
+              setCardInvoiceStatus(card.id, currentMonthKey, nextPaid);
               toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
             }}
           />
