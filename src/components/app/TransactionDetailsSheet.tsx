@@ -1,3 +1,8 @@
+import { getTransactionBillingCycle, isCreditCardExpense } from "@/lib/card-billing";
+import { getCardInstallmentHistory } from "@/lib/card-installments";
+import { CardInstallmentHistory } from "./CardInstallmentHistory";
+import { getTransactionDueDate, getTransactionPaymentStatus } from "@/lib/transaction-status";
+import { useLocalDate } from "@/hooks/use-local-date";
 import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
@@ -100,7 +105,10 @@ export function TransactionDetailsSheet({
   onClose: () => void;
   onEdit?: () => void;
 }) {
-  const { categoryById, cards, updateTransaction } = useAppStore();
+  const { categoryById, cards, loanReceivables, updateTransaction } = useAppStore();
+  const today = useLocalDate();
+  const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
+  const paymentStatus = getTransactionPaymentStatus(transaction, cards, loanReceivables, today);
   const overlay = useExclusiveOverlay({
     name: "transaction-details-sheet",
     open,
@@ -154,8 +162,10 @@ export function TransactionDetailsSheet({
   const paymentCard = transaction.cardId
     ? cards.find((c) => c.id === transaction.cardId)
     : undefined;
+  const billingCycle = paymentCard && isCreditCardExpense(transaction) ? getTransactionBillingCycle(transaction, paymentCard) : null;
   const cardDisplayMode = transaction.cardDisplayMode ?? "last4";
   const installmentAccent = paymentCard?.color ?? "#AF52DE";
+  const cardInstallments = getCardInstallmentHistory(transaction, paymentCard, today);
 
   const screen = document.getElementById("app-screen");
   if (!screen) return null;
@@ -450,8 +460,17 @@ export function TransactionDetailsSheet({
               {formatCurrency(transaction.amount)}
             </p>
 
+            <CardInstallmentHistory installments={cardInstallments} accent={installmentAccent} />
+
             {/* Info rows */}
             <div className="mt-4 space-y-2.5">
+              {dueDate && paymentStatus !== "paid" && <div className={cn("rounded-2xl px-3.5 py-3 text-[12px] font-semibold", paymentStatus === "overdue" ? "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200" : "bg-primary/10 text-glass-ink")}>
+                {paymentStatus === "overdue" ? "Vencida" : "Pendente"} · Vencimento {shortDate(dueDate)}
+              </div>}
+              {billingCycle && <div className="rounded-2xl bg-primary/10 px-3.5 py-3 text-[12px] text-glass-ink">
+                <p className="font-bold">Fatura de {paymentCard?.name}</p>
+                <p className="mt-1">Fechamento {shortDate(billingCycle.closingDate)} · Vencimento {shortDate(billingCycle.dueDate)}</p>
+              </div>}
               <div className="flex items-center gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5">
                 <CalendarDays className="size-4 shrink-0 text-[#5E5CE6]" />
                 <p className="text-[13px] font-medium text-glass-ink">{dateLabel}</p>
@@ -623,7 +642,8 @@ export function TransactionDetailsSheet({
                     >
                       {Array.from({ length: installmentCount }, (_, index) => {
                         const installmentNumber = index + 1;
-                        const isPaid = installmentNumber <= paidThroughInstallment;
+                        const historyItem = cardInstallments[index];
+                        const isPaid = historyItem ? historyItem.status === "paid" : installmentNumber <= paidThroughInstallment;
                         const isCurrent = installmentNumber === currentInstallment;
                         return (
                           <div
@@ -662,12 +682,14 @@ export function TransactionDetailsSheet({
                               style={{
                                 color: isPaid
                                   ? "#168A39"
-                                  : isCurrent
-                                    ? installmentAccent
-                                    : "#C77A00",
+                                  : historyItem?.status === "overdue"
+                                    ? "#B4232A"
+                                    : isCurrent
+                                      ? installmentAccent
+                                      : "#C77A00",
                               }}
                             >
-                              {isPaid ? "Paga" : isCurrent ? "Atual" : "Pendente"}
+                              {isPaid ? "Paga" : historyItem?.status === "overdue" ? "Vencida" : isCurrent ? "Atual" : historyItem?.status === "scheduled" ? "Agendada" : "Pendente"}
                             </span>
                           </div>
                         );

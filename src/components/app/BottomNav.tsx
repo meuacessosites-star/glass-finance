@@ -8,8 +8,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
-import { getDueTodayAlerts } from "@/lib/due-today";
+import { getTransactionPaymentStatus } from "@/lib/transaction-status";
+import { countUnpaidTransactions } from "@/lib/transaction-view";
+import { loans } from "@/lib/mock-data";
+import { useNavigationPendingCount } from "./NavigationPendingContext";
 import { useAppStore } from "@/lib/app-store";
+import { useLocalDate } from "@/hooks/use-local-date";
 import { cn } from "@/lib/utils";
 
 const tabs: {
@@ -32,10 +36,16 @@ export function BottomNav({
 }) {
   const { pathname } = useLocation();
   const { cards, visibleTransactions, loanReceivables } = useAppStore();
-  const dueTodayCount = useMemo(
-    () => getDueTodayAlerts(cards, visibleTransactions, loanReceivables).length,
-    [cards, loanReceivables, visibleTransactions],
+  const today = useLocalDate();
+  const defaultCounts = useMemo(
+    () => ({
+      transactions: countUnpaidTransactions(visibleTransactions.filter((item) => item.date.startsWith(`${today.slice(0, 7)}-`)), (item) => getTransactionPaymentStatus(item, cards, loanReceivables, today)),
+      loans: loanReceivables.filter((item) => item.operationType !== "card" && item.status !== "paid").length + loans.filter((item) => item.status === "pendente").length,
+    }),
+    [cards, loanReceivables, visibleTransactions, today],
   );
+  const transactionPendingCount = useNavigationPendingCount("transactions", defaultCounts.transactions);
+  const loanPendingCount = useNavigationPendingCount("loans", defaultCounts.loans);
 
   const isActive = (to: string) =>
     to === "/dashboard"
@@ -50,7 +60,7 @@ export function BottomNav({
             key={tab.to}
             tab={tab}
             active={isActive(tab.to)}
-            pendingCount={tab.to === "/dashboard/transacoes" ? dueTodayCount : 0}
+            pendingCount={tab.to === "/dashboard/transacoes" ? transactionPendingCount : 0}
           />
         ))}
 
@@ -74,7 +84,7 @@ export function BottomNav({
             key={tab.to}
             tab={tab}
             active={isActive(tab.to)}
-            pendingCount={0}
+            pendingCount={tab.to === "/dashboard/emprestimos" ? loanPendingCount : 0}
           />
         ))}
       </div>
@@ -96,7 +106,7 @@ function TabButton({
   return (
     <NavLink
       to={tab.to}
-      aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s) vencendo hoje` : tab.label}
+      aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s)` : tab.label}
       className={cn(
         "relative flex min-h-11 w-14 flex-col items-center gap-0.5 rounded-2xl py-2 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-2",
         active ? "bg-primary/10" : "hover:bg-primary/5",

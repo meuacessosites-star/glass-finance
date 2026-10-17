@@ -1,7 +1,8 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Banknote,
+  AlertTriangle,
   Barcode,
   Check,
   Clock3,
@@ -23,6 +24,8 @@ import {
   type Transaction,
 } from "@/lib/mock-data";
 import { useAppStore, type AppCard } from "@/lib/app-store";
+import { getTransactionDueDate, type TransactionPaymentStatus } from "@/lib/transaction-status";
+import { cardPaymentStyle, cardPaymentTone, paymentMethodTone } from "@/lib/payment-method-theme";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import { SearchHighlight, scrollToSearchResult } from "./SearchHighlight";
@@ -40,6 +43,8 @@ import {
 
 const fallback = { label: "Outros", color: "#8E8E93", icon: "outros" };
 
+const paymentBadgeClass = "inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]";
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pix: "Pix",
   dinheiro: "Dinheiro",
@@ -52,7 +57,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 function getPaymentPresentation(
   transaction: Transaction,
   cards: AppCard[],
-): { label: string; icon: LucideIcon; color: string } | null {
+  categoryColors: string[],
+): { label: string; icon: LucideIcon; tone: string; style?: CSSProperties } | null {
   const rawMethod = transaction.paymentMethod?.toLowerCase().trim();
   if (!rawMethod) return null;
 
@@ -88,20 +94,8 @@ function getPaymentPresentation(
             : methodId === "saldo"
               ? Wallet
               : CreditCard;
-  const color = card?.color ??
-    (methodId === "pix"
-      ? "#16A34A"
-      : methodId === "dinheiro"
-        ? "#A16207"
-        : methodId === "boleto"
-          ? "#7C3AED"
-          : methodId === "transferencia"
-            ? "#2563EB"
-            : methodId === "saldo"
-              ? "#0F766E"
-              : "#2563EB");
-
-  return { label, icon, color };
+  const style = card ? cardPaymentStyle(card.color, categoryColors) : undefined;
+  return { label, icon, tone: style ? cardPaymentTone : paymentMethodTone(methodId), style };
 }
 
 const SWIPE_DISTANCE = 208;
@@ -122,12 +116,13 @@ export function TransactionRow({
   onSelect,
   onEdit,
   searchQuery,
+  searchResultId,
 }: {
   transaction: Transaction;
   showDate?: boolean;
   swipeable?: boolean;
-  paymentLabel?: "Fatura paga" | "Pago" | "Pendente";
-  paymentStatus?: "paid" | "pending";
+  paymentLabel?: "Fatura paga" | "Pago" | "Pendente" | "Vencida";
+  paymentStatus?: TransactionPaymentStatus;
   paymentActionLabel?: string;
   onPaymentAction?: () => void;
   selectable?: boolean;
@@ -135,8 +130,10 @@ export function TransactionRow({
   onSelect?: (id: string) => void;
   onEdit?: () => void;
   searchQuery?: string;
+  searchResultId?: string;
 }) {
-  const { categoryById, cards, deleteTransaction, showCategoryNameOnCard } = useAppStore();
+  const { categoryById, cards, loanReceivables, deleteTransaction, showCategoryNameOnCard } = useAppStore();
+  const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
   const [open, setOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
@@ -147,7 +144,7 @@ export function TransactionRow({
   const categoryLabelFontSize =
     category.label.length > 12 ? "5px" : category.label.length > 8 ? "6px" : "7px";
   const titleNeedsMobileWrap = transaction.title.trim().length > 22;
-  const paymentPresentation = getPaymentPresentation(transaction, cards);
+  const paymentPresentation = getPaymentPresentation(transaction, cards, Object.values(categoryById).map((item) => item.color));
   const formattedAmount = formatCurrency(transaction.amount);
   const amountTextSizeClass =
     formattedAmount.length > 15
@@ -193,11 +190,12 @@ export function TransactionRow({
     });
   };
 
+  // Use o clique da linha: onTap pode executar após o botão de status e
+  // deixar os detalhes abertos atrás da confirmação, apesar de stopPropagation.
   const handleRowActivate = () => {
-    // Framer Motion pode disparar onTap logo após onDragEnd. Ignore apenas
-    // esse tap sintético para não fechar o card imediatamente após o snap.
+    // Ignore o clique residual após arrastar para preservar o estado do swipe.
     if (Date.now() - lastDragAt.current < 350) return;
-    if (searchQuery?.trim()) scrollToSearchResult(transaction.id);
+    if (searchQuery?.trim()) scrollToSearchResult(searchResultId ?? transaction.id);
     if (selectable) {
       onSelect?.(transaction.id);
       return;
@@ -224,6 +222,7 @@ export function TransactionRow({
   };
 
   const confirmStatusChange = () => {
+    setOpen(false);
     setStatusDialogOpen(false);
     handlePaymentAction();
   };
@@ -355,12 +354,8 @@ export function TransactionRow({
                 <div className="min-w-0 space-y-0.5">
                   <p className="text-[8px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
                   <span
-                    className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
-                    style={{
-                      color: paymentPresentation.color,
-                      borderColor: `${paymentPresentation.color}55`,
-                      backgroundColor: `${paymentPresentation.color}26`,
-                    }}
+                    className={cn(paymentBadgeClass, paymentPresentation.tone)}
+                    style={paymentPresentation.style}
                     title={paymentPresentation.label}
                   >
                     {PaymentIcon && <PaymentIcon className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.2} />}
@@ -406,12 +401,8 @@ export function TransactionRow({
               <div className="min-w-0 space-y-0.5">
                 <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Pagamento</p>
                 <span
-                  className="inline-flex min-h-7 w-fit min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold lg:min-h-8 lg:py-1 lg:text-[13px]"
-                  style={{
-                    color: paymentPresentation.color,
-                    borderColor: `${paymentPresentation.color}55`,
-                    backgroundColor: `${paymentPresentation.color}26`,
-                  }}
+                  className={cn(paymentBadgeClass, paymentPresentation.tone)}
+                  style={paymentPresentation.style}
                   title={paymentPresentation.label}
                 >
                   {PaymentIcon && <PaymentIcon className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.2} />}
@@ -429,7 +420,7 @@ export function TransactionRow({
               <p className="w-full text-center text-[8px] font-medium text-glass-faint lg:text-xs">Status</p>
               <button
                 type="button"
-                aria-label={`Alterar status para ${paymentStatus === "paid" ? "Pendente" : "Pago"}`}
+                aria-label={paymentStatus === "paid" ? (paymentLabel === "Fatura paga" ? "Reabrir fatura" : "Reabrir lançamento") : "Alterar status para Pago"}
                 onPointerDown={(event) => event.stopPropagation()}
                 onPointerUp={(event) => event.stopPropagation()}
                 onClick={handleStatusBadgeClick}
@@ -439,21 +430,30 @@ export function TransactionRow({
                   className={cn(
                     "inline-flex min-h-7 min-w-0 max-w-full items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold tracking-tight lg:min-h-8 lg:gap-1 lg:px-2 lg:py-1 lg:text-[13px]",
                     paymentStatus === "paid"
-                      ? "w-full justify-center border-green-300 bg-green-100/90 text-green-800 dark:border-green-400/40 dark:bg-green-400/15 dark:text-green-200 lg:w-fit lg:min-w-[10rem] lg:px-3"
-                      : "border-amber-300 bg-amber-100/90 text-amber-800 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-200",
+                      ? "w-full justify-center border-[#1FBF4F] bg-[#1FBF4F] text-white lg:w-fit lg:min-w-[10rem] lg:px-3"
+                      : paymentStatus === "overdue"
+                        ? "border-[#C62828] bg-[#C62828] text-white"
+                        : "border-[#FF9F0A] bg-[#FF9F0A] text-[#4A2A00]",
                   )}
                 >
                   {paymentStatus === "paid" ? (
                     <Check className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
+                  ) : paymentStatus === "overdue" ? (
+                    <AlertTriangle className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
                   ) : (
                     <Clock3 className="size-3 shrink-0 lg:size-3.5" strokeWidth={2.8} />
                   )}
-                  <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : "Pendente")}</span>
+                  <span className="truncate">{paymentLabel ?? (paymentStatus === "paid" ? "Pago" : paymentStatus === "overdue" ? "Vencida" : "Pendente")}</span>
                 </span>
               </button>
               {showPaymentDateOnCard && transaction.paymentDate && (
                 <span className="-mt-3 block whitespace-nowrap text-center text-[9px] font-semibold leading-4 text-glass-faint lg:-mt-2 lg:text-xs">
                   Pago em {shortDate(transaction.paymentDate)}
+                </span>
+              )}
+              {paymentStatus !== "paid" && dueDate && (
+                <span className={cn("-mt-3 block whitespace-nowrap text-center text-[9px] font-semibold leading-4 lg:-mt-2 lg:text-xs", paymentStatus === "overdue" ? "text-[#C62828] dark:text-red-300" : "text-glass-faint")}>
+                  {paymentStatus === "overdue" ? "Venceu" : "Vence"} em {shortDate(dueDate)}
                 </span>
               )}
             </div>
@@ -463,7 +463,7 @@ export function TransactionRow({
         {/* Observação: faixa de largura total */}
         {showDraftOnCard && (
           <div className="mt-1.5 overflow-hidden rounded-2xl bg-[#dfe4ff]/90 px-2.5 py-1.5 dark:bg-[#1c2542]/80 sm:mt-3 sm:px-3.5 sm:py-2.5">
-            <p className="text-[9px] font-medium text-glass-faint lg:text-xs">Observação</p>
+            <p className="text-[10px] font-extrabold text-[#935C49] dark:text-[#DBAC98] lg:text-[13px]">Observação</p>
             <p className="mt-0.5 line-clamp-2 whitespace-pre-line border-l-2 border-[#7C6FF2] pl-2 text-[11px] leading-4 text-glass-ink/85 dark:text-white/85 lg:pl-2.5 lg:text-[15px]">
               <SearchHighlight query={searchQuery}>{transaction.note}</SearchHighlight>
             </p>
@@ -478,7 +478,7 @@ export function TransactionRow({
       {swipeable && !selectable ? (
         <div
           className="relative isolate w-full min-w-0 max-w-full border-0 outline-none shadow-none ring-0 before:hidden after:hidden"
-          data-search-result-id={transaction.id}
+          data-search-result-id={searchResultId ?? transaction.id}
           data-search-match-result={searchQuery?.trim() ? "true" : undefined}
         >
           <div
@@ -552,10 +552,11 @@ export function TransactionRow({
                 closeSwipe();
               }
             }}
-            onTap={handleRowActivate}
+            onClick={handleRowActivate}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 handleRowActivate();
@@ -572,10 +573,11 @@ export function TransactionRow({
         <div
           role="button"
           tabIndex={0}
-          data-search-result-id={transaction.id}
+          data-search-result-id={searchResultId ?? transaction.id}
           data-search-match-result={searchQuery?.trim() ? "true" : undefined}
           onClick={handleRowActivate}
           onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               handleRowActivate();
@@ -592,9 +594,15 @@ export function TransactionRow({
       <AlertDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <AlertDialogContent className="glass-strong z-[80] max-w-[calc(100%-2rem)] rounded-2xl border-glass-ink/10 p-5 text-glass-ink dark:border-white/10 dark:text-white sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Alterar status?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {paymentStatus === "paid" ? (paymentLabel === "Fatura paga" ? "Reabrir fatura?" : "Reabrir lançamento?") : "Alterar status?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Deseja alterar o status para {paymentStatus === "paid" ? "Pendente" : "Pago"}?
+              {paymentStatus === "paid"
+                ? paymentLabel === "Fatura paga"
+                  ? "Deseja reabrir esta fatura e deixar suas compras em aberto?"
+                  : "Deseja reabrir este lançamento e deixá-lo em aberto?"
+                : "Deseja alterar o status para Pago?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:flex-row sm:justify-end">
@@ -605,7 +613,7 @@ export function TransactionRow({
               onClick={confirmStatusChange}
               className="rounded-xl bg-primary text-white hover:bg-primary/90"
             >
-              Confirmar
+              {paymentStatus === "paid" ? "Reabrir" : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

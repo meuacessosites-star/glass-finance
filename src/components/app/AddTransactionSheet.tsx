@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownLeft,
@@ -18,6 +19,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
+import { getCardBillingChoices, getTransactionBillingCycle, localDateKey, sanitizeInvoiceMonth } from "@/lib/card-billing";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
@@ -78,6 +84,7 @@ export type TransactionFormValues = {
   title: string;
   categoryId: string;
   date: string;
+  dueDate?: string;
   time: string;
   note: string;
   draftDisplay?: DraftDisplayMode;
@@ -90,6 +97,7 @@ export type TransactionFormValues = {
   paymentMethod: PaymentMethodId | "";
   cardMode: CardMode | "";
   cardId: string | null;
+  cardInvoiceMonth?: string;
   personId?: string | null;
   paymentStatus?: "paid" | "pending";
   paymentDate?: string;
@@ -181,6 +189,7 @@ export function AddTransactionSheet({
   /** ID do overlay pai quando o formulário é aberto dentro de outro fluxo. */
   overlayParentId?: string;
 }) {
+  const navigate = useNavigate();
   const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
   const overlay = useExclusiveOverlay({
     name: "add-transaction-sheet",
@@ -194,7 +203,8 @@ export function AddTransactionSheet({
   const [cents, setCents] = useState(0);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localDateKey());
+  const [dueDate, setDueDate] = useState("");
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [draftDisplay, setDraftDisplay] = useState<DraftDisplayMode>("hidden");
@@ -208,9 +218,18 @@ export function AddTransactionSheet({
   const [cardMode, setCardMode] = useState<CardMode | "">("");
   const [cardId, setCardId] = useState<string | null>(null);
   const selectedCard = cardId ? cards.find((card) => card.id === cardId) : undefined;
+  const isCreditExpense = type === "expense" && paymentMethod === "cartao" && cardMode === "credito";
+  const savedInvoiceMonth = isCreditExpense && initial?.cardId === cardId && initial?.date === date
+    ? sanitizeInvoiceMonth(initial.cardInvoiceMonth)
+    : undefined;
+  const billingCycle = isCreditExpense && selectedCard ? getTransactionBillingCycle({ date, cardInvoiceMonth: savedInvoiceMonth }, selectedCard) : null;
+  const billingChoices = isCreditExpense && selectedCard ? getCardBillingChoices(selectedCard, date) : null;
+  const [invoiceChoiceOpen, setInvoiceChoiceOpen] = useState(false);
+  const [invoiceChoiceMonth, setInvoiceChoiceMonth] = useState<string>();
+  const savedRef = useRef(false);
   const [personId, setPersonId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() => localDateKey());
   const [cardDisplayMode, setCardDisplayMode] = useState<"name" | "last4">("last4");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -233,10 +252,14 @@ export function AddTransactionSheet({
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open) return;
+    savedRef.current = false;
+    setInvoiceChoiceOpen(false);
+    setInvoiceChoiceMonth(undefined);
     setType("expense");
     setCents(0);
     setTitle("");
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(localDateKey());
+    setDueDate("");
     setTime("");
     setNote("");
     setDraftDisplay("hidden");
@@ -251,7 +274,7 @@ export function AddTransactionSheet({
     setCardId(null);
     setPersonId(null);
     setPaymentStatus("paid");
-    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentDate(localDateKey());
     setCardDisplayMode("last4");
     const fallback = categories.find((c) => !INCOME_IDS.has(c.id));
     setCategoryId(fallback?.id ?? categories[0]?.id ?? "outros");
@@ -269,16 +292,13 @@ export function AddTransactionSheet({
           ? initial.categoryId
           : fallback?.id ?? categories[0]?.id ?? "outros",
       );
-      setDate(initial.date || new Date().toISOString().slice(0, 10));
+      setDate(initial.date || localDateKey());
+      setDueDate(initial.dueDate ?? "");
       setTime(initial.time ?? "");
       setNote(initial.note ?? "");
       setDraftDisplay(initial.draftDisplay ?? "hidden");
       setAttachments(initial.attachments ?? []);
-      setRecurrence(
-        initial.paymentMethod === "cartao"
-          ? "parcelada"
-          : initial.recurrence ?? "unica",
-      );
+      setRecurrence(initial.recurrence ?? "unica");
       setFrequency(initial.frequency ?? "mensal");
       setDaysInterval(initial.daysInterval ?? 15);
       setInstallments(initial.installments ?? 2);
@@ -291,7 +311,7 @@ export function AddTransactionSheet({
       setPaymentDate(
         initial.paymentStatus === "pending"
           ? ""
-          : initial.paymentDate ?? initial.date ?? new Date().toISOString().slice(0, 10),
+          : initial.paymentDate ?? initial.date ?? localDateKey(),
       );
       setCardDisplayMode(initial.cardDisplayMode ?? "last4");
     }
@@ -394,41 +414,40 @@ export function AddTransactionSheet({
   const removeAttachment = (index: number) =>
     setAttachments((prev) => prev.filter((_, i) => i !== index));
 
-  const handleSave = () => {
-    if (!canSave) return;
+  const saveTransaction = (invoiceMonth?: string) => {
+    if (!canSave || savedRef.current) return;
+    if (billingChoices && ![billingChoices.current.month, billingChoices.next.month].includes(invoiceMonth ?? "")) return;
+    savedRef.current = true;
     const payload = {
       title: title.trim(),
       categoryId,
       amount: type === "expense" ? -cents / 100 : cents / 100,
       date,
+      dueDate: isCreditExpense ? undefined : dueDate || (paymentStatus === "pending" ? date : undefined),
       time: time || undefined,
       note: note.trim() || undefined,
       draftDisplay,
       attachments: attachments.length
         ? attachments.map((a) => a.src)
         : undefined,
-      recurrence:
-        paymentMethod === "cartao"
-          ? "parcelada"
-          : recurrence === "unica"
-            ? undefined
-            : recurrence,
+      recurrence: recurrence === "unica" ? undefined : recurrence,
       frequency: recurrence === "recorrente" ? frequency : undefined,
       frequencyInterval:
         recurrence === "recorrente" && frequency === "dias"
           ? daysInterval
           : undefined,
       installments:
-        recurrence === "parcelada" || paymentMethod === "cartao"
+        recurrence === "parcelada"
           ? installments
           : undefined,
       currentInstallment:
-        recurrence === "parcelada" || paymentMethod === "cartao"
+        recurrence === "parcelada"
           ? currentInstallment
           : undefined,
       paymentMethod: paymentMethod || undefined,
       cardId: cardId ?? undefined,
       cardMode: paymentMethod === "cartao" ? cardMode || undefined : undefined,
+      cardInvoiceMonth: isCreditExpense && selectedCard ? sanitizeInvoiceMonth(invoiceMonth) : undefined,
       personId: personId ?? undefined,
       paymentStatus,
       paymentDate: paymentStatus === "paid" ? paymentDate || date || undefined : undefined,
@@ -447,6 +466,19 @@ export function AddTransactionSheet({
       });
     }
     onClose();
+  };
+
+  const handleSave = () => {
+    if (!canSave || savedRef.current) return;
+    if (billingChoices) {
+      setInvoiceChoiceMonth(
+        savedInvoiceMonth && [billingChoices.current.month, billingChoices.next.month].includes(savedInvoiceMonth)
+          ? savedInvoiceMonth : undefined,
+      );
+      setInvoiceChoiceOpen(true);
+      return;
+    }
+    saveTransaction(savedInvoiceMonth);
   };
 
   return (
@@ -715,7 +747,7 @@ export function AddTransactionSheet({
               )}
 
               {/* Parcelada: total + current installment */}
-              {(recurrence === "parcelada" || paymentMethod === "cartao") && (
+              {(recurrence === "parcelada") && (
                 <div className="mt-3 grid grid-cols-2 gap-2.5">
                   <div>
                     <p className="mb-1.5 text-[12px] font-semibold text-glass-sub">
@@ -759,8 +791,8 @@ export function AddTransactionSheet({
                   setPaymentMethod(v);
                   if (v === "cartao") {
                     setCardMode("credito");
-                    setRecurrence("parcelada");
                     setCurrentInstallment(1);
+                    if (type === "expense") { setPaymentStatus("pending"); setPaymentDate(""); }
                   }
                   else {
                     setCardMode("");
@@ -768,11 +800,44 @@ export function AddTransactionSheet({
                   }
                 }}
                 cardMode={cardMode}
-                onCardModeChange={setCardMode}
+                onCardModeChange={(mode) => {
+                  setCardMode(mode);
+                  if (mode === "credito" && type === "expense") { setPaymentStatus("pending"); setPaymentDate(""); }
+                  if (mode === "debito") { setPaymentStatus("paid"); setPaymentDate(localDateKey()); }
+                }}
                 cardId={cardId}
-                onCardChange={setCardId}
+                onCardChange={(id) => {
+                  setCardId(id);
+                  if (id && isCreditExpense) { setPaymentStatus("pending"); setPaymentDate(""); }
+                }}
                 cards={cards}
               />
+              {isCreditExpense && selectedCard && (
+                <div className="glass glass-soft mt-3 rounded-2xl p-3" aria-live="polite">
+                  <p className="text-[12px] font-bold text-glass-ink">Fatura de {selectedCard.name}</p>
+                  {billingCycle ? <>
+                    <div className="mt-2 grid grid-cols-2 gap-3">
+                      <label className="min-w-0 text-[11px] font-semibold text-glass-sub">Fechamento
+                        <input aria-label="Fechamento da fatura" readOnly type="date" value={billingCycle.closingDate} className="mt-1 w-full rounded-xl bg-white/70 px-2 py-2 text-[13px] font-bold text-glass-ink [color-scheme:light]" />
+                      </label>
+                      <label className="min-w-0 text-[11px] font-semibold text-glass-sub">Vencimento
+                        <input aria-label="Vencimento da fatura" readOnly type="date" value={billingCycle.dueDate} className="mt-1 w-full rounded-xl bg-white/70 px-2 py-2 text-[13px] font-bold text-glass-ink [color-scheme:light]" />
+                      </label>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-glass-sub">
+                      {billingChoices
+                        ? savedInvoiceMonth
+                          ? "Fatura escolhida anteriormente. Ao salvar, você pode confirmar ou trocar entre a atual e a do próximo mês."
+                          : "Prévia do próximo mês. Esta compra é após o fechamento: ao salvar, escolha a fatura atual ou a do próximo mês."
+                        : "Datas preenchidas pelo cartão."}
+                      {" "}Os avisos seguem o fechamento e o vencimento da fatura escolhida, dentro do app.
+                    </p>
+                  </> : <>
+                    <p className="mt-2 text-[12px] text-glass-sub">Informe o fechamento e o vencimento deste cartão para calcular a fatura e gerar os avisos.</p>
+                    <button type="button" className="mt-2 min-h-10 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-white" onClick={() => { onClose(); navigate("/dashboard/cartoes", { state: { editCardId: selectedCard.id } }); }}>Configurar datas do cartão</button>
+                  </>}
+                </div>
+              )}
               {paymentMethod === "cartao" && cardId && (
                 <div className="mt-2.5 rounded-2xl bg-glass-ink/[0.04] p-2 dark:bg-white/[0.04]">
                   <p className="mb-1.5 px-1 text-[11px] font-semibold text-glass-sub">
@@ -823,7 +888,7 @@ export function AddTransactionSheet({
                       onClick={() => {
                         setPaymentStatus(option.id);
                         if (option.id === "paid") {
-                          setPaymentDate((current) => current || date || new Date().toISOString().slice(0, 10));
+                          setPaymentDate((current) => current || date || localDateKey());
                         } else {
                           setPaymentDate("");
                         }
@@ -854,7 +919,7 @@ export function AddTransactionSheet({
                       type="date"
                       value={paymentDate}
                       onChange={(e) => setPaymentDate(e.target.value)}
-                      max={new Date().toISOString().slice(0, 10)}
+                      max={localDateKey()}
                       className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
                     />
                   </label>
@@ -866,7 +931,7 @@ export function AddTransactionSheet({
             <div className="mt-6 grid grid-cols-2 gap-3">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                  Data
+                  {isCreditExpense ? "Data da compra" : "Data"}
                 </p>
                 <label className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
                   <CalendarDays className="size-4 shrink-0 text-glass-sub" />
@@ -874,7 +939,7 @@ export function AddTransactionSheet({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    max={new Date().toISOString().slice(0, 10)}
+                    max={localDateKey()}
                     className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
                   />
                 </label>
@@ -895,6 +960,17 @@ export function AddTransactionSheet({
                 </label>
               </div>
             </div>
+
+            {!isCreditExpense && paymentStatus === "pending" && (
+              <div className="mt-4">
+                <label className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub" htmlFor="transaction-due-date">Data de vencimento</label>
+                <div className="glass glass-soft mt-2 flex items-center gap-2.5 rounded-2xl px-3.5 py-3">
+                  <CalendarDays className="size-4 shrink-0 text-glass-sub" />
+                  <input id="transaction-due-date" type="date" required value={dueDate || date} onChange={(event) => setDueDate(event.target.value)} className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-glass-sub">Se esta data passar sem pagamento, o status muda automaticamente para Vencida.</p>
+              </div>
+            )}
 
             {/* Attachments */}
             <div className="mt-6">
@@ -1061,7 +1137,7 @@ export function AddTransactionSheet({
           {/* Footer */}
           <div className="px-5 pb-7 pt-2">
             {/* Parcelada: quanto fica cada parcela */}
-            {(recurrence === "parcelada" || paymentMethod === "cartao") && cents > 0 && (
+            {(recurrence === "parcelada") && cents > 0 && (
               <div className="glass glass-soft mb-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
                 <div>
                   <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
@@ -1109,6 +1185,58 @@ export function AddTransactionSheet({
               </button>
             )}
           </div>
+
+          <AlertDialog
+            open={invoiceChoiceOpen && !!billingChoices}
+            onOpenChange={setInvoiceChoiceOpen}
+            overlayParentId={overlay.overlayId}
+          >
+            <AlertDialogContent
+              overlayClassName="z-[90] backdrop-blur-sm"
+              className="z-[100] max-h-[90dvh] overflow-y-auto rounded-3xl border-white/60 bg-[#eef1fe] p-5 text-glass-ink dark:bg-[#0a1122] sm:max-w-md"
+            >
+              <AlertDialogHeader className="text-left">
+                <AlertDialogTitle>Em qual fatura deseja adicionar?</AlertDialogTitle>
+                <AlertDialogDescription className="text-glass-sub">
+                  A compra de {date.split("-").reverse().join("/")} é após o fechamento de {selectedCard?.name}
+                  {billingChoices && ` em ${billingChoices.current.closingDate.split("-").reverse().join("/")}`}.
+                  {" "}Escolha onde registrar esta despesa.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <fieldset className="grid gap-3">
+                <legend className="sr-only">Fatura da compra</legend>
+                {billingChoices && ([
+                  { label: "Fatura atual", cycle: billingChoices.current },
+                  { label: "Próximo mês", cycle: billingChoices.next },
+                ]).map(({ label, cycle }) => (
+                  <label key={cycle.month} className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors",
+                    invoiceChoiceMonth === cycle.month ? "border-primary bg-primary/10" : "border-glass-ink/15 bg-white/40 dark:bg-white/5",
+                  )}>
+                    <input
+                      type="radio"
+                      name="card-invoice-month"
+                      value={cycle.month}
+                      checked={invoiceChoiceMonth === cycle.month}
+                      onChange={() => setInvoiceChoiceMonth(cycle.month)}
+                      className="mt-1 size-5 shrink-0 accent-primary"
+                    />
+                    <span className="grid gap-1">
+                      <span className="text-[15px] font-bold">{label}</span>
+                      <span className="text-[13px] font-semibold">Vencimento: {cycle.dueDate.split("-").reverse().join("/")}</span>
+                      <span className="text-[12px] text-glass-sub">Fechamento: {cycle.closingDate.split("-").reverse().join("/")}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <AlertDialogFooter className="sm:flex-col">
+                <AlertDialogCancel className="min-h-11 w-full rounded-2xl">Voltar sem salvar</AlertDialogCancel>
+                <AlertDialogAction disabled={!invoiceChoiceMonth} onClick={() => saveTransaction(invoiceChoiceMonth)} className="min-h-11 w-full rounded-2xl">
+                  Confirmar e salvar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Seletor completo de categorias — bottom sheet com busca. NENHUM
               Fragment dentro do AnimatePresence: cada elemento é um filho
