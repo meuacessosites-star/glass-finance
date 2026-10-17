@@ -63,6 +63,52 @@ export function getTransactionBillingCycle(t: Pick<Transaction, "date" | "cardIn
 export function getTransactionInvoiceMonth(t: Pick<Transaction, "date" | "cardInvoiceMonth">, card?: Pick<AppCard, "closingDay" | "dueDay">): string {
   return sanitizeInvoiceMonth(t.cardInvoiceMonth) || (card && getCardBillingCycle(card, t.date)?.month) || t.date.slice(0, 7);
 }
+export function getInstallmentCount(transaction: Transaction): number {
+  return transaction.recurrence === "parcelada" && Number.isFinite(transaction.installments)
+    ? Math.min(48, Math.max(1, Math.round(transaction.installments!))) : 1;
+}
+export function getCurrentInstallment(transaction: Transaction): number {
+  return Number.isFinite(transaction.currentInstallment)
+    ? Math.min(getInstallmentCount(transaction), Math.max(1, Math.round(transaction.currentInstallment!))) : 1;
+}
+export type CardInvoicePart = { number: number; total: number; amount: number; month: string; dueDate?: string };
+/** Derive invoice parts without adding duplicate transactions to the cash ledger. */
+export function getTransactionInvoiceSchedule(transaction: Transaction, card?: Pick<AppCard, "closingDay" | "dueDay">): CardInvoicePart[] {
+  if (transaction.amount >= 0 || transaction.source === "loan" ||
+    !(transaction.cardMode === "credito" || transaction.paymentMethod === "credito") ||
+    !(transaction.paymentMethod === "cartao" || transaction.paymentMethod === "credito")) return [];
+  const firstMonth = sanitizeInvoiceMonth(getTransactionInvoiceMonth(transaction, card));
+  if (!firstMonth) return [];
+  const count = getInstallmentCount(transaction);
+  const totalCents = Math.round(Math.abs(transaction.amount) * 100);
+  const cents = Math.floor(totalCents / count), remainder = totalCents % count;
+  const [year, monthNumber] = firstMonth.split("-").map(Number);
+  return Array.from({ length: count }, (_, index) => {
+    const month = calendarDate(year, monthNumber - 1 + index, 1).slice(0, 7);
+    return { number: index + 1, total: count, amount: (cents + (index < remainder ? 1 : 0)) / 100,
+      month, dueDate: card ? getInvoiceDates(card, month)?.dueDate : undefined };
+  });
+}
+export function getTransactionInvoiceAmount(transaction: Transaction, card: AppCard, month: string): number {
+  return getTransactionInvoiceSchedule(transaction, card).find((part) => part.month === month)?.amount ?? 0;
+}
+export function getInvoicePartsInPeriod(transaction: Transaction, card: AppCard, month: string, fromDate?: string | null, untilDate?: string | null): CardInvoicePart[] {
+  return getTransactionInvoiceSchedule(transaction, card).filter((part) => {
+    if (!fromDate && !untilDate) return part.month === month;
+    const start = fromDate ?? `${month}-01`;
+    const [year, monthNumber] = month.split("-").map(Number);
+    const end = untilDate ?? calendarDate(year, monthNumber - 1, 31);
+    return !!part.dueDate && part.dueDate >= start && part.dueDate <= end;
+  });
+}
+export function getCurrentInvoiceMonth(transaction: Transaction, card?: AppCard): string {
+  return getTransactionInvoiceSchedule(transaction, card).find((part) => part.number === getCurrentInstallment(transaction))?.month
+    ?? getTransactionInvoiceMonth(transaction, card);
+}
+export function isInvoicePartPaid(transaction: Transaction, card: AppCard | undefined, part: CardInvoicePart, today = localDateKey()): boolean {
+  if (card && isInvoiceMarkedPaid(card, part.month, today.slice(0, 7))) return true;
+  return part.number === getCurrentInstallment(transaction) && transaction.paymentStatus === "paid";
+}
 export function isInvoiceMarkedPaid(card: AppCard, month: string, currentMonth = localDateKey().slice(0, 7)): boolean {
   if (typeof card.invoicePaidByMonth?.[month] === "boolean") return card.invoicePaidByMonth[month];
   return !Object.keys(card.invoicePaidByMonth ?? {}).length && month === currentMonth && card.invoicePaid === true;
@@ -77,15 +123,16 @@ export function getCardBillingReminders(cards: AppCard[], transactions: Transact
   for (const card of cards) {
     if (card.archived) continue;
     const purchases = transactions.filter((t) => t.cardId === card.id && isCreditCardExpense(t));
-    const months = new Set([...purchases.map((t) => getTransactionInvoiceMonth(t, card)), ...Object.keys(card.invoicePaymentsByMonth ?? {}), ...Object.keys(card.invoiceOverrideByMonth ?? {})]);
+    const entries = purchases.flatMap((transaction) => getTransactionInvoiceSchedule(transaction, card).map((part) => ({ transaction, part })));
+    const months = new Set([...entries.map(({ part }) => part.month), ...Object.keys(card.invoicePaymentsByMonth ?? {}), ...Object.keys(card.invoiceOverrideByMonth ?? {})]);
     for (const month of months) {
       const dates = getInvoiceDates(card, month);
       if (!dates || isInvoiceMarkedPaid(card, month, today.slice(0, 7))) continue;
-      const items = purchases.filter((t) => getTransactionInvoiceMonth(t, card) === month);
-      const gross = items.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      const items = entries.filter(({ part }) => part.month === month);
+      const gross = items.reduce((sum, { part }) => sum + part.amount, 0);
       const payment = card.invoicePaymentsByMonth?.[month];
       const total = card.invoiceOverrideByMonth?.[month] ?? Math.max(gross, payment?.totalAmount ?? 0);
-      const individuallyPaid = items.filter((t) => t.paymentStatus === "paid").reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      const individuallyPaid = items.filter(({ transaction, part }) => isInvoicePartPaid(transaction, card, part, today)).reduce((sum, { part }) => sum + part.amount, 0);
       const amount = Math.round((total - Math.max(individuallyPaid, payment?.paidAmount ?? 0)) * 100) / 100;
       if (amount <= 0) continue;
       reminders.push({ ...dates, id: `card-invoice-${card.id}-${month}`, cardId: card.id, cardName: card.name, last4: card.last4, amount,

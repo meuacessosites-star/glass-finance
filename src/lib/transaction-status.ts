@@ -1,6 +1,6 @@
 import type { AppCard, LoanReceivable } from "./app-store";
 import type { Transaction } from "./mock-data";
-import { getTransactionBillingCycle, getTransactionInvoiceMonth, isCreditCardExpense, isInvoiceMarkedPaid, localDateKey } from "./card-billing";
+import { getCurrentInvoiceMonth, getInvoiceDates, isCreditCardExpense, isInvoiceMarkedPaid, localDateKey } from "./card-billing";
 
 export type TransactionPaymentStatus = "paid" | "pending" | "overdue";
 export type PaymentStatusFilter = "all" | TransactionPaymentStatus;
@@ -21,7 +21,7 @@ export function getTransactionDueDate(transaction: Transaction, cards: AppCard[]
   if (transaction.source === "loan") return undefined;
   if (isCreditCardExpense(transaction)) {
     const card = cards.find((item) => item.id === transaction.cardId);
-    return card ? getTransactionBillingCycle(transaction, card)?.dueDate : undefined;
+    return card ? getInvoiceDates(card, getCurrentInvoiceMonth(transaction, card))?.dueDate : undefined;
   }
   // Older entries used their only date as the bill's due date.
   return sanitizeDueDate(transaction.dueDate) ?? sanitizeDueDate(transaction.date);
@@ -32,8 +32,9 @@ export function getTransactionPaymentStatus(transaction: Transaction, cards: App
   if (receivable?.status === "paid") return "paid";
   if (!receivable) {
     const card = isCreditCardExpense(transaction) ? cards.find((item) => item.id === transaction.cardId) : undefined;
-    if (card && isInvoiceMarkedPaid(card, getTransactionInvoiceMonth(transaction, card), today.slice(0, 7))) return "paid";
-    if (transaction.paymentStatus !== "pending") return "paid";
+    const month = getCurrentInvoiceMonth(transaction, card);
+    if (card && isInvoiceMarkedPaid(card, month, today.slice(0, 7))) return "paid";
+    if (transaction.paymentStatus === "paid" || (!isCreditCardExpense(transaction) && transaction.paymentStatus !== "pending")) return "paid";
   }
   const dueDate = getTransactionDueDate(transaction, cards, receivables);
   return dueDate && dueDate < today ? "overdue" : "pending";

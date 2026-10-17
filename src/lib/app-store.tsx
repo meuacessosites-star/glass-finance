@@ -1,5 +1,5 @@
 import { sanitizeDueDate } from "./transaction-status";
-import { setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
+import { openUnpaidPurchaseInvoices, recordInvoicePayment, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
 import {
@@ -1184,27 +1184,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setAllCardInvoiceStatus: (month, paid) =>
         patchActiveData((d) => d.cards.reduce((next, card) => setInvoicePaymentStatus(next, card.id, month, paid), d)),
       setCardInvoicePayment: (cardId, month, payment) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) => {
-            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
-            const totalAmount = Math.max(0, payment.totalAmount);
-            const paidAmount = Math.min(totalAmount, Math.max(0, payment.paidAmount));
-            const invoicePaid = paidAmount >= totalAmount && totalAmount > 0;
-            return {
-              ...card,
-              invoicePaymentsByMonth: {
-                ...(card.invoicePaymentsByMonth ?? {}),
-                [month]: { ...payment, totalAmount, paidAmount },
-              },
-              invoicePaidByMonth: {
-                ...(card.invoicePaidByMonth ?? {}),
-                [month]: invoicePaid,
-              },
-              invoicePaid: month === currentMonthKey ? invoicePaid : card.invoicePaid,
-            };
-          }),
-        })),
+        patchActiveData((d) => recordInvoicePayment(d, cardId, month, payment)),
       setCardInvoiceOverride: (cardId, month, amount) =>
         patchActiveData((d) => ({
           ...d,
@@ -1315,9 +1295,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             paymentMethod: "cartao",
             cardId,
             cardMode: "credito",
+            paymentStatus: "pending",
           };
           return {
-            ...d,
+            ...openUnpaidPurchaseInvoices(d, transaction),
             transactions: [transaction, ...d.transactions],
             notifications: d.notifications.map((x) =>
               x.id === id ? { ...x, status: "approved" as const } : x,
@@ -1434,14 +1415,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             showPaymentDateOnCard: data.showPaymentDateOnCard ?? true,
             cardDisplayMode: data.cardDisplayMode ?? "last4",
           };
-          const cards = isCreditCardExpense(transaction) && paymentStatus === "pending"
-            ? d.cards.map((card) => {
-                if (card.id !== transaction.cardId) return card;
-                const month = getTransactionInvoiceMonth(transaction, card);
-                return { ...card, invoicePaidByMonth: { ...(card.invoicePaidByMonth ?? {}), [month]: false },
-                  invoicePaid: month === currentMonthKey ? false : card.invoicePaid };
-              })
-            : d.cards;
+          const cards = openUnpaidPurchaseInvoices(d, transaction).cards;
           return { ...d, cards, transactions: [transaction, ...d.transactions] };
         }),
       setTransactionPaymentStatus: (id, status) =>
@@ -1477,14 +1451,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           const updatedCard = d.cards.find((card) => card.id === updated?.cardId);
           const movedPendingPurchase = previous && updated && isCreditCardExpense(updated) && updated.paymentStatus === "pending" &&
             (previous.cardId !== updated.cardId || previous.paymentStatus !== "pending" ||
+              previous.amount !== updated.amount || previous.recurrence !== updated.recurrence || previous.installments !== updated.installments ||
               getTransactionInvoiceMonth(previous, previousCard) !== getTransactionInvoiceMonth(updated, updatedCard));
           const cards = movedPendingPurchase && updatedCard
-            ? d.cards.map((card) => {
-                if (card.id !== updatedCard.id) return card;
-                const month = getTransactionInvoiceMonth(updated, card);
-                return { ...card, invoicePaidByMonth: { ...(card.invoicePaidByMonth ?? {}), [month]: false },
-                  invoicePaid: month === currentMonthKey ? false : card.invoicePaid };
-              })
+            ? openUnpaidPurchaseInvoices(d, updated).cards
             : d.cards;
           return { ...d, cards, transactions };
         }),
