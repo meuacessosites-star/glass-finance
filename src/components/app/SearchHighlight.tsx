@@ -167,12 +167,14 @@ export function SearchNavigationControls({
   activeIndex,
   onPrevious,
   onNext,
+  className,
 }: {
   query?: string;
   resultCount: number;
   activeIndex: number;
   onPrevious: () => void;
   onNext: () => void;
+  className?: string;
 }) {
   if (!query?.trim()) return null;
 
@@ -182,7 +184,7 @@ export function SearchNavigationControls({
     : 0;
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5" aria-label="Navegação pelos resultados">
+    <div className={cn("flex shrink-0 items-center gap-0.5", className)} aria-label="Navegação pelos resultados">
       <span className="mr-0.5 min-w-[2.75rem] text-center text-[10px] font-semibold tabular-nums text-glass-faint">
         {visibleIndex}/{resultCount}
       </span>

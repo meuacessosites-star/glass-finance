@@ -31,8 +31,6 @@ export default function InsightsPage() {
     visibleTransactions,
     reserves,
     goals,
-    loanReceivables,
-    people,
     financings,
     notifications,
   } = useAppStore();
@@ -61,7 +59,6 @@ export default function InsightsPage() {
 
   const topCategory = byCategory[0];
   const reservesTotal = reserves.reduce((s, r) => s + r.amount, 0);
-  const pendingReceivables = loanReceivables.reduce((s, l) => s + l.amount, 0);
   const pendingNotifications = notifications.filter(
     (n) => n.status === "pending",
   ).length;
@@ -84,11 +81,10 @@ export default function InsightsPage() {
     if (reservesTotal > 0) s += 10;
     if (completedGoals > 0) s += 5;
     else if (goals.length > 0) s += 3;
-    if (pendingReceivables > 0) s += 4;
     if (financings.length > 0) s -= 2;
     if (financingProgress) s += 4;
     return Math.max(0, Math.min(100, s));
-  }, [savingsRate, reservesTotal, completedGoals, goals.length, pendingReceivables, financings.length, financingProgress]);
+  }, [savingsRate, reservesTotal, completedGoals, goals.length, financings.length, financingProgress]);
 
   const scoreLabel =
     score >= 80 ? "Excelente 🎉" : score >= 60 ? "Boa 💪" : score >= 40 ? "Atenção ⚠️" : "Precisa de ajustes 🔧";
@@ -179,17 +175,6 @@ export default function InsightsPage() {
       });
     }
 
-    if (pendingReceivables > 0) {
-      list.push({
-        tone: "info",
-        title: `${formatCurrency(pendingReceivables)} a receber`,
-        text:
-          people.length > 0
-            ? "Você tem valores a receber de empréstimos — use a aba Pessoas para cobrar pelo WhatsApp com um toque."
-            : "Você tem valores a receber de empréstimos. Adicione as pessoas na aba Pessoas para cobrar com um toque.",
-      });
-    }
-
     if (pendingNotifications > 0) {
       list.push({
         tone: "info",
@@ -205,7 +190,7 @@ export default function InsightsPage() {
     });
 
     return list;
-  }, [expense, income, monthName, savingsPct, savingsRate, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingReceivables, people.length, pendingNotifications, firstName]);
+  }, [expense, income, monthName, savingsPct, savingsRate, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingNotifications, firstName]);
 
   return (
     <div className="space-y-4">

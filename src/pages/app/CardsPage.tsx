@@ -1,3 +1,4 @@
+import { getTransactionInvoiceAmount, isCreditCardExpense, isInvoiceMarkedPaid } from "@/lib/card-billing";
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
@@ -265,6 +266,7 @@ export default function CardsPage() {
     transactions,
     activeProfile,
     addCard,
+    setCardInvoiceStatus,
     updateCard,
     deleteCard,
   } = useAppStore();
@@ -272,14 +274,10 @@ export default function CardsPage() {
   const activeCards = cards.filter((card) => !card.archived);
   const openAmountByCard = transactions.reduce<Record<string, number>>(
     (totals, transaction) => {
-      if (
-        transaction.amount < 0 &&
-        transaction.cardMode === "credito" &&
-        transaction.cardId &&
-        transaction.date.startsWith(currentMonthKey)
-      ) {
-        totals[transaction.cardId] =
-          (totals[transaction.cardId] ?? 0) + Math.abs(transaction.amount);
+      const card = cards.find((item) => item.id === transaction.cardId);
+      if (card && isCreditCardExpense(transaction)) {
+        totals[card.id] =
+          (totals[card.id] ?? 0) + getTransactionInvoiceAmount(transaction, card, currentMonthKey);
       }
       return totals;
     },
@@ -430,7 +428,7 @@ export default function CardsPage() {
         {activeCards.map((card) => (
             <CardVisual
             key={card.id}
-            card={card}
+            card={{ ...card, invoicePaid: isInvoiceMarkedPaid(card, currentMonthKey) }}
             openAmount={openAmountByCard[card.id] ?? 0}
             onEdit={() => handleEdit(card)}
             onDelete={() => {
@@ -439,8 +437,8 @@ export default function CardsPage() {
               toast("Cartão removido");
             }}
             onToggleInvoice={() => {
-              const nextPaid = card.invoicePaid !== true;
-              updateCard(card.id, { invoicePaid: nextPaid });
+              const nextPaid = !isInvoiceMarkedPaid(card, currentMonthKey);
+              setCardInvoiceStatus(card.id, currentMonthKey, nextPaid);
               toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
             }}
           />

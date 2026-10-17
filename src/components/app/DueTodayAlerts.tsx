@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
-import { getDueTodayAlerts, localDateKey } from "@/lib/due-today";
+import { getDueTodayAlerts } from "@/lib/due-today";
+import { useLocalDate } from "@/hooks/use-local-date";
 
 export function DueTodayAlerts() {
   const navigate = useNavigate();
   const { activeProfile, cards, visibleTransactions, loanReceivables } = useAppStore();
-  const today = localDateKey();
+  const today = useLocalDate();
 
   const dueToday = useMemo(
     () => getDueTodayAlerts(cards, visibleTransactions, loanReceivables),
-    [cards, loanReceivables, visibleTransactions],
+    [cards, loanReceivables, visibleTransactions, today],
   );
 
   const alertKey = useMemo(
@@ -42,13 +43,13 @@ export function DueTodayAlerts() {
     const visibleItems = dueToday.slice(0, 3).map((item) => item.label).join(" • ");
     const remaining = dueToday.length - 3;
     toast.warning(
-      `${dueToday.length} pendência${dueToday.length === 1 ? "" : "s"} vence hoje`,
+      `${dueToday.length} aviso${dueToday.length === 1 ? "" : "s"} de pagamento`,
       {
         description: `${visibleItems}${remaining > 0 ? ` • +${remaining} outra${remaining === 1 ? "" : "s"}` : ""}`,
         duration: 9000,
         action: {
-          label: "Ver transações",
-          onClick: () => navigate("/dashboard/transacoes"),
+          label: "Ver avisos",
+          onClick: () => navigate("/dashboard/notificacoes"),
         },
       },
     );

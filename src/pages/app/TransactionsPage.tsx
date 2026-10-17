@@ -1,3 +1,8 @@
+import { getTransactionInvoiceMonth } from "@/lib/card-billing";
+import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
+import { countUnpaidTransactions, normalizeSearchText, selectTransactionView, transactionInPeriod } from "@/lib/transaction-view";
+import { useReportNavigationPendingCount } from "@/components/app/NavigationPendingContext";
+import { useLocalDate } from "@/hooks/use-local-date";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -19,6 +24,7 @@ import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { PreviousMonthDebtReminder } from "@/components/app/PreviousMonthDebtReminder";
 import {
   SearchHighlight,
   SearchNavigationControls,
@@ -33,9 +39,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAppStore, type LoanReceivable } from "@/lib/app-store";
+import { useAppStore } from "@/lib/app-store";
 import {
-  currentMonthKey,
   dayLabel,
   formatCurrency,
   monthKey,
@@ -75,39 +80,13 @@ function formatDateLabel(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
-function transactionInPeriod(
-  transaction: Transaction,
-  selectedMonth: string,
-  untilDate?: string | null,
-  fromDate?: string | null,
-): boolean {
-  const startDate = fromDate ?? `${selectedMonth}-01`;
-  const defaultEndDate = `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
-  const endDate = untilDate && untilDate >= startDate ? untilDate : defaultEndDate;
-  return transaction.date >= startDate && transaction.date <= endDate;
-}
-
 type PeriodMode = "current" | "month" | "custom";
-type PaymentStatusFilter = "all" | "paid" | "pending";
 
 function isCreditCardTransaction(transaction: Transaction): boolean {
   return (
     Boolean(transaction.cardId) &&
     (transaction.cardMode === "credito" || transaction.paymentMethod === "credito")
   );
-}
-
-function getTransactionPaymentStatus(
-  transaction: Transaction,
-  loanReceivables: LoanReceivable[],
-): Exclude<PaymentStatusFilter, "all"> {
-  if (transaction.id.startsWith("loan-receivable-")) {
-    const receivableId = transaction.id.replace("loan-receivable-", "");
-    const receivable = loanReceivables.find((item) => item.id === receivableId);
-    return receivable?.status === "open" ? "pending" : "paid";
-  }
-
-  return transaction.paymentStatus === "pending" ? "pending" : "paid";
 }
 
 type PeriodPickerProps = {
@@ -448,15 +427,10 @@ function PeriodPicker({
   );
 }
 
-function normalizeSearchText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR");
-}
-
 export default function TransactionsPage() {
   const navigate = useNavigate();
+  const today = useLocalDate();
+  const currentMonthKey = today.slice(0, 7);
   const {
     categories,
     visibleTransactions,
@@ -464,7 +438,6 @@ export default function TransactionsPage() {
     cards,
     setCardInvoiceStatus,
     setTransactionPaymentStatus,
-    markLoanReceivablesPaid,
     deleteTransactions,
   } = useAppStore();
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -492,51 +465,7 @@ export default function TransactionsPage() {
     [categories],
   );
 
-  const consolidatedTransactions = useMemo(() => {
-    const transactionIds = new Set(visibleTransactions.map((transaction) => transaction.id));
-    const syntheticReceivables: Transaction[] = loanReceivables
-      .filter(
-        (receivable) =>
-          !receivable.transactionId || !transactionIds.has(receivable.transactionId),
-      )
-      .map((receivable) => {
-        const installmentLabel =
-          receivable.installment && receivable.installments
-            ? `Parcela ${receivable.installment}/${receivable.installments}`
-            : undefined;
-        return {
-          id: `loan-receivable-${receivable.id}`,
-          title:
-            receivable.status === "open"
-              ? `A receber de ${receivable.contact}`
-              : `Recebimento de ${receivable.contact}`,
-          categoryId: categoryById.transferencias ? "transferencias" : "outros",
-          amount: Math.abs(receivable.amount),
-          date: receivable.dueDate ?? receivable.createdAt,
-          note: [
-            receivable.note,
-            receivable.description,
-            `Conta a receber de ${receivable.contact}`,
-            installmentLabel,
-            receivable.status === "open" ? "Dívida em aberto" : undefined,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-          draftDisplay: receivable.draftDisplay,
-          attachments: receivable.attachments,
-          paymentMethod: receivable.paymentMethod,
-          recurrence:
-            receivable.installment && receivable.installments
-              ? "parcelada"
-              : undefined,
-          installments: receivable.installments,
-          currentInstallment: receivable.installment,
-          source: "loan",
-        };
-      });
-
-    return [...visibleTransactions, ...syntheticReceivables];
-  }, [categoryById, loanReceivables, visibleTransactions]);
+  const consolidatedTransactions = visibleTransactions;
 
   const allMonths = useMemo(
     () =>
@@ -550,13 +479,15 @@ export default function TransactionsPage() {
       shiftMonth(currentMonthKey, 24 - index),
     );
     return [...new Set([...navigableMonths, ...allMonths])].sort((a, b) => b.localeCompare(a));
-  }, [allMonths]);
+  }, [allMonths, currentMonthKey]);
   const [month, setMonth] = useState<string>(currentMonthKey);
-  const selectedMonth = monthOptions.includes(month)
-    ? month
-    : monthOptions.includes(currentMonthKey)
-      ? currentMonthKey
-      : monthOptions[0] ?? currentMonthKey;
+  const selectedMonth = periodMode === "current" && selectedMonths.length === 0
+    ? currentMonthKey
+    : monthOptions.includes(month)
+      ? month
+      : monthOptions.includes(currentMonthKey)
+        ? currentMonthKey
+        : monthOptions[0] ?? currentMonthKey;
   const activeRangeStart = periodMode === "custom" && rangeStart ? rangeStart : null;
   const activeRangeEnd = periodMode === "custom" && rangeStart ? rangeEnd ?? rangeStart : null;
   const selectedPeriodLabel = activeRangeStart && activeRangeEnd
@@ -585,7 +516,7 @@ export default function TransactionsPage() {
   };
 
   const hasFilters = Boolean(
-    month !== currentMonthKey ||
+    selectedMonth !== currentMonthKey ||
       periodMode !== "current" ||
       rangeStart ||
       rangeEnd ||
@@ -627,39 +558,15 @@ export default function TransactionsPage() {
     );
   }, [availableCategories, categorySearchQuery]);
 
-  const filtered = useMemo(() => {
-    const normalizedQuery = normalizeSearchText(searchQuery.trim());
-    return consolidatedTransactions
-      .filter(
-        (transaction) =>
-          scope === "all" ||
-          (selectedMonths.length > 0
-            ? selectedMonths.includes(monthKey(transaction.date))
-            : transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart)),
-      )
-      .filter(
-        (transaction) =>
-          paymentStatus === "all" ||
-          getTransactionPaymentStatus(transaction, cards, loanReceivables) === paymentStatus,
-      )
-      .filter(
-        (transaction) =>
-          selectedCategories.length === 0 ||
-          selectedCategories.includes(transaction.categoryId),
-      )
-      .filter((transaction) => {
-        if (!normalizedQuery) return true;
-        const searchableText = normalizeSearchText(
-          `${transaction.title} ${transaction.note ?? ""}`,
-        );
-        return searchableText.includes(normalizedQuery);
-      })
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [
+  const filtered = useMemo(() => selectTransactionView(consolidatedTransactions, {
+    scope, selectedMonth, selectedMonths, fromDate: activeRangeStart, untilDate: activeRangeEnd,
+    paymentStatus, selectedCategories, searchQuery,
+  }, (transaction) => getTransactionPaymentStatus(transaction, cards, loanReceivables, today)), [
     cards,
     consolidatedTransactions,
     loanReceivables,
     paymentStatus,
+    today,
     scope,
     searchQuery,
     selectedCategories,
@@ -668,6 +575,7 @@ export default function TransactionsPage() {
     activeRangeStart,
     selectedMonth,
   ]);
+  useReportNavigationPendingCount("transactions", countUnpaidTransactions(filtered, (transaction) => getTransactionPaymentStatus(transaction, cards, loanReceivables, today)));
 
   const summaryTransactions = useMemo(
     () =>
@@ -692,16 +600,16 @@ export default function TransactionsPage() {
   const paidTotal = summaryTransactions
     .filter(
       (transaction) =>
-        getTransactionPaymentStatus(transaction, cards, loanReceivables) === "paid",
+        getTransactionPaymentStatus(transaction, cards, loanReceivables, today) === "paid",
     )
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
   const pendingTransactions = useMemo(
     () =>
       summaryTransactions.filter(
         (transaction) =>
-          getTransactionPaymentStatus(transaction, cards, loanReceivables) === "pending",
+          getTransactionPaymentStatus(transaction, cards, loanReceivables, today) !== "paid",
       ),
-    [cards, loanReceivables, summaryTransactions],
+    [cards, loanReceivables, summaryTransactions, today],
   );
   const pendingTotal = pendingTransactions.reduce(
     (sum, transaction) => sum + Math.abs(transaction.amount),
@@ -712,7 +620,7 @@ export default function TransactionsPage() {
     return pendingTransactions.reduce<Array<{ cardId: string; month: string }>>(
       (invoices, transaction) => {
         if (!isCreditCardTransaction(transaction) || !transaction.cardId) return invoices;
-        const month = monthKey(transaction.date);
+        const month = getTransactionInvoiceMonth(transaction, cards.find((card) => card.id === transaction.cardId));
         const key = `${transaction.cardId}:${month}`;
         if (!invoiceKeys.has(key)) {
           invoiceKeys.add(key);
@@ -722,24 +630,18 @@ export default function TransactionsPage() {
       },
       [],
     );
-  }, [pendingTransactions]);
-  const pendingLoanReceivableIds = useMemo(
-    () =>
-      pendingTransactions
-        .filter((transaction) => transaction.id.startsWith("loan-receivable-"))
-        .map((transaction) => transaction.id.replace("loan-receivable-", "")),
-    [pendingTransactions],
-  );
+  }, [pendingTransactions, cards]);
   const pendingRegularTransactionIds = useMemo(
     () =>
       pendingTransactions
         .filter(
           (transaction) =>
             !transaction.id.startsWith("loan-receivable-") &&
+            !loanReceivables.some((item) => item.transactionId === transaction.id) &&
             !isCreditCardTransaction(transaction),
         )
         .map((transaction) => transaction.id),
-    [pendingTransactions],
+    [pendingTransactions, loanReceivables],
   );
   const categoryChartData = useMemo(() => {
     const totals = new Map<string, number>();
@@ -787,7 +689,6 @@ export default function TransactionsPage() {
     for (const transactionId of pendingRegularTransactionIds) {
       setTransactionPaymentStatus(transactionId, "paid");
     }
-    markLoanReceivablesPaid(pendingLoanReceivableIds);
     setPaymentStatus("all");
     setIsMarkingPending(false);
   };
@@ -909,6 +810,7 @@ export default function TransactionsPage() {
         className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3 pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pt-4 lg:pb-36"
       >
         <div className="flex flex-col gap-3 lg:gap-4">
+      <PreviousMonthDebtReminder today={today} referenceMonth={activeRangeStart?.slice(0, 7) ?? (selectedMonths.length ? [...selectedMonths].sort()[0] : selectedMonth)} />
       <section className="glass rounded-2xl p-3 lg:p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] font-bold text-glass-ink dark:text-white lg:text-[15px]">
@@ -1080,7 +982,7 @@ export default function TransactionsPage() {
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
             onModeChange={(nextMode) => {
-              if (nextMode === "current") setMonth(currentMonthKey);
+              setMonth(nextMode === "current" ? currentMonthKey : selectedMonth);
               setSelectedMonths([]);
               setPeriodMode(nextMode);
             }}
@@ -1101,6 +1003,7 @@ export default function TransactionsPage() {
               { id: "all", label: "Todos" },
               { id: "paid", label: "Pagos" },
               { id: "pending", label: "Pendentes" },
+              { id: "overdue", label: "Vencidas" },
             ] as const
           ).map((option) => (
             <button
@@ -1122,11 +1025,12 @@ export default function TransactionsPage() {
       </div>
 
       {/* Search and category filter */}
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="glass flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-3 py-2 lg:px-3.5 lg:py-2.5">
-          <Search className="size-4 shrink-0 text-glass-faint" />
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="glass grid min-h-11 min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-2xl px-3 sm:grid-cols-[1rem_minmax(0,1fr)_auto_auto] lg:px-3.5">
+          <Search className="col-start-1 row-start-1 size-4 shrink-0 text-glass-faint" />
           <input
             type="search"
+            enterKeyHint="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -1137,7 +1041,7 @@ export default function TransactionsPage() {
             }}
             placeholder="Buscar transações e anotações..."
             aria-label="Buscar transações"
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-glass-ink outline-none placeholder:text-glass-faint lg:text-[15px]"
+            className="col-start-2 row-start-1 h-11 w-full min-w-0 bg-transparent text-[16px] text-glass-ink outline-none placeholder:text-glass-faint sm:text-[15px] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:appearance-none"
           />
           <SearchNavigationControls
             query={searchQuery}
@@ -1145,13 +1049,14 @@ export default function TransactionsPage() {
             activeIndex={activeSearchResultIndex}
             onPrevious={goToPreviousSearchResult}
             onNext={goToNextSearchResult}
+            className="col-span-full row-start-2 justify-end border-t border-glass-ink/10 dark:border-white/10 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:border-t-0"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
               aria-label="Limpar busca"
-              className="flex size-11 shrink-0 items-center justify-center rounded-lg text-glass-faint transition-colors hover:text-glass-ink"
+              className="col-start-3 row-start-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-glass-faint transition-colors hover:text-glass-ink sm:col-start-4"
             >
               <X className="size-4" />
             </button>
@@ -1340,36 +1245,27 @@ export default function TransactionsPage() {
               {list.map((transaction) => {
                 const status = getTransactionPaymentStatus(
                   transaction,
+                  cards,
                   loanReceivables,
+                  today,
                 );
                 const creditCardPurchase = isCreditCardTransaction(transaction);
-                const isLoanReceivable = transaction.id.startsWith("loan-receivable-");
                 const paymentLabel =
                   creditCardPurchase && status === "paid"
                     ? "Fatura paga"
-                    : status === "paid"
-                      ? "Pago"
-                      : "Pendente";
-                const paymentActionLabel = isLoanReceivable
-                  ? status === "pending"
-                    ? "Marcar recebido"
-                    : undefined
-                  : creditCardPurchase
-                    ? status === "paid"
-                      ? "Reabrir fatura"
-                      : "Pagar fatura"
-                    : status === "paid"
-                      ? "Marcar pendente"
-                      : "Marcar como pago";
+                    : status === "overdue"
+                      ? "Vencida"
+                      : status === "paid"
+                        ? "Pago"
+                        : "Pendente";
+                const paymentActionLabel = creditCardPurchase
+                  ? status === "paid"
+                    ? "Reabrir fatura"
+                    : "Pagar fatura"
+                  : status === "paid"
+                    ? "Marcar pendente"
+                    : "Marcar como pago";
                 const handlePaymentAction = () => {
-                  if (isLoanReceivable) {
-                    if (status === "pending") {
-                      markLoanReceivablesPaid([
-                        transaction.id.replace("loan-receivable-", ""),
-                      ]);
-                    }
-                    return;
-                  }
                   setTransactionPaymentStatus(
                     transaction.id,
                     status === "paid" ? "pending" : "paid",
@@ -1390,11 +1286,7 @@ export default function TransactionsPage() {
                     selectable={selectMode}
                     selected={selectedIds.has(transaction.id)}
                     onSelect={toggleSelectedTransaction}
-                    onEdit={
-                      isLoanReceivable
-                        ? undefined
-                        : () => handleEditTransaction(transaction)
-                    }
+                    onEdit={() => handleEditTransaction(transaction)}
                   />
                 );
               })}

@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "format": "prettier --write .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:billing": "node scripts/test-billing.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

@@ -4,10 +4,12 @@ import { Link } from "react-router";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { PreviousMonthDebtReminder } from "@/components/app/PreviousMonthDebtReminder";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocalDate } from "@/hooks/use-local-date";
+import { getDueTodayAlerts } from "@/lib/due-today";
 import { useAppStore } from "@/lib/app-store";
 import {
-  currentMonthKey,
   formatCurrency,
   monthLabel,
   monthShortLabel,
@@ -16,8 +18,10 @@ import {
 } from "@/lib/mock-data";
 
 export default function HomePage() {
+  const today = useLocalDate();
+  const currentMonthKey = today.slice(0, 7);
   const { user } = useAuth();
-  const { activeProfile, visibleTransactions, reserves, reservesInBalance, notifications } =
+  const { activeProfile, cards, visibleTransactions, loanReceivables, reserves, reservesInBalance, notifications } =
     useAppStore();
 
   const { income, expense } = monthTotals(visibleTransactions, currentMonthKey);
@@ -36,7 +40,7 @@ export default function HomePage() {
     user?.name?.trim().split(" ")[0] ||
     "pessoa";
   const savingsPct = 12;
-  const pendingCount = notifications.filter((n) => n.status === "pending").length;
+  const pendingCount = notifications.filter((n) => n.status === "pending").length + getDueTodayAlerts(cards, visibleTransactions, loanReceivables).length;
 
   return (
     <div className="space-y-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
@@ -68,6 +72,8 @@ export default function HomePage() {
         <ThemeToggle />
       </motion.header>
 
+      <PreviousMonthDebtReminder today={today} />
+
       {/* Balance hero */}
       <motion.section
         initial={{ opacity: 0, y: 14 }}
@@ -84,7 +90,7 @@ export default function HomePage() {
                 {reservesInBalance ? "Saldo atual" : "Saldo disponível"}
               </p>
               <span className="rounded-full bg-white/50 px-2.5 py-1 text-[11px] font-semibold text-glass-sub">
-                {monthShortLabel(currentMonthKey)} de 2026
+                {monthShortLabel(currentMonthKey)} de {currentMonthKey.slice(0, 4)}
               </span>
             </div>
             <p className="amount-tabular mt-2 text-[38px] font-bold leading-none tracking-tight text-glass-ink">

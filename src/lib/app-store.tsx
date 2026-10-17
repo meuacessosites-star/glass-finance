@@ -1,3 +1,7 @@
+import { sanitizeDueDate } from "./transaction-status";
+import { openUnpaidPurchaseInvoices, recordInvoicePayment, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
+import { selectTransactionLedgers } from "./transaction-ledgers";
+import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
 import {
   createContext,
   useContext,
@@ -175,6 +179,7 @@ export type AppProfile = {
 export type PinUsage = "switch" | "open";
 
 type AppStoreState = {
+  exampleDataVersion?: number;
   profiles: AppProfile[];
   activeProfileId: string;
   pinUsage: PinUsage;
@@ -549,11 +554,11 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
     });
 }
 
-function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] {
+export function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] {
   if (!Array.isArray(v)) return seedTransactions.map((t) => ({ ...t }));
   const list = v
     .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
-    .map((t) => {
+    .map((t): Transaction => {
       const recurrenceRaw =
         typeof t.recurrence === "string" ? t.recurrence : "";
       const recurrence: Transaction["recurrence"] =
@@ -616,7 +621,11 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
       const card = normalizedCardId
         ? cards.find((item) => item.id === normalizedCardId)
         : undefined;
-      const invoiceMonth = normalizedDate.slice(0, 7);
+      const cardInvoiceMonth = isLegacyCardPurchase && (t.paymentMethod === "cartao" || t.paymentMethod === "credito") &&
+        typeof t.amount === "number" && t.amount < 0 && t.source !== "loan"
+        ? sanitizeInvoiceMonth(t.cardInvoiceMonth)
+        : undefined;
+      const invoiceMonth = getTransactionInvoiceMonth({ date: normalizedDate, cardInvoiceMonth }, card);
       const legacyInvoicePaid = Boolean(
         card?.invoicePaidByMonth?.[invoiceMonth] ??
           (invoiceMonth === currentMonthKey ? card?.invoicePaid : false),
@@ -640,6 +649,7 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
           ? t.amount
           : 0,
       date: normalizedDate,
+      dueDate: sanitizeDueDate(t.dueDate),
       time:
         typeof t.time === "string" && /^\d{2}:\d{2}/.test(t.time)
           ? t.time.slice(0, 5)
@@ -682,6 +692,7 @@ function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] 
       cardDisplayMode: t.cardDisplayMode === "name" ? "name" : "last4",
       cardId: normalizedCardId,
       cardMode: normalizedCardMode,
+      cardInvoiceMonth,
       personId:
         typeof t.personId === "string" && t.personId.trim()
           ? t.personId.trim().slice(0, 80)
@@ -812,6 +823,7 @@ function loadState(): AppStoreState {
     return {
       profiles,
       activeProfileId,
+      exampleDataVersion: Number((parsed as Record<string, unknown> | null)?.exampleDataVersion) || 0,
       pinUsage:
         (parsed as Record<string, unknown> | null)?.pinUsage === "switch"
           ? "switch"
@@ -848,6 +860,8 @@ type AppStoreValue = {
   categories: AppCategory[];
   cards: AppCard[];
   transactions: Transaction[];
+  /** Movimentações e recebimentos exibidos somente no extrato de empréstimos. */
+  loanTransactions: Transaction[];
   loanReceivables: LoanReceivable[];
   people: AppPerson[];
   reserves: AppReserve[];
@@ -956,6 +970,7 @@ type AppStoreValue = {
     amount: number;
     date: string;
     time?: string;
+    dueDate?: string;
     note?: string;
     attachments?: string[];
     recurrence?: "unica" | "recorrente" | "parcelada";
@@ -966,6 +981,7 @@ type AppStoreValue = {
     paymentMethod?: string;
     cardId?: string;
     cardMode?: "credito" | "debito";
+    cardInvoiceMonth?: string;
     personId?: string;
     paymentStatus?: "paid" | "pending";
     paymentDate?: string;
@@ -983,6 +999,7 @@ type AppStoreValue = {
         | "categoryId"
         | "amount"
         | "date"
+        | "dueDate"
         | "time"
         | "note"
         | "draftDisplay"
@@ -995,6 +1012,7 @@ type AppStoreValue = {
         | "paymentMethod"
         | "cardId"
         | "cardMode"
+        | "cardInvoiceMonth"
         | "personId"
         | "paymentStatus"
         | "paymentDate"
@@ -1102,9 +1120,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         }
       }
     }
+    const { regularTransactions, loanTransactions } = selectTransactionLedgers(activeData.transactions, activeData.loanReceivables);
     const visibleTransactions: Transaction[] = [
       ...financingTransactions,
-      ...activeData.transactions,
+      ...regularTransactions,
     ];
 
     return {
@@ -1114,7 +1133,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       activeProfile: active,
       categories: activeData.categories,
       cards: activeData.cards,
-      transactions: activeData.transactions,
+      transactions: regularTransactions,
+      loanTransactions,
       visibleTransactions,
       loanReceivables: activeData.loanReceivables,
       people: activeData.people,
@@ -1160,61 +1180,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           ),
         })),
       setCardInvoiceStatus: (cardId, month, paid) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) => {
-            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
-            const invoicePaidByMonth = {
-              ...(card.invoicePaidByMonth ?? {}),
-              [month]: paid,
-            };
-            return {
-              ...card,
-              invoicePaidByMonth,
-              invoicePaid:
-                month === currentMonthKey ? paid : card.invoicePaid,
-            };
-          }),
-        })),
+        patchActiveData((d) => setInvoicePaymentStatus(d, cardId, month, paid)),
       setAllCardInvoiceStatus: (month, paid) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) => {
-            if (!/^\d{4}-\d{2}$/.test(month)) return card;
-            const invoicePaidByMonth = {
-              ...(card.invoicePaidByMonth ?? {}),
-              [month]: paid,
-            };
-            return {
-              ...card,
-              invoicePaidByMonth,
-              invoicePaid:
-                month === currentMonthKey ? paid : card.invoicePaid,
-            };
-          }),
-        })),
+        patchActiveData((d) => d.cards.reduce((next, card) => setInvoicePaymentStatus(next, card.id, month, paid), d)),
       setCardInvoicePayment: (cardId, month, payment) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) => {
-            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
-            const totalAmount = Math.max(0, payment.totalAmount);
-            const paidAmount = Math.min(totalAmount, Math.max(0, payment.paidAmount));
-            const invoicePaid = paidAmount >= totalAmount && totalAmount > 0;
-            return {
-              ...card,
-              invoicePaymentsByMonth: {
-                ...(card.invoicePaymentsByMonth ?? {}),
-                [month]: { ...payment, totalAmount, paidAmount },
-              },
-              invoicePaidByMonth: {
-                ...(card.invoicePaidByMonth ?? {}),
-                [month]: invoicePaid,
-              },
-              invoicePaid: month === currentMonthKey ? invoicePaid : card.invoicePaid,
-            };
-          }),
-        })),
+        patchActiveData((d) => recordInvoicePayment(d, cardId, month, payment)),
       setCardInvoiceOverride: (cardId, month, amount) =>
         patchActiveData((d) => ({
           ...d,
@@ -1325,9 +1295,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             paymentMethod: "cartao",
             cardId,
             cardMode: "credito",
+            paymentStatus: "pending",
           };
           return {
-            ...d,
+            ...openUnpaidPurchaseInvoices(d, transaction),
             transactions: [transaction, ...d.transactions],
             notifications: d.notifications.map((x) =>
               x.id === id ? { ...x, status: "approved" as const } : x,
@@ -1415,6 +1386,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           }
           const p = (parsed ?? {}) as Record<string, unknown>;
           const next: AppStoreState = {
+            exampleDataVersion: 2,
             profiles,
             activeProfileId:
               typeof p.activeProfileId === "string" &&
@@ -1435,43 +1407,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         }
       },
       addTransaction: (data) =>
-        patchActiveData((d) => ({
-          ...d,
-          transactions: [
-            {
-              ...data,
-              id: uid("t"),
-              paymentStatus: data.paymentStatus ?? "paid",
-              paymentDate:
-                data.paymentStatus === "pending"
-                  ? undefined
-                  : data.paymentDate ?? new Date().toISOString().slice(0, 10),
-              showPaymentDateOnCard: data.showPaymentDateOnCard ?? true,
-              cardDisplayMode: data.cardDisplayMode ?? "last4",
-            },
-            ...d.transactions,
-          ],
-        })),
+        patchActiveData((d) => {
+          const paymentStatus = data.paymentStatus ?? (isCreditCardExpense(data) ? "pending" : "paid");
+          const transaction: Transaction = {
+            ...data, id: uid("t"), paymentStatus,
+            paymentDate: paymentStatus === "pending" ? undefined : data.paymentDate ?? localDateKey(),
+            showPaymentDateOnCard: data.showPaymentDateOnCard ?? true,
+            cardDisplayMode: data.cardDisplayMode ?? "last4",
+          };
+          const cards = openUnpaidPurchaseInvoices(d, transaction).cards;
+          return { ...d, cards, transactions: [transaction, ...d.transactions] };
+        }),
       setTransactionPaymentStatus: (id, status) =>
-        patchActiveData((d) => ({
-          ...d,
-          transactions: d.transactions.map((transaction) =>
-            transaction.id === id && transaction.source !== "loan"
-              ? {
-                  ...transaction,
-                  paymentStatus: status,
-                  paymentDate:
-                    status === "paid"
-                      ? new Date().toISOString().slice(0, 10)
-                      : undefined,
-                }
-              : transaction,
-          ),
-        })),
+        patchActiveData((d) => setTransactionPaymentState(d, id, status)),
       updateTransaction: (id, patch) =>
-        patchActiveData((d) => ({
-          ...d,
-          transactions: d.transactions.map((transaction) => {
+        patchActiveData((d) => {
+          const previous = d.transactions.find((transaction) => transaction.id === id);
+          const transactions = d.transactions.map((transaction) => {
             if (transaction.id !== id || transaction.source === "loan") return transaction;
             const nextPaymentStatus = patch.paymentStatus ?? transaction.paymentStatus ?? "paid";
             const nextPaymentDate =
@@ -1493,8 +1445,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               showPaymentDateOnCard: nextShowPaymentDateOnCard,
               cardDisplayMode: nextCardDisplayMode,
             };
-          }),
-        })),
+          });
+          const updated = transactions.find((transaction) => transaction.id === id);
+          const previousCard = d.cards.find((card) => card.id === previous?.cardId);
+          const updatedCard = d.cards.find((card) => card.id === updated?.cardId);
+          const movedPendingPurchase = previous && updated && isCreditCardExpense(updated) && updated.paymentStatus === "pending" &&
+            (previous.cardId !== updated.cardId || previous.paymentStatus !== "pending" ||
+              previous.amount !== updated.amount || previous.recurrence !== updated.recurrence || previous.installments !== updated.installments ||
+              getTransactionInvoiceMonth(previous, previousCard) !== getTransactionInvoiceMonth(updated, updatedCard));
+          const cards = movedPendingPurchase && updatedCard
+            ? openUnpaidPurchaseInvoices(d, updated).cards
+            : d.cards;
+          return { ...d, cards, transactions };
+        }),
       deleteTransaction: (id) =>
         patchActiveData((d) => ({
           ...d,
@@ -1529,7 +1492,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => {
           const loanId = uid("loan");
           const createdAt = new Date().toISOString().slice(0, 10);
-          const operationType = data.operationType === "card" ? "card" : "loan";
+          const operationType: LoanOperationType = data.operationType === "card" ? "card" : "loan";
           const operationLabel = operationType === "card" ? "Cartão emprestado" : "Empréstimo";
           const collectionLabel =
             data.collectionMode === "fixed"

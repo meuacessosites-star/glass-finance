@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
+import { NavigationPendingProvider } from "@/components/app/NavigationPendingContext";
 import { AddMenu } from "@/components/app/AddMenu";
 import { AddTransactionSheet } from "@/components/app/AddTransactionSheet";
 import { LoanTransactionSheet } from "@/components/app/LoanTransactionSheet";
@@ -129,9 +130,11 @@ function DashboardShell() {
 export default function Dashboard() {
   return (
     <AppStoreProvider>
+      <NavigationPendingProvider>
       <SidebarProvider>
         <DashboardShell />
       </SidebarProvider>
+      </NavigationPendingProvider>
     </AppStoreProvider>
   );
 }

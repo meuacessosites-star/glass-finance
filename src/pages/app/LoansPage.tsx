@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Banknote, CreditCard } from "lucide-react";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { useReportNavigationPendingCount } from "@/components/app/NavigationPendingContext";
 import { useAppStore } from "@/lib/app-store";
 import {
   cardLoans,
@@ -184,7 +185,7 @@ function CardLoanRow({ loan }: { loan: CardLoanRowData }) {
 
 export default function LoansPage() {
   const [tab, setTab] = useState<Tab>("dinheiro");
-  const { loanReceivables, transactions } = useAppStore();
+  const { loanReceivables, loanTransactions: transactions } = useAppStore();
   const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
   const draftMetaFor = (item: (typeof loanReceivables)[number]): DraftMeta => {
     const relatedTransaction =
@@ -210,7 +211,7 @@ export default function LoansPage() {
       amount: item.amount,
       date: item.dueDate ?? item.createdAt,
       ...draftMetaFor(item),
-      status: "pendente",
+      status: item.status === "paid" ? "pago" : "pendente",
       direction: "receber",
       dateLabel:
         item.status === "open"
@@ -240,8 +241,10 @@ export default function LoansPage() {
       status: item.status === "paid" ? "pago" : "ativo",
       nextDue: item.dueDate ?? item.createdAt,
     }));
-  const activeCards = [...cardLoans, ...recordedCardLoans].filter((c) => c.status === "ativo");
+  const allCardLoans = [...recordedCardLoans, ...cardLoans];
+  const activeCards = allCardLoans.filter((c) => c.status === "ativo");
   const activeCardTotal = activeCards.reduce((s, c) => s + c.amount, 0);
+  useReportNavigationPendingCount("loans", tab === "cartao" ? activeCards.length : [...receivable, ...payable].filter((loan) => loan.status === "pendente").length);
 
   return (
     <div className="space-y-4">
@@ -352,7 +355,7 @@ export default function LoansPage() {
               Compras no meu cartão
             </p>
             <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
-              {cardLoans.map((loan) => (
+              {allCardLoans.map((loan) => (
                 <CardLoanRow key={loan.id} loan={loan} />
               ))}
             </div>

@@ -1,8 +1,12 @@
-import { Bell, Check, RotateCcw, X } from "lucide-react";
+import { Bell, CalendarDays, Check, RotateCcw, X } from "lucide-react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { getCardBillingReminders } from "@/lib/card-billing";
+import { useLocalDate } from "@/hooks/use-local-date";
+import { getDueTodayAlerts } from "@/lib/due-today";
 
 const bankColors: Record<string, string> = {
   Nubank: "#AF52DE",
@@ -16,7 +20,12 @@ const bankColors: Record<string, string> = {
 const fallbackCategory = { label: "Outros", color: "#8E8E93" };
 
 export default function NotificationsPage() {
+  const navigate = useNavigate();
+  useLocalDate();
   const {
+    cards,
+    visibleTransactions,
+    loanReceivables,
     notifications,
     categoryById,
     approveNotification,
@@ -28,10 +37,38 @@ export default function NotificationsPage() {
   const approved = notifications.filter((n) => n.status === "approved").length;
   const ignored = notifications.filter((n) => n.status === "ignored").length;
   const processed = approved + ignored;
+  const cardReminders = getCardBillingReminders(cards, visibleTransactions);
+  const otherDue = getDueTodayAlerts(cards, visibleTransactions, loanReceivables).filter((item) => item.kind !== "invoice");
 
   return (
     <div className="space-y-4">
       <SettingsHeader title="Notificações" />
+      <section className="space-y-3" aria-label="Avisos das faturas">
+        <div className="px-1">
+          <h2 className="text-[16px] font-bold text-glass-ink">Faturas dos cartões</h2>
+          <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">Avisos pelo fechamento e vencimento de cada cartão. Atualizados ao abrir o app e enquanto ele estiver aberto.</p>
+        </div>
+        {cardReminders.length === 0 ? <p className="glass rounded-2xl px-4 py-4 text-[13px] text-glass-sub">Nenhuma fatura pendente com datas cadastradas.</p> : cardReminders.map((item) => (
+          <article key={item.id} className="glass rounded-3xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-bold text-glass-ink">{item.cardName} ···· {item.last4}</p>
+                <p className="mt-1 text-[12px] font-semibold text-glass-sub">Fechamento {shortDate(item.closingDate)} · Vencimento {shortDate(item.dueDate)}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${item.phase === "overdue" ? "bg-red-100 text-red-800" : item.phase === "due" ? "bg-[#FF9F0A] text-[#4A2A00]" : item.phase === "closing" ? "bg-blue-100 text-blue-900" : "bg-white/70 text-glass-sub"}`}>{item.phase === "overdue" ? "Em atraso" : item.phase === "due" ? "Vence hoje" : item.phase === "closing" ? "Fecha hoje" : "Agendada"}</span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="amount-tabular text-[18px] font-bold text-glass-ink">{formatCurrency(item.amount)}</p>
+              <button className="flex min-h-10 items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-[12px] font-bold text-primary" onClick={() => navigate("/dashboard/compras-cartao", { state: { cardId: item.cardId, invoiceMonth: item.month } })}><CalendarDays className="size-4" />Ver fatura</button>
+            </div>
+          </article>
+        ))}
+      </section>
+      {otherDue.length > 0 && <section className="space-y-2" aria-label="Outros vencimentos">
+        <h2 className="px-1 text-[16px] font-bold text-glass-ink">Contas a vencer hoje e vencidas</h2>
+        {otherDue.map((item) => <button key={item.id} onClick={() => navigate(item.kind === "loan" ? "/dashboard/emprestimos" : "/dashboard/transacoes")} className="glass flex min-h-12 w-full items-center gap-3 rounded-2xl p-3 text-left text-[12px] font-semibold text-glass-ink"><Bell className="size-4 shrink-0 text-primary" />{item.label}</button>)}
+      </section>}
+      <h2 className="px-1 pt-2 text-[16px] font-bold text-glass-ink">Compras para revisar</h2>
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Avisos de compra dos bancos — filtre, revise e aprove para virar
         transação no cartão.

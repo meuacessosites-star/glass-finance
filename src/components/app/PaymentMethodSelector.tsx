@@ -1,6 +1,7 @@
 import { Banknote, Barcode, CreditCard, QrCode, Send, Wallet } from "lucide-react";
-import type { AppCard } from "@/lib/app-store";
+import { useAppStore, type AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { cardPaymentStyle, cardPaymentTone, paymentMethodTone } from "@/lib/payment-method-theme";
 import { HorizontalScroll } from "./HorizontalScroll";
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,9 @@ export function PaymentMethodSelector({
   cards: AppCard[];
 }) {
   const expanded = value === "cartao";
+  const { categories } = useAppStore();
+  const selectedCard = cards.find((card) => card.id === cardId);
+  const selectedCardStyle = selectedCard ? cardPaymentStyle(selectedCard.color, categories.map((category) => category.color)) : undefined;
 
   return (
     <div>
@@ -100,14 +104,18 @@ export function PaymentMethodSelector({
             <button
               key={m.id}
               type="button"
+              aria-pressed={selected}
+              style={m.id === "cartao" ? selectedCardStyle : undefined}
               onClick={() => {
                 onValueChange(m.id);
                 if (m.id !== "cartao") onCardChange(null);
-              }}                className={cn(
-                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 text-[12px] font-semibold transition-all active:scale-95 sm:px-3.5 sm:text-[12.5px]",
+              }}
+              className={cn(
+                  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-2 text-[12px] font-semibold transition-all active:scale-95 sm:px-3.5 sm:text-[12.5px]",
+                  m.id === "cartao" && selectedCardStyle ? cardPaymentTone : paymentMethodTone(m.id),
                   selected
-                    ? "bg-primary text-white shadow-[0_6px_16px_-6px_rgba(47,107,255,0.5)]"
-                    : "glass text-glass-sub",
+                    ? "ring-2 ring-current ring-offset-2 ring-offset-transparent shadow-sm"
+                    : "hover:brightness-95",
                 )}
             >
               <Icon className="size-3.5" strokeWidth={2.4} />

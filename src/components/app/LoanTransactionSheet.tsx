@@ -22,7 +22,8 @@ import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
-import type { DraftDisplayMode, PaymentMethodId } from "@/lib/mock-data";
+import type { DraftDisplayMode } from "@/lib/mock-data";
+import type { PaymentMethodId } from "./PaymentMethodSelector";
 import { PersonSelector } from "./PersonSelector";
 import { HorizontalScroll } from "./HorizontalScroll";
 
