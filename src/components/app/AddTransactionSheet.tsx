@@ -219,7 +219,7 @@ export function AddTransactionSheet({
   const [cardId, setCardId] = useState<string | null>(null);
   const selectedCard = cardId ? cards.find((card) => card.id === cardId) : undefined;
   const isCreditExpense = type === "expense" && paymentMethod === "cartao" && cardMode === "credito";
-  const savedInvoiceMonth = isCreditExpense && initial?.cardId === cardId && initial?.date === date
+  const savedInvoiceMonth = isCreditExpense && initial?.cardId === cardId
     ? sanitizeInvoiceMonth(initial.cardInvoiceMonth)
     : undefined;
   const billingCycle = isCreditExpense && selectedCard ? getTransactionBillingCycle({ date, cardInvoiceMonth: savedInvoiceMonth }, selectedCard) : null;

@@ -117,6 +117,8 @@ export function TransactionRow({
   onEdit,
   searchQuery,
   searchResultId,
+  displayAmount,
+  displayInstallment,
 }: {
   transaction: Transaction;
   showDate?: boolean;
@@ -131,6 +133,8 @@ export function TransactionRow({
   onEdit?: () => void;
   searchQuery?: string;
   searchResultId?: string;
+  displayAmount?: number;
+  displayInstallment?: number;
 }) {
   const { categoryById, cards, loanReceivables, deleteTransaction, showCategoryNameOnCard } = useAppStore();
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
@@ -145,7 +149,7 @@ export function TransactionRow({
     category.label.length > 12 ? "5px" : category.label.length > 8 ? "6px" : "7px";
   const titleNeedsMobileWrap = transaction.title.trim().length > 22;
   const paymentPresentation = getPaymentPresentation(transaction, cards, Object.values(categoryById).map((item) => item.color));
-  const formattedAmount = formatCurrency(transaction.amount);
+  const formattedAmount = formatCurrency(displayAmount ?? transaction.amount);
   const amountTextSizeClass =
     formattedAmount.length > 15
       ? "text-[11px] lg:text-[18px]"
@@ -156,7 +160,7 @@ export function TransactionRow({
   const hasAttachments = (transaction.attachments?.length ?? 0) > 0;
   const installmentLabel =
     transaction.recurrence === "parcelada"
-      ? `${transaction.currentInstallment ?? 1}/${transaction.installments ?? 2}`
+      ? `${displayInstallment ?? transaction.currentInstallment ?? 1}/${transaction.installments ?? 2}`
       : transaction.recurrence === "recorrente"
         ? frequencyLabel(transaction.frequency, transaction.frequencyInterval)
         : null;
