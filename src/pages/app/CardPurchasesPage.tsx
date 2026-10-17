@@ -34,7 +34,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router";
-import { getInvoiceDates, getTransactionInvoiceMonth, isInvoiceMarkedPaid } from "@/lib/card-billing";
+import { getInvoiceDates, getInvoicePartsInPeriod, getTransactionInvoiceSchedule, isInvoiceMarkedPaid } from "@/lib/card-billing";
 import { CardBrandMark } from "@/components/app/CardBrandMark";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { TransactionRow } from "@/components/app/TransactionRow";
@@ -93,11 +93,15 @@ function transactionInPeriod(
   fromDate?: string | null,
   card?: AppCard,
 ): boolean {
-  if (!untilDate && !fromDate && card) return getTransactionInvoiceMonth(transaction, card) === selectedMonth;
+  if (card) return getInvoicePartsInPeriod(transaction, card, selectedMonth, fromDate, untilDate).length > 0;
   const startDate = fromDate ?? `${selectedMonth}-01`;
   const defaultEndDate = `${selectedMonth}-${String(lastDayOfMonth(selectedMonth)).padStart(2, "0")}`;
   const endDate = untilDate && untilDate >= startDate ? untilDate : defaultEndDate;
   return transaction.date >= startDate && transaction.date <= endDate;
+}
+
+function invoiceAmountInPeriod(transaction: Transaction, card: AppCard, month: string, fromDate?: string | null, untilDate?: string | null): number {
+  return getInvoicePartsInPeriod(transaction, card, month, fromDate, untilDate).reduce((sum, part) => sum + part.amount, 0);
 }
 
 type PeriodMode = "current" | "month" | "custom";
@@ -806,8 +810,9 @@ function CardAnalyticsModal({
   const monthlyData = useMemo(() => {
     const totals = new Map<string, number>();
     for (const transaction of cardTransactions) {
-      const key = monthKey(transaction.date);
-      totals.set(key, (totals.get(key) ?? 0) + Math.abs(transaction.amount));
+      for (const part of getTransactionInvoiceSchedule(transaction, card)) {
+        totals.set(part.month, (totals.get(part.month) ?? 0) + part.amount);
+      }
     }
     const months = [...new Set([currentMonthKey, ...totals.keys()])]
       .sort((a, b) => a.localeCompare(b))
@@ -817,7 +822,7 @@ function CardAnalyticsModal({
       value: totals.get(key) ?? 0,
       key,
     }));
-  }, [cardTransactions]);
+  }, [cardTransactions, card]);
   const isCategoryChart = kind === "categoryChart";
 
   return (
@@ -1339,7 +1344,7 @@ export default function CardPurchasesPage() {
     return [
       ...new Set([
         ...navigableMonths,
-        ...cardTransactions.map((transaction) => getTransactionInvoiceMonth(transaction, cards.find((card) => card.id === transaction.cardId))),
+        ...cardTransactions.flatMap((transaction) => getTransactionInvoiceSchedule(transaction, cards.find((card) => card.id === transaction.cardId)).map((part) => part.month)),
         ...invoiceHistoryMonths,
       ]),
     ].sort((a, b) => b.localeCompare(a));
@@ -1404,7 +1409,7 @@ export default function CardPurchasesPage() {
               transaction.cardId === card.id &&
               transactionInPeriod(transaction, selectedMonth, activeRangeEnd, activeRangeStart, card),
           )
-          .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
+          .reduce((total, transaction) => total + invoiceAmountInPeriod(transaction, card, selectedMonth, activeRangeStart, activeRangeEnd), 0);
         return totals;
       }, {}),
     [activeRangeEnd, activeRangeStart, cards, cardTransactions, selectedMonth],
@@ -1464,7 +1469,7 @@ export default function CardPurchasesPage() {
       transactionSearchScope === "all",
   );
   const selectedCardTotal = selectedCardTransactions.reduce(
-    (total, transaction) => total + Math.abs(transaction.amount),
+    (total, transaction) => total + (selectedCard ? invoiceAmountInPeriod(transaction, selectedCard, selectedMonth, activeRangeStart, activeRangeEnd) : 0),
     0,
   );
   const invoiceMetricsFor = (card: AppCard) => {
@@ -1506,19 +1511,7 @@ export default function CardPurchasesPage() {
   };
 
   const handleReopenInvoice = (card: AppCard) => {
-    const grossAmount = openAmountByCard[card.id] ?? 0;
-    const totalAmount = invoiceTotalFor(card, selectedMonth, grossAmount, activeRangeEnd);
-    const payment = invoicePaymentFor(card, selectedMonth);
-    if (payment && payment.paidAmount >= totalAmount) {
-      setCardInvoicePayment(card.id, selectedMonth, {
-        ...payment,
-        totalAmount,
-        paidAmount: 0,
-        paymentDate: new Date().toISOString().slice(0, 10),
-      });
-    } else {
-      setCardInvoiceStatus(card.id, selectedMonth, false);
-    }
+    setCardInvoiceStatus(card.id, selectedMonth, false);
     toast("Fatura reaberta");
   };
 
@@ -1902,6 +1895,8 @@ export default function CardPurchasesPage() {
                 <TransactionRow
                   key={transaction.id}
                   transaction={transaction}
+                  displayAmount={transactionSearchScope === "month" ? -invoiceAmountInPeriod(transaction, selectedCard, selectedMonth, activeRangeStart, activeRangeEnd) : undefined}
+                  displayInstallment={transactionSearchScope === "month" ? getInvoicePartsInPeriod(transaction, selectedCard, selectedMonth, activeRangeStart, activeRangeEnd)[0]?.number : undefined}
                   searchQuery={transactionSearch}
                 />
               ))}

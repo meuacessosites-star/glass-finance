@@ -1,4 +1,4 @@
-import { getTransactionInvoiceMonth, isInvoiceMarkedPaid } from "@/lib/card-billing";
+import { getTransactionInvoiceAmount, isCreditCardExpense, isInvoiceMarkedPaid } from "@/lib/card-billing";
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
@@ -274,14 +274,10 @@ export default function CardsPage() {
   const activeCards = cards.filter((card) => !card.archived);
   const openAmountByCard = transactions.reduce<Record<string, number>>(
     (totals, transaction) => {
-      if (
-        transaction.amount < 0 &&
-        transaction.cardMode === "credito" &&
-        transaction.cardId &&
-        getTransactionInvoiceMonth(transaction, cards.find((card) => card.id === transaction.cardId)) === currentMonthKey
-      ) {
-        totals[transaction.cardId] =
-          (totals[transaction.cardId] ?? 0) + Math.abs(transaction.amount);
+      const card = cards.find((item) => item.id === transaction.cardId);
+      if (card && isCreditCardExpense(transaction)) {
+        totals[card.id] =
+          (totals[card.id] ?? 0) + getTransactionInvoiceAmount(transaction, card, currentMonthKey);
       }
       return totals;
     },
