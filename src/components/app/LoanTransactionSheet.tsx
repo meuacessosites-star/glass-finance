@@ -18,6 +18,11 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { sanitizeDueDate } from "@/lib/transaction-status";
+import { localDateKey } from "@/lib/card-billing";
+import { getCardLoanSchedule } from "@/lib/card-loans";
+import { CardLoanBillingFields } from "./CardLoanBillingFields";
+import { scheduledLoanDueDates } from "@/lib/loan-repayments";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
@@ -62,40 +67,6 @@ function formatDate(date: string) {
   return `${day}/${month}/${year}`;
 }
 
-function daysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function isoForMonth(year: number, month: number, dueDay: number) {
-  const day = Math.min(dueDay, daysInMonth(year, month));
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function scheduledDueDates(baseDate: string, dueDay: number, installments: number) {
-  const [year, month, day] = baseDate.split("-").map(Number);
-  if (!year || !month || !day) return [];
-
-  let firstMonth = month - 1;
-  let firstYear = year;
-  const firstDate = isoForMonth(firstYear, firstMonth, dueDay);
-  if (firstDate < baseDate) {
-    firstMonth += 1;
-    if (firstMonth === 12) {
-      firstMonth = 0;
-      firstYear += 1;
-    }
-  }
-
-  return Array.from({ length: installments }, (_, index) => {
-    const absoluteMonth = firstMonth + index;
-    return isoForMonth(
-      firstYear + Math.floor(absoluteMonth / 12),
-      absoluteMonth % 12,
-      dueDay,
-    );
-  });
-}
-
 /**
  * Registra valores disponibilizados a terceiros e acompanha a devolução.
  * A saída acontece imediatamente; as devoluções ficam como contas a receber
@@ -108,7 +79,7 @@ export function LoanTransactionSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { createLoanRecord, categories } = useAppStore();
+  const { createLoanRecord, categories, cards } = useAppStore();
   const overlay = useExclusiveOverlay({
     name: "loan-transaction-sheet",
     open,
@@ -116,7 +87,9 @@ export function LoanTransactionSheet({
       if (!nextOpen) onClose();
     },
   });
-  const people = useQuery(api.people.list) as Array<{ _id: string; name: string }> | undefined;
+  const people = useQuery(api.people.list) as
+    | Array<{ _id: string; name: string }>
+    | undefined;
   const [cents, setCents] = useState(0);
   const [operationType, setOperationType] = useState<OperationType>("loan");
   const [personId, setPersonId] = useState<string | null>(null);
@@ -128,9 +101,24 @@ export function LoanTransactionSheet({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>("pix");
   const [collectionMode, setCollectionMode] = useState<CollectionMode>("fixed");
+  const [freePaymentMode, setFreePaymentMode] = useState<
+    "installments" | "flexible"
+  >("flexible");
+  const [freeInstallmentCents, setFreeInstallmentCents] = useState(0);
   const [installments, setInstallments] = useState(1);
   const [dueDay, setDueDay] = useState(() => new Date().getDate());
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localDateKey());
+  const [cardId, setCardId] = useState("");
+  const [invoiceMonth, setInvoiceMonth] = useState<string | undefined>();
+  const effectiveCollectionMode =
+    operationType === "card" ? "fixed" : collectionMode;
+  const cardSchedule = getCardLoanSchedule(
+    cards.find((card) => card.id === cardId),
+    date,
+    cents / 100,
+    installments,
+    invoiceMonth,
+  );
 
   const amountLabel = useMemo(() => formatAmount(cents), [cents]);
   const contact = people?.find((person) => person._id === personId)?.name ?? "";
@@ -139,17 +127,37 @@ export function LoanTransactionSheet({
     categories.find((category) => category.id === "outros")?.id ??
     categories[0]?.id ??
     "outros";
-  const canSave = cents > 0 && Boolean(personId) && contact.trim().length > 0;
   const dueDates = useMemo(
     () =>
-      collectionMode === "fixed"
-        ? scheduledDueDates(date, dueDay, installments)
-        : [],
-    [collectionMode, date, dueDay, installments],
+      operationType === "card"
+        ? cardSchedule.map((part) => part.dueDate)
+        : effectiveCollectionMode === "fixed"
+          ? scheduledLoanDueDates(date, dueDay, installments)
+          : [],
+    [
+      operationType,
+      effectiveCollectionMode,
+      cardSchedule,
+      date,
+      dueDay,
+      installments,
+    ],
   );
-  const installmentCents = installments > 0 ? Math.floor(cents / installments) : 0;
+  const canSave =
+    cents > 0 &&
+    Boolean(sanitizeDueDate(date)) &&
+    date <= localDateKey() &&
+    Boolean(personId) &&
+    contact.trim().length > 0 &&
+    (effectiveCollectionMode === "open"
+      ? freePaymentMode === "flexible" ||
+        (freeInstallmentCents > 0 && freeInstallmentCents <= cents)
+      : dueDates.length === installments && cents >= installments);
+  const installmentCents =
+    installments > 0 ? Math.floor(cents / installments) : 0;
   const remainderCents = installments > 0 ? cents % installments : 0;
-  const operationLabel = operationType === "card" ? "Cartão emprestado" : "Empréstimo";
+  const operationLabel =
+    operationType === "card" ? "Cartão emprestado" : "Empréstimo";
   const operationDescription =
     operationType === "card"
       ? "Registre uma compra feita no seu cartão para alguém"
@@ -168,10 +176,14 @@ export function LoanTransactionSheet({
     setDraftDisplay("hidden");
     setAttachments([]);
     setPaymentMethod("pix");
+    setCardId("");
+    setInvoiceMonth(undefined);
     setCollectionMode("fixed");
+    setFreePaymentMode("flexible");
+    setFreeInstallmentCents(0);
     setInstallments(1);
     setDueDay(new Date().getDate());
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(localDateKey());
   };
 
   const handleClose = () => {
@@ -208,7 +220,9 @@ export function LoanTransactionSheet({
   };
 
   const removeAttachment = (index: number) => {
-    setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setAttachments((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
   };
 
   const handleSave = () => {
@@ -238,21 +252,29 @@ export function LoanTransactionSheet({
       note: normalizedNote,
       draftDisplay,
       attachments,
-      collectionMode,
-      receivables: collectionMode === "fixed" ? receivables : undefined,
+      collectionMode: effectiveCollectionMode,
+      cardId: operationType === "card" ? cardId : undefined,
+      cardInvoiceMonth: cardSchedule[0]?.invoiceMonth,
+      installments,
+      freePaymentMode:
+        effectiveCollectionMode === "open" ? freePaymentMode : undefined,
+      suggestedPaymentAmount:
+        effectiveCollectionMode === "open" && freePaymentMode === "installments"
+          ? freeInstallmentCents / 100
+          : undefined,
+      receivables:
+        effectiveCollectionMode === "fixed" ? receivables : undefined,
     });
 
     toast(
-      collectionMode === "fixed"
+      effectiveCollectionMode === "fixed"
         ? `${operationLabel} e cobranças agendados`
         : `${operationLabel} em aberto registrado`,
       {
         description:
-          collectionMode === "fixed"
+          effectiveCollectionMode === "fixed"
             ? `${installments} conta${installments > 1 ? "s" : ""} a receber de ${normalizedContact}.`
-            : operationType === "card"
-              ? `A compra de ${normalizedContact} ficou registrada sem vencimento fixo.`
-              : `A devolução de ${normalizedContact} ficou registrada sem vencimento fixo.`,
+            : `A devolução de ${normalizedContact} ficou registrada sem vencimento fixo.`,
       },
     );
     handleClose();
@@ -277,7 +299,6 @@ export function LoanTransactionSheet({
               <p className="text-[12.5px] text-glass-sub">
                 {operationDescription}
               </p>
-
             </div>
             <button
               type="button"
@@ -290,10 +311,14 @@ export function LoanTransactionSheet({
           </div>
 
           <div className="glass glass-strong mx-5 mt-3 grid grid-cols-2 rounded-2xl p-1">
-            {([
+            {[
               { id: "loan" as const, label: "Empréstimo", Icon: Banknote },
-              { id: "card" as const, label: "Cartão emprestado", Icon: CreditCard },
-            ]).map(({ id, label, Icon }) => {
+              {
+                id: "card" as const,
+                label: "Cartão emprestado",
+                Icon: CreditCard,
+              },
+            ].map(({ id, label, Icon }) => {
               const selected = operationType === id;
               return (
                 <button
@@ -301,11 +326,14 @@ export function LoanTransactionSheet({
                   type="button"
                   onClick={() => {
                     setOperationType(id);
+                    if (id === "card") setCollectionMode("fixed");
                     setPaymentMethod(id === "card" ? "cartao" : "pix");
                   }}
                   className={cn(
                     "relative flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[12px] font-semibold transition-all",
-                    selected ? "bg-white text-primary shadow-sm" : "text-glass-sub",
+                    selected
+                      ? "bg-white text-primary shadow-sm"
+                      : "text-glass-sub",
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -318,14 +346,20 @@ export function LoanTransactionSheet({
           <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3">
             <div className="mt-3 text-center">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                {operationType === "card" ? "Valor da compra" : "Valor emprestado"}
+                {operationType === "card"
+                  ? "Valor da compra"
+                  : "Valor emprestado"}
               </p>
               <input
                 inputMode="numeric"
                 value={amountLabel}
                 onChange={(event) => handleAmount(event.target.value)}
                 placeholder="R$ 0,00"
-                aria-label={operationType === "card" ? "Valor da compra" : "Valor emprestado"}
+                aria-label={
+                  operationType === "card"
+                    ? "Valor da compra"
+                    : "Valor emprestado"
+                }
                 className="mt-1 w-full bg-transparent text-center text-[38px] font-bold tracking-tight text-[#FF3B30] outline-none"
               />
               <div className="mx-auto mt-2 h-0.5 w-16 rounded-full bg-primary/30" />
@@ -348,7 +382,8 @@ export function LoanTransactionSheet({
 
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                Descrição <span className="normal-case text-glass-faint">(opcional)</span>
+                Descrição{" "}
+                <span className="normal-case text-glass-faint">(opcional)</span>
               </p>
               <input
                 value={description}
@@ -365,7 +400,10 @@ export function LoanTransactionSheet({
 
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                Anexos <span className="normal-case text-glass-faint">(imagens, documentos ou outros arquivos)</span>
+                Anexos{" "}
+                <span className="normal-case text-glass-faint">
+                  (imagens, documentos ou outros arquivos)
+                </span>
               </p>
               <input
                 ref={imageInputRef}
@@ -389,10 +427,17 @@ export function LoanTransactionSheet({
                   onClick={() => imageInputRef.current?.click()}
                   className="glass flex min-h-[52px] min-w-0 items-center gap-2 rounded-2xl px-3 text-left text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
                 >
-                  <ImagePlus className="size-5 shrink-0 text-[#5E5CE6]" strokeWidth={2.2} />
+                  <ImagePlus
+                    className="size-5 shrink-0 text-[#5E5CE6]"
+                    strokeWidth={2.2}
+                  />
                   <span className="min-w-0">
-                    <span className="block truncate text-[11px] font-bold text-glass-ink">Adicionar imagem</span>
-                    <span className="block truncate text-[10px] font-medium text-glass-faint">Galeria ou câmera</span>
+                    <span className="block truncate text-[11px] font-bold text-glass-ink">
+                      Adicionar imagem
+                    </span>
+                    <span className="block truncate text-[10px] font-medium text-glass-faint">
+                      Galeria ou câmera
+                    </span>
                   </span>
                 </button>
                 <button
@@ -400,10 +445,17 @@ export function LoanTransactionSheet({
                   onClick={() => fileInputRef.current?.click()}
                   className="glass flex min-h-[52px] min-w-0 items-center gap-2 rounded-2xl px-3 text-left text-glass-sub transition-all hover:bg-white/60 active:scale-[0.98]"
                 >
-                  <FileText className="size-5 shrink-0 text-[#2F6BFF]" strokeWidth={2.2} />
+                  <FileText
+                    className="size-5 shrink-0 text-[#2F6BFF]"
+                    strokeWidth={2.2}
+                  />
                   <span className="min-w-0">
-                    <span className="block truncate text-[11px] font-bold text-glass-ink">Adicionar arquivo</span>
-                    <span className="block truncate text-[10px] font-medium text-glass-faint">PDF, Word, ZIP e outros</span>
+                    <span className="block truncate text-[11px] font-bold text-glass-ink">
+                      Adicionar arquivo
+                    </span>
+                    <span className="block truncate text-[10px] font-medium text-glass-faint">
+                      PDF, Word, ZIP e outros
+                    </span>
                   </span>
                 </button>
               </div>
@@ -412,8 +464,15 @@ export function LoanTransactionSheet({
                   <HorizontalScroll className="-mx-5 mt-2 gap-2 px-5 pb-0.5">
                     {attachments.map((attachment, index) =>
                       attachment.isImage ? (
-                        <div key={`${attachment.name}-${index}`} className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl">
-                          <img src={attachment.src} alt={attachment.name} className="size-full object-cover" />
+                        <div
+                          key={`${attachment.name}-${index}`}
+                          className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl"
+                        >
+                          <img
+                            src={attachment.src}
+                            alt={attachment.name}
+                            className="size-full object-cover"
+                          />
                           <button
                             type="button"
                             aria-label={`Remover ${attachment.name}`}
@@ -424,12 +483,17 @@ export function LoanTransactionSheet({
                           </button>
                         </div>
                       ) : (
-                        <div key={`${attachment.name}-${index}`} className="glass glass-soft flex h-[68px] w-[150px] shrink-0 flex-col justify-center rounded-2xl px-3">
+                        <div
+                          key={`${attachment.name}-${index}`}
+                          className="glass glass-soft flex h-[68px] w-[150px] shrink-0 flex-col justify-center rounded-2xl px-3"
+                        >
                           <div className="flex items-center gap-2">
                             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#2F6BFF]/15 text-[#2F6BFF]">
                               <FileText className="size-4" strokeWidth={2.3} />
                             </span>
-                            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-glass-ink">{attachment.name}</p>
+                            <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-glass-ink">
+                              {attachment.name}
+                            </p>
                             <button
                               type="button"
                               aria-label={`Remover ${attachment.name}`}
@@ -444,7 +508,8 @@ export function LoanTransactionSheet({
                     )}
                   </HorizontalScroll>
                   <p className="mt-1.5 flex items-center gap-1 text-[11.5px] text-glass-faint">
-                    <Paperclip className="size-3" /> {attachments.length} de 6 anexos
+                    <Paperclip className="size-3" /> {attachments.length} de 6
+                    anexos
                   </p>
                 </>
               )}
@@ -452,23 +517,33 @@ export function LoanTransactionSheet({
 
             <div className="mt-6">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                Rascunho <span className="normal-case text-glass-faint">(opcional)</span>
+                Rascunho{" "}
+                <span className="normal-case text-glass-faint">(opcional)</span>
               </p>
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder={operationType === "card" ? "Anotações sobre a compra…" : "Anotações sobre o empréstimo…"}
+                placeholder={
+                  operationType === "card"
+                    ? "Anotações sobre a compra…"
+                    : "Anotações sobre o empréstimo…"
+                }
                 maxLength={300}
                 rows={3}
-                className={cn(inputClass, "mt-2 min-h-[84px] resize-none leading-relaxed")}
+                className={cn(
+                  inputClass,
+                  "mt-2 min-h-[84px] resize-none leading-relaxed",
+                )}
               />
               <div className="mt-3">
-                <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">Exibição no card</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                  Exibição no card
+                </p>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {([
+                  {[
                     { id: "hidden" as const, label: "Ocultar no card" },
                     { id: "multipleMedia" as const, label: "Mostrar no card" },
-                  ]).map((option) => (
+                  ].map((option) => (
                     <button
                       key={option.id}
                       type="button"
@@ -476,7 +551,9 @@ export function LoanTransactionSheet({
                       onClick={() => setDraftDisplay(option.id)}
                       className={cn(
                         "rounded-2xl px-3 py-2.5 text-left text-[11.5px] font-semibold transition-all active:scale-[0.98]",
-                        draftDisplay === option.id ? "bg-primary text-white shadow-[0_6px_16px_-8px_rgba(47,107,255,0.8)]" : "glass glass-soft text-glass-sub",
+                        draftDisplay === option.id
+                          ? "bg-primary text-white shadow-[0_6px_16px_-8px_rgba(47,107,255,0.8)]"
+                          : "glass glass-soft text-glass-sub",
                       )}
                     >
                       {option.label}
@@ -486,114 +563,268 @@ export function LoanTransactionSheet({
               </div>
             </div>
 
-            <div className="mt-6">
-              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                {operationType === "card" ? "Cartão utilizado" : "Como o valor foi enviado?"}
-              </p>
-              <HorizontalScroll className="mt-2 w-full min-w-0 gap-2 px-1 py-1">
-                {paymentOptions.map(({ id, label, Icon }) => {
-                  const selected = paymentMethod === id;
-                  return (
+            {operationType === "card" ? (
+              <div className="mt-6">
+                <CardLoanBillingFields
+                  cards={cards}
+                  cardId={cardId}
+                  purchaseDate={date}
+                  invoiceMonth={invoiceMonth}
+                  installments={installments}
+                  onCardChange={(id) => {
+                    setCardId(id);
+                    setInvoiceMonth(undefined);
+                  }}
+                  onInvoiceChange={setInvoiceMonth}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="mt-6">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                    Como o valor foi enviado?
+                  </p>
+                  <HorizontalScroll className="mt-2 w-full min-w-0 gap-2 px-1 py-1">
+                    {paymentOptions.map(({ id, label, Icon }) => {
+                      const selected = paymentMethod === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setPaymentMethod(id)}
+                          className={cn(
+                            "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[12px] font-semibold transition-all sm:px-3",
+                            selected
+                              ? "bg-primary/10 text-primary ring-2 ring-primary/40"
+                              : "glass text-glass-sub",
+                          )}
+                        >
+                          <Icon className="size-3.5" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </HorizontalScroll>
+                </div>
+
+                <div className="mt-6">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                    Como a pessoa vai devolver o valor?
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl bg-black/5 p-1">
                     <button
-                      key={id}
                       type="button"
-                      onClick={() => setPaymentMethod(id)}
+                      onClick={() => setCollectionMode("fixed")}
                       className={cn(
-                        "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[12px] font-semibold transition-all sm:px-3",
-                        selected
-                          ? "bg-primary/10 text-primary ring-2 ring-primary/40"
-                          : "glass text-glass-sub",
+                        "flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1.5 py-2.5 text-[12px] font-semibold transition-all sm:gap-1.5 sm:px-2 sm:text-[12.5px]",
+                        effectiveCollectionMode === "fixed"
+                          ? "bg-white text-primary shadow-sm"
+                          : "text-glass-sub",
                       )}
                     >
-                      <Icon className="size-3.5" />
-                      {label}
+                      <Repeat2 className="size-4" />
+                      Fixo/Parcelado
                     </button>
-                  );
-                })}
-              </HorizontalScroll>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                {operationType === "card" ? "Como a pessoa vai devolver?" : "Como a pessoa vai devolver o valor?"}
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl bg-black/5 p-1">
-                <button
-                  type="button"
-                  onClick={() => setCollectionMode("fixed")}
-                  className={cn(
-                    "flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1.5 py-2.5 text-[12px] font-semibold transition-all sm:gap-1.5 sm:px-2 sm:text-[12.5px]",
-                    collectionMode === "fixed" ? "bg-white text-primary shadow-sm" : "text-glass-sub",
-                  )}
-                >
-                  <Repeat2 className="size-4" />
-                  Fixo/Parcelado
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCollectionMode("open")}
-                  className={cn(
-                    "flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1.5 py-2.5 text-[12px] font-semibold transition-all sm:gap-1.5 sm:px-2 sm:text-[12.5px]",
-                    collectionMode === "open" ? "bg-white text-primary shadow-sm" : "text-glass-sub",
-                  )}
-                >
-                  <InfinityIcon className="size-4" />
-                  Pagamento livre
-                </button>
-              </div>
-            </div>
-
-            {collectionMode === "fixed" && (
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Parcelas
-                  </p>
-                  <label className="glass glass-soft mt-2 flex items-center gap-2 rounded-2xl px-3.5 py-3">
-                    <HandCoins className="size-4 shrink-0 text-glass-sub" />
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={48}
-                      value={installments}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        setInstallments(Number.isFinite(next) ? Math.min(48, Math.max(1, next)) : 1);
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-glass-ink outline-none"
-                    />
-                    <span className="text-[12px] font-semibold text-glass-sub">x</span>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => setCollectionMode("open")}
+                      className={cn(
+                        "flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1.5 py-2.5 text-[12px] font-semibold transition-all sm:gap-1.5 sm:px-2 sm:text-[12.5px]",
+                        effectiveCollectionMode === "open"
+                          ? "bg-white text-primary shadow-sm"
+                          : "text-glass-sub",
+                      )}
+                    >
+                      <InfinityIcon className="size-4" />
+                      Pagamento livre
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-                    Dia do vencimento
-                  </p>
-                  <label className="glass glass-soft mt-2 flex items-center gap-2 rounded-2xl px-3.5 py-3">
-                    <CalendarDays className="size-4 shrink-0 text-glass-sub" />
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={31}
-                      value={dueDay}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        setDueDay(Number.isFinite(next) ? Math.min(31, Math.max(1, next)) : 1);
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-glass-ink outline-none"
-                    />
-                  </label>
+              </>
+            )}
+
+            {effectiveCollectionMode === "fixed" && (
+              <div className="mt-5">
+                <p className="mb-3 text-[12px] leading-relaxed text-glass-sub">
+                  {operationType === "card"
+                    ? "A compra terá vencimento definido pela fatura do cartão. Se for parcelada, cada parcela terá a data da sua fatura."
+                    : "A pessoa devolve no dia escolhido de cada mês, até quitar todas as parcelas. Se uma parcela não for recebida, ela continuará pendente."}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                      Parcelas
+                    </p>
+                    <label className="glass glass-soft mt-2 flex items-center gap-2 rounded-2xl px-3.5 py-3">
+                      <HandCoins className="size-4 shrink-0 text-glass-sub" />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={48}
+                        value={installments}
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          setInstallments(
+                            Number.isFinite(next)
+                              ? Math.min(48, Math.max(1, Math.round(next)))
+                              : 1,
+                          );
+                        }}
+                        className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-glass-ink outline-none"
+                      />
+                      <span className="text-[12px] font-semibold text-glass-sub">
+                        x
+                      </span>
+                    </label>
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
+                      {operationType === "card"
+                        ? "Vencimento do cartão"
+                        : "Dia do recebimento"}
+                    </p>
+                    <label className="glass glass-soft mt-2 flex items-center gap-2 rounded-2xl px-3.5 py-3">
+                      <CalendarDays className="size-4 shrink-0 text-glass-sub" />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={31}
+                        readOnly={operationType === "card"}
+                        aria-label={
+                          operationType === "card"
+                            ? "Dia do vencimento do cartão"
+                            : "Dia do recebimento"
+                        }
+                        value={
+                          operationType === "card"
+                            ? (cards.find((card) => card.id === cardId)
+                                ?.dueDay ?? "")
+                            : dueDay
+                        }
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          setDueDay(
+                            Number.isFinite(next)
+                              ? Math.min(31, Math.max(1, Math.round(next)))
+                              : 1,
+                          );
+                        }}
+                        className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-glass-ink outline-none"
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
 
-            {collectionMode === "open" && (
+            {effectiveCollectionMode === "open" && (
               <div className="glass glass-soft mt-5 rounded-2xl px-4 py-3">
-                <p className="text-[13px] font-semibold text-glass-ink">Dívida em aberto</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-glass-sub">
-                  O valor ficará vinculado a {contact.trim() || "este contato"}, sem vencimento mensal definido.
+                <p className="text-[13px] font-semibold text-glass-ink">
+                  Como serão os pagamentos livres?
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={freePaymentMode === "installments"}
+                    onClick={() => {
+                      setFreePaymentMode("installments");
+                      if (!freeInstallmentCents && cents > 0)
+                        setFreeInstallmentCents(Math.ceil(cents / 2));
+                    }}
+                    className={cn(
+                      "min-h-11 rounded-xl px-2 text-[12px] font-semibold",
+                      freePaymentMode === "installments"
+                        ? "bg-primary text-white"
+                        : "glass text-glass-sub",
+                    )}
+                  >
+                    Em parcelas
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={freePaymentMode === "flexible"}
+                    onClick={() => setFreePaymentMode("flexible")}
+                    className={cn(
+                      "min-h-11 rounded-xl px-2 text-[12px] font-semibold",
+                      freePaymentMode === "flexible"
+                        ? "bg-primary text-white"
+                        : "glass text-glass-sub",
+                    )}
+                  >
+                    Indefinido
+                  </button>
+                </div>
+                {freePaymentMode === "installments" ? (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-[0.85fr_1.15fr] gap-3">
+                      <label className="min-w-0 text-[11px] font-semibold text-glass-sub">
+                        Parcelas previstas
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          aria-label="Parcelas livres previstas"
+                          min={1}
+                          max={Math.min(120, Math.max(1, cents))}
+                          value={
+                            freeInstallmentCents > 0 && cents > 0
+                              ? Math.ceil(cents / freeInstallmentCents)
+                              : 1
+                          }
+                          onChange={(event) => {
+                            const count = Math.max(
+                              1,
+                              Math.min(
+                                120,
+                                cents || 1,
+                                Math.round(Number(event.target.value)) || 1,
+                              ),
+                            );
+                            setFreeInstallmentCents(
+                              cents > 0 ? Math.ceil(cents / count) : 0,
+                            );
+                          }}
+                          className={`${inputClass} mt-1.5`}
+                        />
+                      </label>
+                      <label className="min-w-0 text-[11px] font-semibold text-glass-sub">
+                        Valor por parcela
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label="Valor da parcela livre"
+                          value={formatAmount(freeInstallmentCents)}
+                          onChange={(event) =>
+                            setFreeInstallmentCents(
+                              Number(event.target.value.replace(/\D/g, "")) ||
+                                0,
+                            )
+                          }
+                          className={`${inputClass} mt-1.5`}
+                        />
+                      </label>
+                    </div>
+                    {freeInstallmentCents > cents && (
+                      <p className="mt-2 text-[11px] text-[#b52a32]">
+                        O valor da parcela deve ser até o total emprestado.
+                      </p>
+                    )}
+                    <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
+                      Esse é o valor combinado, sem data fixa. A última parcela
+                      pode ser menor, e você poderá registrar um valor diferente
+                      se receber só uma parte.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+                    Sem valor de parcela ou data definidos. Você informa quanto
+                    recebeu a cada pagamento, ou marca que recebeu tudo.
+                  </p>
+                )}
+                <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+                  Se passar um mês sem receber, só o restante continuará em
+                  aberto. O saldo não aumenta e não haverá cobrança extra.
                 </p>
               </div>
             )}
@@ -607,8 +838,11 @@ export function LoanTransactionSheet({
                 <input
                   type="date"
                   value={date}
-                  onChange={(event) => setDate(event.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => {
+                    setDate(event.target.value);
+                    setInvoiceMonth(undefined);
+                  }}
+                  max={localDateKey()}
                   className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </label>
@@ -616,26 +850,38 @@ export function LoanTransactionSheet({
           </div>
 
           <div className="px-5 pb-7 pt-2">
-            {collectionMode === "fixed" && cents > 0 && dueDates.length > 0 && (
-              <div className="glass glass-soft mb-3 rounded-2xl px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
-                      {operationType === "card" ? "Compra a receber" : "Conta a receber"}
-                    </p>
-                    <p className="amount-tabular text-[17px] font-bold leading-tight text-[#17a443]">
-                      {formatAmount(installmentCents + (remainderCents > 0 ? 1 : 0))}
+            {effectiveCollectionMode === "fixed" &&
+              cents > 0 &&
+              dueDates.length > 0 && (
+                <div className="glass glass-soft mb-3 rounded-2xl px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11.5px] font-semibold uppercase tracking-wide text-glass-sub">
+                        {operationType === "card"
+                          ? "Compra a receber"
+                          : "Conta a receber"}
+                      </p>
+                      <p className="amount-tabular text-[17px] font-bold leading-tight text-[#17a443]">
+                        {formatAmount(
+                          installmentCents + (remainderCents > 0 ? 1 : 0),
+                        )}
+                      </p>
+                    </div>
+                    <p className="text-right text-[12px] font-semibold text-glass-sub">
+                      {installments}× · dia{" "}
+                      {operationType === "card"
+                        ? cards.find((card) => card.id === cardId)?.dueDay
+                        : dueDay}
                     </p>
                   </div>
-                  <p className="text-right text-[12px] font-semibold text-glass-sub">
-                    {installments}× · todo dia {dueDay}
+                  <p className="mt-1.5 text-[11.5px] text-glass-faint">
+                    {operationType === "card"
+                      ? "Primeira parcela em"
+                      : "Primeira devolução em"}{" "}
+                    {formatDate(dueDates[0])}.
                   </p>
                 </div>
-                <p className="mt-1.5 text-[11.5px] text-glass-faint">
-                  {operationType === "card" ? "Primeira parcela em" : "Primeira devolução em"} {formatDate(dueDates[0])}.
-                </p>
-              </div>
-            )}
+              )}
             <button
               type="button"
               disabled={!canSave}

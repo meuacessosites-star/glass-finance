@@ -1,0 +1,58 @@
+@layer components {
+  /* Glass optics stay inside the colored strip; its controls keep a clear layer. */
+  .invoice-glass-card {
+    box-shadow:
+      0 12px 26px -16px color-mix(in srgb, var(--invoice-band-color) 38%, transparent),
+      0 3px 9px -4px rgba(15, 23, 42, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .invoice-glass-band {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.38);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      inset 1px 0 0 rgba(255, 255, 255, 0.28),
+      inset -1px 0 0 rgba(255, 255, 255, 0.2),
+      inset 0 -2px 3px rgba(255, 255, 255, 0.14),
+      inset 0 -10px 18px -16px rgba(0, 0, 0, 0.5);
+  }
+
+  .invoice-glass-band::before,
+  .invoice-glass-band::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .invoice-glass-band::before {
+    inset: 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%);
+    mask-image: linear-gradient(90deg, transparent, #000 40%);
+    background:
+      linear-gradient(112deg, transparent 26%, rgba(255, 255, 255, 0.04) 40%, rgba(255, 255, 255, 0.24) 44%, rgba(255, 255, 255, 0.05) 49%, transparent 63%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 48%, rgba(0, 0, 0, 0.025));
+  }
+
+  .invoice-glass-band::after {
+    top: -105%;
+    left: 18%;
+    width: 80%;
+    height: 175%;
+    border-radius: 50%;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.42);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.075));
+    box-shadow: 0 2px 12px rgba(255, 255, 255, 0.08);
+    transform: rotate(-13deg);
+  }
+
+  .invoice-glass-band > * {
+    position: relative;
+    z-index: 1;
+  }
+}

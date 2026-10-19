@@ -1196,18 +1196,18 @@ export function AddTransactionSheet({
               className="z-[100] max-h-[90dvh] overflow-y-auto rounded-3xl border-white/60 bg-[#eef1fe] p-5 text-glass-ink dark:bg-[#0a1122] sm:max-w-md"
             >
               <AlertDialogHeader className="text-left">
-                <AlertDialogTitle>Em qual fatura deseja adicionar?</AlertDialogTitle>
+                <AlertDialogTitle>Em qual mês começa a primeira fatura?</AlertDialogTitle>
                 <AlertDialogDescription className="text-glass-sub">
                   A compra de {date.split("-").reverse().join("/")} é após o fechamento de {selectedCard?.name}
                   {billingChoices && ` em ${billingChoices.current.closingDate.split("-").reverse().join("/")}`}.
-                  {" "}Escolha onde registrar esta despesa.
+                  {" "}Deseja colocar {recurrence === "parcelada" ? "a primeira parcela" : "esta compra"} na fatura atual ou na próxima?
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <fieldset className="grid gap-3">
                 <legend className="sr-only">Fatura da compra</legend>
                 {billingChoices && ([
                   { label: "Fatura atual", cycle: billingChoices.current },
-                  { label: "Próximo mês", cycle: billingChoices.next },
+                  { label: "Próxima fatura", cycle: billingChoices.next },
                 ]).map(({ label, cycle }) => (
                   <label key={cycle.month} className={cn(
                     "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors",
@@ -1222,13 +1222,14 @@ export function AddTransactionSheet({
                       className="mt-1 size-5 shrink-0 accent-primary"
                     />
                     <span className="grid gap-1">
-                      <span className="text-[15px] font-bold">{label}</span>
-                      <span className="text-[13px] font-semibold">Vencimento: {cycle.dueDate.split("-").reverse().join("/")}</span>
+                      <span className="text-[15px] font-bold">{label} · {new Date(`${cycle.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
+                      <span className="text-[13px] font-semibold">{recurrence === "parcelada" ? "1ª parcela" : "Parcela única"}: {cycle.dueDate.split("-").reverse().join("/")}</span>
                       <span className="text-[12px] text-glass-sub">Fechamento: {cycle.closingDate.split("-").reverse().join("/")}</span>
                     </span>
                   </label>
                 ))}
               </fieldset>
+              {recurrence === "parcelada" && <p className="text-[12px] text-glass-sub">A 1ª parcela será no mês escolhido. A 2ª no mês seguinte, e assim por diante, até completar as {installments} parcelas.</p>}
               <AlertDialogFooter className="sm:flex-col">
                 <AlertDialogCancel className="min-h-11 w-full rounded-2xl">Voltar sem salvar</AlertDialogCancel>
                 <AlertDialogAction disabled={!invoiceChoiceMonth} onClick={() => saveTransaction(invoiceChoiceMonth)} className="min-h-11 w-full rounded-2xl">
