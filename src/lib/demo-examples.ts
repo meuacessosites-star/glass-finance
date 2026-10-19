@@ -1,6 +1,6 @@
 import type { AppProfile, ProfileData } from "./app-store";
 import type { Transaction } from "./mock-data";
-import { calendarDate, getInvoiceDates, getTransactionInvoiceMonth, localDateKey } from "./card-billing";
+import { calendarDate, getCardBillingCycle, getInvoiceDates, getTransactionInvoiceMonth, localDateKey } from "./card-billing";
 
 export const DEMO_PROFILE_ID = "profile-granascan-examples-v1";
 export const OVERDUE_DEMO_ID = "demo-conta-vencida-v2";
@@ -21,6 +21,8 @@ export function createDemoProfile(base: ProfileData, now = new Date()): AppProfi
     { id: "demo-card-inter", name: "Inter (exemplo)", institution: "Inter", last4: "9173", totalLimit: 2500, closingDay: day, dueDay: ((day + 7) % 31) + 1, color: "#FF9500" },
     { id: "demo-card-itau", name: "Itaú (exemplo)", institution: "Itaú", last4: "2056", totalLimit: 5000, closingDay: 25, dueDay: 5, color: "#0075D5" },
   ];
+  const borrowedPurchaseDate = at(Math.max(1, day - 3));
+  const borrowedCycle = getCardBillingCycle(cards[1], borrowedPurchaseDate)!;
   const firstClosing = getInvoiceDates(cards[0], today.slice(0, 7))!.closingDate;
   const row = (id: string, title: string, categoryId: string, amount: number, date: string, extra: Partial<Transaction> = {}): Transaction => ({ id: `demo-${id}`, title, categoryId, amount, date, note: "Dado de demonstração", paymentStatus: "paid", paymentDate: date, ...extra });
   const credit = (card: number) => ({ paymentMethod: "cartao", cardMode: "credito", cardId: cards[card].id, paymentStatus: "pending" as const, paymentDate: undefined });
@@ -43,7 +45,7 @@ export function createDemoProfile(base: ProfileData, now = new Date()): AppProfi
     row("internet", "Internet · exemplo", "moradia", -99.90, at(10), { paymentMethod: "boleto" }),
     row("agua", "Água · vencimento futuro", "moradia", -88.20, at(Math.min(day + 3, 31)), { paymentMethod: "boleto", paymentStatus: "pending", paymentDate: undefined }),
     row("loan-money", "Emprestei para Luiza (exemplo)", "outros", -600, at(Math.max(1, day - 5)), { source: "loan", operationType: "loan", paymentMethod: "pix", note: "Tipo: Empréstimo\nContato: Luiza (exemplo)\nCobrança: 2 parcela(s) agendada(s)\nReferência: demo-loan-money" }),
-    row("loan-card", "Cartão usado por Carlos (exemplo)", "compras", -450, at(Math.max(1, day - 3)), { source: "loan", operationType: "card", paymentMethod: "cartao", note: "Tipo: Cartão emprestado\nContato: Carlos (exemplo)\nCobrança: Dívida em aberto\nReferência: demo-loan-card" }),
+    row("loan-card", "Cartão usado por Carlos (exemplo)", "compras", -450, borrowedPurchaseDate, { ...credit(1), source: "loan", operationType: "card", paymentMethod: "cartao", note: "Tipo: Cartão emprestado\nContato: Carlos (exemplo)\nCobrança: 1 parcela(s) agendada(s)\nReferência: demo-loan-card" }),
     row("paid-last-month", "Compra paga · exemplo", "compras", -75, at(1, -1), { paymentMethod: "cartao", cardMode: "credito", cardId: cards[2].id }),
   ];
   const paidMonth = getTransactionInvoiceMonth(transactions[transactions.length - 1], cards[2]);
@@ -54,7 +56,7 @@ export function createDemoProfile(base: ProfileData, now = new Date()): AppProfi
     loanReceivables: [
       { id: "demo-receivable-1", loanId: "demo-loan-money", contact: "Luiza (exemplo)", amount: 300, dueDate: today, status: "scheduled", installment: 1, installments: 2, operationType: "loan", paymentMethod: "pix", createdAt: today, description: "Empréstimo de demonstração" },
       { id: "demo-receivable-2", loanId: "demo-loan-money", contact: "Luiza (exemplo)", amount: 300, dueDate: at(day, 1), status: "scheduled", installment: 2, installments: 2, operationType: "loan", paymentMethod: "pix", createdAt: today },
-      { id: "demo-receivable-card", loanId: "demo-loan-card", contact: "Carlos (exemplo)", amount: 450, status: "open", operationType: "card", paymentMethod: "cartao", createdAt: today, description: "Cartão emprestado de demonstração" },
+      { id: "demo-receivable-card", loanId: "demo-loan-card", contact: "Carlos (exemplo)", amount: 450, status: "scheduled", collectionMode: "fixed", dueDate: borrowedCycle.dueDate, cardId: cards[1].id, cardInvoiceMonth: borrowedCycle.month, cardClosingDate: borrowedCycle.closingDate, startDate: borrowedPurchaseDate, installment: 1, installments: 1, operationType: "card", paymentMethod: "cartao", createdAt: today, description: "Cartão emprestado de demonstração" },
       { id: "demo-receivable-paid", loanId: "demo-loan-settled", contact: "Luiza (exemplo)", amount: 150, dueDate: at(10), status: "paid", operationType: "loan", paymentMethod: "pix", createdAt: today, description: "Parcela já recebida · exemplo" },
     ],
     notifications: [

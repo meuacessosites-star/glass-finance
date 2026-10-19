@@ -33,7 +33,7 @@ export function getTransactionPaymentStatus(transaction: Transaction, cards: App
   if (!receivable) {
     const card = isCreditCardExpense(transaction) ? cards.find((item) => item.id === transaction.cardId) : undefined;
     const month = getCurrentInvoiceMonth(transaction, card);
-    if (card && isInvoiceMarkedPaid(card, month, today.slice(0, 7))) return "paid";
+    if (card && (isInvoiceMarkedPaid(card, month, today.slice(0, 7)) || card.invoicePaidPurchaseIdsByMonth?.[month]?.includes(transaction.id))) return "paid";
     if (transaction.paymentStatus === "paid" || (!isCreditCardExpense(transaction) && transaction.paymentStatus !== "pending")) return "paid";
   }
   const dueDate = getTransactionDueDate(transaction, cards, receivables);

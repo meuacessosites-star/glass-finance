@@ -107,6 +107,7 @@ export function getCurrentInvoiceMonth(transaction: Transaction, card?: AppCard)
 }
 export function isInvoicePartPaid(transaction: Transaction, card: AppCard | undefined, part: CardInvoicePart, today = localDateKey()): boolean {
   if (card && isInvoiceMarkedPaid(card, part.month, today.slice(0, 7))) return true;
+  if (card?.invoicePaidPurchaseIdsByMonth?.[part.month]?.includes(transaction.id)) return true;
   return part.number === getCurrentInstallment(transaction) && transaction.paymentStatus === "paid";
 }
 export function isInvoiceMarkedPaid(card: AppCard, month: string, currentMonth = localDateKey().slice(0, 7)): boolean {
@@ -140,4 +141,11 @@ export function getCardBillingReminders(cards: AppCard[], transactions: Transact
     }
   }
   return reminders.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.cardName.localeCompare(b.cardName));
+}
+
+export function sanitizeInvoicePaidPurchaseIds(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([month, ids]) =>
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && Array.isArray(ids),
+  ).map(([month, ids]) => [month, [...new Set((ids as unknown[]).filter((id): id is string => typeof id === "string" && id.length > 0))]]));
 }

@@ -1,4 +1,5 @@
 import { localDateKey } from "./card-billing";
+import { additionalCategories } from "./category-catalog";
 // ---------------------------------------------------------------------------
 // Fictional finance data used to illustrate the UI. No real database yet.
 // ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ export const categories: Category[] = [
   { id: "assinaturas", label: "Assinaturas", color: "#00C7BE", icon: "assinaturas" },
   { id: "educacao", label: "Educação", color: "#32ADE6", icon: "educacao" },
   { id: "outros", label: "Outros", color: "#8E8E93", icon: "outros" },
+  ...additionalCategories,
 ];
 
 export const categoryById = Object.fromEntries(
