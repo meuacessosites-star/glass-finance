@@ -20,6 +20,7 @@ import { useLocalDate } from "@/hooks/use-local-date";
 import { getDueTodayAlerts } from "@/lib/due-today";
 import { useAppStore } from "@/lib/app-store";
 import { getHomeBalance, shiftBalanceMonth } from "@/lib/home-balance";
+import { selectTransactionLedgers } from "@/lib/transaction-ledgers";
 import { cn } from "@/lib/utils";
 import { formatCurrency, monthLabel, monthShortLabel } from "@/lib/mock-data";
 
@@ -55,7 +56,7 @@ export default function HomePage() {
   } = calculation;
   const signedAmount = (value: number) =>
     `${value < 0 ? "−" : ""}${formatCurrency(value)}`;
-  const recent = transactions
+  const recent = selectTransactionLedgers(transactions, loanReceivables).regularTransactions
     .filter((item) => item.date.startsWith(`${selectedMonth}-`))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
