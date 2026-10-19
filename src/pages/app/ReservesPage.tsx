@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Pencil, PiggyBank, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
-import { Switch } from "@/components/ui/switch";
 import { useAppStore } from "@/lib/app-store";
 import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -24,8 +23,6 @@ const inputClass =
 export default function ReservesPage() {
   const {
     reserves,
-    reservesInBalance,
-    setReservesInBalance,
     activeProfile,
     addReserve,
     updateReserve,
@@ -122,32 +119,9 @@ export default function ReservesPage() {
         </div>
       </div>
 
-      {/* Toggle: include in balance */}
       <div className="glass rounded-3xl p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-glass-ink">
-              Incluir reservas no saldo da tela inicial
-            </p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
-              {reservesInBalance
-                ? "O saldo na tela inicial mostra tudo junto (reservas incluídas)."
-                : "O saldo na tela inicial mostra só o valor disponível; as reservas ficam visíveis apenas aqui."}
-            </p>
-          </div>
-          <Switch
-            checked={reservesInBalance}
-            onCheckedChange={(v) => {
-              setReservesInBalance(v);
-              toast(
-                v
-                  ? "Reservas aparecem junto com o saldo"
-                  : "Reservas separadas do saldo",
-              );
-            }}
-            aria-label="Incluir reservas no saldo da tela inicial"
-          />
-        </div>
+        <p className="text-[15px] font-semibold text-glass-ink">Reservas acompanhadas separadamente</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">Os cofrinhos ficam aqui. O saldo da tela inicial é calculado pelas receitas e despesas registradas em Transações.</p>
       </div>
 
       {/* List */}

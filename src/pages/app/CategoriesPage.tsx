@@ -1,9 +1,22 @@
 import { useState } from "react";
-import { ImagePlus, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import {
+  ImagePlus,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
-import { CategoryIcon, categoryIconOptions } from "@/components/app/CategoryIcon";
+import {
+  CategoryIcon,
+  categoryIconOptions,
+} from "@/components/app/CategoryIcon";
+import { CategoryColorPicker } from "@/components/app/CategoryColorPicker";
 import { useAppStore } from "@/lib/app-store";
+import { normalizeSearchText } from "@/lib/transaction-view";
 import { cn } from "@/lib/utils";
 
 const PALETTE = [
@@ -46,7 +59,9 @@ function hexToRgb(hex: string): Rgb {
 }
 
 function parseRgb(value: string): string | null {
-  const match = value.match(/^(?:rgb\s*\(\s*)?(\d{1,3})\s*[,;]\s*(\d{1,3})\s*[,;]\s*(\d{1,3})\s*\)?$/i);
+  const match = value.match(
+    /^(?:rgb\s*\(\s*)?(\d{1,3})\s*[,;]\s*(\d{1,3})\s*[,;]\s*(\d{1,3})\s*\)?$/i,
+  );
   if (!match) return null;
   const channels = match.slice(1).map(Number);
   if (channels.some((channel) => channel < 0 || channel > 255)) return null;
@@ -71,6 +86,13 @@ export default function CategoriesPage() {
     return `${rgb.r}, ${rgb.g}, ${rgb.b}`;
   });
   const [icon, setIcon] = useState(categoryIconOptions[0].id);
+  const [iconSearch, setIconSearch] = useState("");
+  const iconQuery = normalizeSearchText(iconSearch.trim());
+  const iconOptions = categoryIconOptions.filter(
+    (option) =>
+      !iconQuery ||
+      normalizeSearchText(`${option.label} ${option.id}`).includes(iconQuery),
+  );
   const [image, setImage] = useState<string | undefined>();
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -91,6 +113,7 @@ export default function CategoriesPage() {
     setLabel(category.label);
     applyColor(category.color);
     setIcon(category.icon);
+    setIconSearch("");
     setImage(category.image);
   };
 
@@ -99,6 +122,7 @@ export default function CategoriesPage() {
     setLabel("");
     applyColor(PALETTE[0]);
     setIcon(categoryIconOptions[0].id);
+    setIconSearch("");
     setImage(undefined);
   };
 
@@ -150,13 +174,16 @@ export default function CategoriesPage() {
     <div className="space-y-4">
       <SettingsHeader title="Categorias" />
       <p className="px-1 text-[12px] font-medium text-glass-faint">
-        Categorias de <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        cada perfil tem as suas.
+        Categorias de{" "}
+        <span className="font-bold text-glass-sub">{activeProfile?.name}</span>{" "}
+        — cada perfil tem as suas.
       </p>
 
       <div className="glass glass-soft rounded-3xl p-4">
         <div>
-          <p className="text-[15px] font-bold text-glass-ink">Exibição nos cards</p>
+          <p className="text-[15px] font-bold text-glass-ink">
+            Exibição nos cards
+          </p>
           <p className="mt-1 text-[12px] font-medium leading-4 text-glass-faint">
             Escolha se os cards mostram o nome da categoria junto do ícone.
           </p>
@@ -245,14 +272,45 @@ export default function CategoriesPage() {
 
         {/* Icon picker */}
         <p className="mt-4 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-          Ícone
+          Ícone · {categoryIconOptions.length} opções
         </p>
-        <div className="mt-2 grid grid-cols-6 gap-2">
-          {categoryIconOptions.map((option) => (
+        <div className="glass mt-2 grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl px-3">
+          <Search className="size-4 text-glass-faint" />
+          <input
+            type="search"
+            enterKeyHint="search"
+            value={iconSearch}
+            onChange={(event) => setIconSearch(event.target.value)}
+            placeholder="Buscar ícone..."
+            aria-label="Buscar ícones por nome"
+            className="h-11 w-full min-w-0 bg-transparent text-[16px] text-glass-ink outline-none placeholder:text-glass-faint [&::-webkit-search-cancel-button]:hidden"
+          />
+          {iconSearch && (
+            <button
+              type="button"
+              onClick={() => setIconSearch("")}
+              aria-label="Limpar busca de ícones"
+              className="flex size-10 items-center justify-center rounded-lg text-glass-sub"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+        <p className="mt-2 text-[12px] text-glass-sub">
+          Selecionado:{" "}
+          <strong>
+            {categoryIconOptions.find((option) => option.id === icon)?.label ??
+              "Ícone atual"}
+          </strong>
+        </p>
+        <div className="mt-2 grid max-h-80 grid-cols-6 gap-2 overflow-y-auto overscroll-contain p-1">
+          {iconOptions.map((option) => (
             <button
               key={option.id}
               type="button"
-              aria-label={`Ícone ${option.id}`}
+              aria-label={`Ícone ${option.label}`}
+              title={option.label}
+              aria-pressed={icon === option.id}
               onClick={() => setIcon(option.id)}
               className={cn(
                 "flex aspect-square items-center justify-center rounded-2xl transition-all",
@@ -265,6 +323,11 @@ export default function CategoriesPage() {
             </button>
           ))}
         </div>
+        {!iconOptions.length && (
+          <p role="status" className="py-3 text-[12px] text-glass-sub">
+            Nenhum ícone encontrado. Tente outro nome.
+          </p>
+        )}
 
         <div className="mt-3 flex items-center gap-2">
           {image ? (
@@ -309,6 +372,7 @@ export default function CategoriesPage() {
               key={paletteColor}
               type="button"
               aria-label={`Cor ${paletteColor}`}
+              aria-pressed={color.toUpperCase() === paletteColor.toUpperCase()}
               onClick={() => applyColor(paletteColor)}
               className={cn(
                 "size-11 rounded-full transition-transform active:scale-90",
@@ -320,15 +384,11 @@ export default function CategoriesPage() {
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="glass glass-soft flex size-11 cursor-pointer items-center justify-center rounded-2xl overflow-hidden">
-            <input
-              type="color"
-              value={color}
-              onChange={(event) => applyColor(event.target.value)}
-              aria-label="Selecionar cor na roda de cores"
-              className="size-16 cursor-pointer border-0 bg-transparent"
-            />
-          </label>
+          <CategoryColorPicker
+            value={color}
+            palette={PALETTE}
+            onChange={applyColor}
+          />
           <input
             value={hexInput}
             onChange={(event) => setHexInput(event.target.value)}

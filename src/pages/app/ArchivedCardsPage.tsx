@@ -4,32 +4,20 @@ import { useNavigate } from "react-router";
 import { CardVisual } from "./CardsPage";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
-import { currentMonthKey } from "@/lib/mock-data";
+import { getCardCommittedAmount } from "@/lib/card-invoice-view";
+import { useLocalDate } from "@/hooks/use-local-date";
 
 export default function ArchivedCardsPage() {
   const navigate = useNavigate();
+  const today = useLocalDate();
   const { cards, transactions, updateCard } = useAppStore();
   const archivedCards = cards.filter((card) => card.archived === true);
-  const openAmountByCard = transactions.reduce<Record<string, number>>(
-    (totals, transaction) => {
-      if (
-        transaction.amount < 0 &&
-        transaction.cardMode === "credito" &&
-        transaction.cardId &&
-        transaction.date.startsWith(currentMonthKey)
-      ) {
-        totals[transaction.cardId] =
-          (totals[transaction.cardId] ?? 0) + Math.abs(transaction.amount);
-      }
-      return totals;
-    },
-    {},
-  );
+  const openAmountByCard = Object.fromEntries(archivedCards.map((card) => [card.id, getCardCommittedAmount(card, transactions, today)]));
 
   const handleRestore = (card: AppCard) => {
     updateCard(card.id, { archived: false });
     toast(`${card.name} restaurado`);
-    navigate("/dashboard/compras-cartao");
+    navigate("/dashboard/compras-cartao", { state: { cardId: card.id } });
   };
 
   return (
