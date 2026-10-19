@@ -10,7 +10,7 @@ import {
 import { NavLink, useLocation } from "react-router";
 import { getTransactionPaymentStatus } from "@/lib/transaction-status";
 import { countUnpaidTransactions } from "@/lib/transaction-view";
-import { loans } from "@/lib/mock-data";
+import { selectLoanReceivablesForMonth } from "@/lib/loan-repayments";
 import { useNavigationPendingCount } from "./NavigationPendingContext";
 import { useAppStore } from "@/lib/app-store";
 import { useLocalDate } from "@/hooks/use-local-date";
@@ -40,7 +40,7 @@ export function BottomNav({
   const defaultCounts = useMemo(
     () => ({
       transactions: countUnpaidTransactions(visibleTransactions.filter((item) => item.date.startsWith(`${today.slice(0, 7)}-`)), (item) => getTransactionPaymentStatus(item, cards, loanReceivables, today)),
-      loans: loanReceivables.filter((item) => item.operationType !== "card" && item.status !== "paid").length + loans.filter((item) => item.status === "pendente").length,
+      loans: selectLoanReceivablesForMonth(loanReceivables, today.slice(0, 7)).filter((item) => item.operationType !== "card" && item.status !== "paid").length,
     }),
     [cards, loanReceivables, visibleTransactions, today],
   );

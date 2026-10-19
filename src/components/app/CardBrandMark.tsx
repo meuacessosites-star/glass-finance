@@ -1,40 +1,16 @@
 import type { AppCard } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-
-type CardBrand = "mastercard" | "visa" | "card";
+import { CARD_BRAND_LABELS, detectCardBrand } from "@/lib/card-appearance";
 
 type CardBrandMarkProps = {
-  card: Pick<AppCard, "name" | "institution">;
+  card: Pick<AppCard, "name" | "institution" | "brand">;
   className?: string;
 };
-
-function normalizeBrandText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function detectCardBrand(card: CardBrandMarkProps["card"]): CardBrand {
-  const text = normalizeBrandText(`${card.name} ${card.institution ?? ""}`);
-
-  if (/master\s*card|\bmc\b/.test(text)) return "mastercard";
-  if (/\bvisa\b/.test(text)) return "visa";
-
-  if (/\b(?:nubank|nu|inter|c6)\b/.test(text)) return "mastercard";
-  if (/\b(?:itau|santander|bradesco|bb|caixa)\b/.test(text)) return "visa";
-
-  return "card";
-}
 
 export function CardBrandMark({ card, className }: CardBrandMarkProps) {
   const brand = detectCardBrand(card);
   const label =
-    brand === "mastercard"
-      ? "Mastercard"
-      : brand === "visa"
-        ? "Visa"
-        : "Bandeira do cartão";
+    brand === "card" ? "Bandeira não informada" : CARD_BRAND_LABELS[brand];
 
   return (
     <span
@@ -55,10 +31,18 @@ export function CardBrandMark({ card, className }: CardBrandMarkProps) {
             <circle cx="10" cy="9" r="7" fill="#EB001B" />
             <circle cx="18" cy="9" r="7" fill="#F79E1B" />
           </svg>
-          <span className="text-[8px] font-bold tracking-tight">mastercard</span>
+          <span className="text-[8px] font-bold tracking-tight">
+            mastercard
+          </span>
         </>
       ) : brand === "visa" ? (
-        <span className="text-[11px] font-black italic tracking-tight">VISA</span>
+        <span className="text-[11px] font-black italic tracking-tight">
+          VISA
+        </span>
+      ) : brand !== "card" ? (
+        <span className="text-[9px] font-bold tracking-tight">
+          {CARD_BRAND_LABELS[brand]}
+        </span>
       ) : (
         <span className="text-[9px] font-bold tracking-[0.12em]">CARD</span>
       )}

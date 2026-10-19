@@ -1,5 +1,6 @@
 import type { InvoicePaymentRecord, ProfileData } from "./app-store";
-import { getCurrentInvoiceMonth, getCurrentInstallment, getTransactionInvoiceSchedule, isCreditCardExpense, isInvoiceMarkedPaid, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
+import { getCurrentInvoiceMonth, getCurrentInstallment, getTransactionInvoiceSchedule, isCreditCardExpense, isInvoiceMarkedPaid, isInvoicePartPaid, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
+import { getCardInvoiceMetrics } from "./card-invoice-view";
 import { selectTransactionLedgers } from "./transaction-ledgers";
 
 export function openUnpaidPurchaseInvoices(data: ProfileData, transaction: ProfileData["transactions"][number], today = localDateKey()): ProfileData {
@@ -29,6 +30,9 @@ export function setInvoicePaymentStatus(data: ProfileData, cardId: string, month
   const invoicePaymentsByMonth = { ...(card.invoicePaymentsByMonth ?? {}) };
   if (paid && total > 0) invoicePaymentsByMonth[month] = { totalAmount: total, paidAmount: total, paymentDate: today };
   else delete invoicePaymentsByMonth[month];
+  const invoicePaidPurchaseIdsByMonth = { ...card.invoicePaidPurchaseIdsByMonth };
+  if (paid) invoicePaidPurchaseIdsByMonth[month] = invoiceItems.map((item) => item.id);
+  else delete invoicePaidPurchaseIdsByMonth[month];
   return {
     ...data,
     cards: data.cards.map((item) => item.id !== cardId ? item : {
@@ -36,6 +40,7 @@ export function setInvoicePaymentStatus(data: ProfileData, cardId: string, month
       invoicePaidByMonth: { ...(item.invoicePaidByMonth ?? {}), [month]: paid },
       invoicePaid: month === today.slice(0, 7) ? paid : item.invoicePaid,
       invoicePaymentsByMonth,
+      invoicePaidPurchaseIdsByMonth,
     }),
     transactions: data.transactions.map((item) => ids.has(item.id) ? { ...item, paymentStatus: paid ? "paid" : "pending", paymentDate: paid ? today : undefined } : item),
   };
@@ -53,7 +58,9 @@ export function recordInvoicePayment(data: ProfileData, cardId: string, month: s
     Boolean(previousPayment && previousPayment.totalAmount > 0 && previousPayment.paidAmount >= previousPayment.totalAmount);
   const next = setInvoicePaymentStatus(data, cardId, month, paid, payment.paymentDate);
   return { ...next, transactions: paid || wasPaid ? next.transactions : data.transactions, cards: next.cards.map((card) => card.id !== cardId ? card : {
-    ...card, invoicePaymentsByMonth: { ...(card.invoicePaymentsByMonth ?? {}), [month]: { ...payment, totalAmount, paidAmount } },
+    ...card,
+    invoicePaidPurchaseIdsByMonth: !paid && !wasPaid ? data.cards.find((item) => item.id === cardId)?.invoicePaidPurchaseIdsByMonth : card.invoicePaidPurchaseIdsByMonth,
+    invoicePaymentsByMonth: { ...(card.invoicePaymentsByMonth ?? {}), [month]: { ...payment, totalAmount, paidAmount } },
   }) };
 }
 
@@ -61,6 +68,41 @@ export function setTransactionPaymentState(data: ProfileData, id: string, status
   const transaction = data.transactions.find((item) => item.id === id);
   if (!transaction || selectTransactionLedgers([transaction], data.loanReceivables).loanTransactions.length) return data;
   const card = isCreditCardExpense(transaction) ? data.cards.find((item) => item.id === transaction.cardId) : undefined;
-  if (card) return setInvoicePaymentStatus(data, card.id, getCurrentInvoiceMonth(transaction, card), status === "paid", today);
+  if (card) {
+    const month = getCurrentInvoiceMonth(transaction, card);
+    const purchases = selectTransactionLedgers(data.transactions, data.loanReceivables).regularTransactions;
+    const entries = purchases.filter((item) => isCreditCardExpense(item) && item.cardId === card.id)
+      .flatMap((item) => getTransactionInvoiceSchedule(item, card).filter((part) => part.month === month).map((part) => ({ item, part })));
+    const selected = entries.find(({ item }) => item.id === id);
+    if (!selected) return data;
+    const wasPaid = isInvoicePartPaid(transaction, card, selected.part, today);
+    if (wasPaid === (status === "paid")) return data;
+    const ids = new Set(entries.filter(({ item, part }) => isInvoicePartPaid(item, card, part, today)).map(({ item }) => item.id));
+    if (status === "paid") ids.add(id); else ids.delete(id);
+    const current = getCardInvoiceMetrics(card, purchases, month, today);
+    const cents = (value: number) => Math.max(0, Math.round(value * 100));
+    const individuallyPaid = entries.reduce((sum, { item, part }) => sum + (ids.has(item.id) ? cents(part.amount) : 0), 0);
+    // Both sources are cumulative. Reopening releases only this purchase's share.
+    const previousPaid = Math.max(0, cents(current.paidAmount) - (status === "pending" && wasPaid ? cents(selected.part.amount) : 0));
+    const paidCents = Math.min(cents(current.invoiceTotal), Math.max(individuallyPaid, previousPaid));
+    const paid = current.invoiceTotal > 0 && paidCents >= cents(current.invoiceTotal) && entries.every(({ item }) => ids.has(item.id));
+    const previousPayment = card.invoicePaymentsByMonth?.[month];
+    const invoicePaymentsByMonth = { ...card.invoicePaymentsByMonth };
+    if (paidCents > 0) invoicePaymentsByMonth[month] = {
+      ...previousPayment, totalAmount: current.invoiceTotal, paidAmount: paidCents / 100,
+      paymentDate: status === "paid" ? today : previousPayment?.paymentDate ?? today,
+    };
+    else delete invoicePaymentsByMonth[month];
+    return {
+      ...data,
+      transactions: data.transactions.map((item) => item.id === id ? { ...item, paymentStatus: status, paymentDate: status === "paid" ? today : undefined } : item),
+      cards: data.cards.map((item) => item.id !== card.id ? item : {
+        ...item, invoicePaymentsByMonth,
+        invoicePaidPurchaseIdsByMonth: { ...item.invoicePaidPurchaseIdsByMonth, [month]: [...ids] },
+        invoicePaidByMonth: { ...item.invoicePaidByMonth, [month]: paid },
+        invoicePaid: month === today.slice(0, 7) ? paid : item.invoicePaid,
+      }),
+    };
+  }
   return { ...data, transactions: data.transactions.map((item) => item.id === id ? { ...item, paymentStatus: status, paymentDate: status === "paid" ? today : undefined } : item) };
 }

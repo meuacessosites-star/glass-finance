@@ -68,30 +68,31 @@ test("manual payment from an existing later installment targets its month only",
   assert.deepEqual(getCardInstallmentHistory(next.transactions[0], next.cards[0], "2026-11-17").map((p) => p.status), ["overdue", "paid", "scheduled"]);
 });
 
-test("reopening an invoice clears its prior payment and makes its own purchases pending again", () => {
+test("reopening one paid purchase preserves the other purchases and invoices", () => {
   const otherPayment = { totalAmount: 90, paidAmount: 90, paymentDate: "2026-11-17" };
   const data = profile({ cards: [{ ...card, invoicePaid: true, invoicePaidByMonth: { "2026-10": true, "2026-11": true }, invoicePaymentsByMonth: { "2026-10": { totalAmount: 300, paidAmount: 300, paymentDate: "2026-10-17" }, "2026-11": otherPayment } }], transactions: [purchase("a", -100, { paymentStatus: "paid", paymentDate: "2026-10-17" }), purchase("b", -200, { paymentStatus: "paid" }), purchase("next", -90, { cardInvoiceMonth: "2026-11", paymentStatus: "paid" })] });
   const snapshot = structuredClone(data);
   const next = setTransactionPaymentState(data, "a", "pending", "2026-10-18");
   assert.equal(next.cards[0].invoicePaidByMonth?.["2026-10"], false);
-  assert.equal(next.cards[0].invoicePaymentsByMonth?.["2026-10"], undefined);
+  assert.equal(next.cards[0].invoicePaymentsByMonth?.["2026-10"]?.paidAmount, 200);
   assert.deepEqual(next.cards[0].invoicePaymentsByMonth?.["2026-11"], otherPayment);
-  for (const item of next.transactions.slice(0, 2)) {
-    assert.equal(item.paymentStatus, "pending");
-    assert.equal(item.paymentDate, undefined);
-    assert.equal(getTransactionPaymentStatus(item, next.cards, [], "2026-10-18"), "overdue");
-  }
+  assert.equal(next.transactions[0].paymentStatus, "pending");
+  assert.equal(next.transactions[0].paymentDate, undefined);
+  assert.equal(getTransactionPaymentStatus(next.transactions[0], next.cards, [], "2026-10-18"), "overdue");
+  assert.equal(next.transactions[1], data.transactions[1]);
+  assert.equal(getTransactionPaymentStatus(next.transactions[1], next.cards, [], "2026-10-18"), "paid");
   assert.equal(next.transactions[2], data.transactions[2]);
-  assert.equal(getCardBillingReminders(next.cards, next.transactions, new Date(2026, 9, 18, 12))[0].amount, 300);
+  assert.equal(getCardBillingReminders(next.cards, next.transactions, new Date(2026, 9, 18, 12))[0].amount, 100);
   assert.deepEqual(data, snapshot);
 });
 
-test("paying from a credit purchase settles that invoice with its adjusted total and local date", () => {
+test("paying one credit purchase changes only that purchase and retains the adjusted total", () => {
   const data = profile({ cards: [{ ...card, invoiceOverrideByMonth: { "2026-10": 330 }, invoicePaymentsByMonth: { "2026-10": { totalAmount: 300, paidAmount: 80, paymentDate: "2026-10-16" } } }], transactions: [purchase("a", -100), purchase("b", -200), purchase("next", -90, { cardInvoiceMonth: "2026-11" })] });
   const next = setTransactionPaymentState(data, "a", "paid", "2026-10-17");
-  assert.deepEqual(next.cards[0].invoicePaymentsByMonth?.["2026-10"], { totalAmount: 330, paidAmount: 330, paymentDate: "2026-10-17" });
-  assert.equal(next.cards[0].invoicePaidByMonth?.["2026-10"], true);
-  assert.ok(next.transactions.slice(0, 2).every((item) => item.paymentStatus === "paid" && item.paymentDate === "2026-10-17"));
+  assert.deepEqual(next.cards[0].invoicePaymentsByMonth?.["2026-10"], { totalAmount: 330, paidAmount: 100, paymentDate: "2026-10-17" });
+  assert.equal(next.cards[0].invoicePaidByMonth?.["2026-10"], false);
+  assert.equal(next.transactions[0].paymentStatus, "paid");
+  assert.equal(next.transactions[1], data.transactions[1]);
   assert.equal(next.transactions[2], data.transactions[2]);
 });
 

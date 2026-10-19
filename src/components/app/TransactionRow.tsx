@@ -136,7 +136,7 @@ export function TransactionRow({
   displayAmount?: number;
   displayInstallment?: number;
 }) {
-  const { categoryById, cards, loanReceivables, deleteTransaction, showCategoryNameOnCard } = useAppStore();
+  const { categoryById, cards, loanReceivables, deleteTransaction, undoTransactionDeletion, showCategoryNameOnCard } = useAppStore();
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
   const [open, setOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -241,8 +241,16 @@ export function TransactionRow({
       closeSwipe();
       return;
     }
-    deleteTransaction(transaction.id);
-    toast.success("Transação excluída");
+    const deletion = deleteTransaction(transaction.id);
+    if (!deletion) {
+      toast.info("Esta movimentação é gerenciada na sua própria aba.");
+      closeSwipe();
+      return;
+    }
+    toast.success("Transação excluída", {
+      duration: 10000,
+      action: { label: "Desfazer", onClick: () => undoTransactionDeletion(deletion) },
+    });
   };
 
   const handlePrimaryAction = () => {

@@ -1,7 +1,18 @@
+import { adjustCardInvoice, removeUnusedCard, reorderActiveCards, updateCardPreservingHistory } from "./card-operations";
+import { reopenLoanReceivable, updateLoanRecord, type LoanRecordEdit } from "./loan-record-actions";
+import { getCardLoanSchedule, linkCardLoanInvoice } from "./card-loans";
+import { recordFreeLoanReceipt, sanitizeLoanReceipts, settleLoanReceivables } from "./loan-repayments";
+import { sanitizeHomeBalanceMode, type HomeBalanceMode } from "./home-balance";
+import { sanitizeInvoiceCardDisplayMode, setInvoiceCardDisplayPreference, type InvoiceCardDisplayMode } from "./invoice-card-display";
+import { sanitizeLoanValueMode, type LoanValueMode } from "./loan-value-display";
+import { sanitizeCategoryLimits, updateCategoryLimit, type CategoryLimits } from "./report-budgets";
+import { CATEGORY_CATALOG_VERSION, expandCategoryCatalog } from "./category-catalog";
+import { sanitizeCardBrand, type CardBrand } from "./card-appearance";
+import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, type TransactionDeletion } from "./transaction-deletion";
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, recordInvoicePayment, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
-import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
+import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
   createContext,
   useContext,
@@ -50,6 +61,7 @@ export type AppCard = {
   id: string;
   name: string;
   institution?: string;
+  brand?: CardBrand;
   last4: string;
   totalLimit?: number;
   closingDay?: number;
@@ -58,6 +70,10 @@ export type AppCard = {
   invoicePaid?: boolean;
   /** Status persistido por mês, indexado como YYYY-MM. */
   invoicePaidByMonth?: Record<string, boolean>;
+  /** Compras quitadas por mês, inclusive parcelas fora da parcela atual do lançamento. */
+  invoicePaidPurchaseIdsByMonth?: Record<string, string[]>;
+  invoiceCollapsed?: boolean;
+  invoiceHeaderColorMode?: "bank" | "card";
   /** Pagamentos parciais/totais por fatura mensal. */
   invoicePaymentsByMonth?: Record<string, InvoicePaymentRecord>;
   /** Reajuste manual do total da fatura, indexado como YYYY-MM. */
@@ -116,14 +132,31 @@ export type AppGoal = {
   createdAt: string;
 };
 
+export type LoanReceipt = {
+  id: string;
+  amount: number;
+  date: string;
+  transactionId: string;
+};
+
 /** Devolução vinculada a um valor emprestado a terceiros. */
 export type LoanReceivable = {
   id: string;
   loanId: string;
   contact: string;
   amount: number;
-  /** Ausente apenas quando a cobrança foi criada como dívida em aberto. */
+  cardId?: string;
+  cardInvoiceMonth?: string;
+  cardClosingDate?: string;
+  /** Ausente em empréstimos livres ou compras antigas aguardando vinculação. */
   dueDate?: string;
+  collectionMode?: "fixed" | "open";
+  freePaymentMode?: "installments" | "flexible";
+  suggestedPaymentAmount?: number;
+  receipts?: LoanReceipt[];
+  /** Original loan date; unchanged when an unpaid balance carries forward. */
+  startDate?: string;
+  paymentDate?: string;
   status: "scheduled" | "open" | "paid";
   installment?: number;
   installments?: number;
@@ -140,6 +173,7 @@ export type LoanReceivable = {
 /** Data that belongs to a single profile — never shared between profiles. */
 export type ProfileData = {
   categories: AppCategory[];
+  categoryCatalogVersion?: number;
   cards: AppCard[];
   transactions: Transaction[];
   loanReceivables: LoanReceivable[];
@@ -147,6 +181,10 @@ export type ProfileData = {
   reserves: AppReserve[];
   /** true = reservas aparecem junto com o saldo na tela inicial. */
   reservesInBalance: boolean;
+  homeBalanceMode?: HomeBalanceMode;
+  invoiceCardDisplayMode?: InvoiceCardDisplayMode;
+  loanValueMode?: LoanValueMode;
+  categoryLimits?: CategoryLimits;
   notifications: AppNotification[];
   financings: AppFinancing[];
   /** true = parcelas dos financiamentos aparecem junto com as transações. */
@@ -195,12 +233,17 @@ const DEFAULT_CARDS: AppCard[] = [
 function defaultData(): ProfileData {
   return {
     categories: seedCategories.map((c) => ({ ...c })),
+    categoryCatalogVersion: CATEGORY_CATALOG_VERSION,
     cards: DEFAULT_CARDS.map((c) => ({ ...c })),
     transactions: seedTransactions.map((t) => ({ ...t })),
     loanReceivables: [],
     people: [],
     reserves: [],
     reservesInBalance: true,
+    homeBalanceMode: "monthly",
+    invoiceCardDisplayMode: "expanded",
+    loanValueMode: "uniform",
+    categoryLimits: {},
     notifications: seedNotifications.map((n) => ({ ...n })),
     financings: [],
     financingsInFlow: false,
@@ -355,6 +398,7 @@ function sanitizeCards(v: unknown): AppCard[] {
       id: str(c.id, uid("card")),
       name: str(c.name, "Cartão"),
       institution: str(c.institution, ""),
+      brand: sanitizeCardBrand(c.brand),
       last4: /^\d{4}$/.test(String(c.last4 ?? "")) ? String(c.last4) : "0000",
       totalLimit:
         typeof c.totalLimit === "number" && Number.isFinite(c.totalLimit)
@@ -370,6 +414,9 @@ function sanitizeCards(v: unknown): AppCard[] {
           : undefined,
       invoicePaid: c.invoicePaid === true,
       invoicePaidByMonth: sanitizeInvoicePaidByMonth(c.invoicePaidByMonth),
+      invoicePaidPurchaseIdsByMonth: sanitizeInvoicePaidPurchaseIds(c.invoicePaidPurchaseIdsByMonth),
+      invoiceCollapsed: c.invoiceCollapsed === true,
+      invoiceHeaderColorMode: c.invoiceHeaderColorMode === "card" ? "card" as const : "bank" as const,
       invoicePaymentsByMonth: sanitizeInvoicePaymentsByMonth(c.invoicePaymentsByMonth),
       invoiceOverrideByMonth: sanitizeInvoiceAmountByMonth(c.invoiceOverrideByMonth),
       invoiceReconciledByMonth: sanitizeInvoicePaidByMonth(c.invoiceReconciledByMonth),
@@ -508,7 +555,7 @@ function sanitizeGoals(v: unknown): AppGoal[] {
     .filter((g) => g.name !== "Meta");
 }
 
-function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
+export function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
   if (!Array.isArray(v)) return [];
   return v
     .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
@@ -519,16 +566,27 @@ function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
         typeof item.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate)
           ? item.dueDate
           : undefined;
+      const isCard = item.operationType === "card";
+      const amount = typeof item.amount === "number" && Number.isFinite(item.amount)
+        ? Math.max(0.01, Math.round(item.amount * 100) / 100) : 0.01;
       return {
         id: str(item.id, uid("receivable")),
         loanId: str(item.loanId, uid("loan")),
         contact: str(item.contact, "Contato"),
-        amount:
-          typeof item.amount === "number" && Number.isFinite(item.amount)
-            ? Math.max(0.01, item.amount)
-            : 0.01,
-        dueDate: status === "open" ? undefined : dueDate,
-        status,
+        amount,
+        dueDate: isCard ? dueDate : status === "open" || item.collectionMode === "open" ? undefined : dueDate,
+        collectionMode: isCard ? "fixed" : item.collectionMode === "open" || status === "open" || !dueDate ? "open" : "fixed",
+        cardId: isCard && typeof item.cardId === "string" ? item.cardId : undefined,
+        cardInvoiceMonth: isCard ? sanitizeInvoiceMonth(item.cardInvoiceMonth) : undefined,
+        cardClosingDate: isCard ? sanitizeDueDate(item.cardClosingDate) : undefined,
+        freePaymentMode: isCard ? undefined : item.freePaymentMode === "installments" ? "installments" : "flexible",
+        suggestedPaymentAmount: !isCard && typeof item.suggestedPaymentAmount === "number" && Number.isFinite(item.suggestedPaymentAmount) && item.suggestedPaymentAmount > 0
+          ? Math.max(0.01, Math.round(Math.min(item.suggestedPaymentAmount, amount) * 100) / 100)
+          : undefined,
+        receipts: sanitizeLoanReceipts(item.receipts),
+        startDate: sanitizeDueDate(item.startDate),
+        paymentDate: sanitizeDueDate(item.paymentDate),
+        status: isCard && status === "open" ? "scheduled" : status,
         installment:
           typeof item.installment === "number" && Number.isFinite(item.installment)
             ? Math.max(1, Math.round(item.installment))
@@ -760,7 +818,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
       return {
         ...base,
         data: {
-          categories: sanitizeCategories(nested.categories),
+          ...expandCategoryCatalog(sanitizeCategories(nested.categories), nested.categoryCatalogVersion),
           cards: profileCards,
           transactions: sanitizeTransactions(nested.transactions, profileCards),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
@@ -770,6 +828,10 @@ function buildProfiles(raw: unknown): AppProfile[] {
             typeof nested.reservesInBalance === "boolean"
               ? nested.reservesInBalance
               : true,
+          homeBalanceMode: sanitizeHomeBalanceMode(nested.homeBalanceMode),
+          invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(nested.invoiceCardDisplayMode),
+          loanValueMode: sanitizeLoanValueMode(nested.loanValueMode),
+          categoryLimits: sanitizeCategoryLimits(nested.categoryLimits),
           notifications: sanitizeNotifications(nested.notifications),
           financings: sanitizeFinancings(nested.financings),
           financingsInFlow:
@@ -789,7 +851,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
     return {
       ...base,
       data: {
-        categories: sharedCategories.map((c) => ({ ...c })),
+        ...expandCategoryCatalog(sharedCategories.map((c) => ({ ...c })), undefined),
         cards: sharedCards.map((c) => ({ ...c })),
         transactions: seedTransactions.map((t) => ({ ...t })),
         loanReceivables: [],
@@ -887,6 +949,7 @@ type AppStoreValue = {
   addCard: (data: {
     name: string;
     institution?: string;
+    brand?: CardBrand;
     last4: string;
     totalLimit?: number;
     closingDay?: number;
@@ -896,6 +959,7 @@ type AppStoreValue = {
     color: string;
   }) => void;
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
+  reorderCards: (ids: string[]) => void;
   setCardInvoiceStatus: (cardId: string, month: string, paid: boolean) => void;
   setAllCardInvoiceStatus: (month: string, paid: boolean) => void;
   setCardInvoicePayment: (
@@ -923,6 +987,14 @@ type AppStoreValue = {
   ) => void;
   deleteReserve: (id: string) => void;
   setReservesInBalance: (value: boolean) => void;
+  homeBalanceMode: HomeBalanceMode;
+  setHomeBalanceMode: (value: HomeBalanceMode) => void;
+  invoiceCardDisplayMode: InvoiceCardDisplayMode | undefined;
+  setInvoiceCardDisplayMode: (value: InvoiceCardDisplayMode) => void;
+  loanValueMode: LoanValueMode;
+  setLoanValueMode: (value: LoanValueMode) => void;
+  categoryLimits: CategoryLimits;
+  setCategoryLimit: (categoryId: string, value: number | null) => void;
   /** Aprova a notificação: cria a transação no cartão e marca como aprovada. */
   approveNotification: (id: string) => void;
   ignoreNotification: (id: string) => void;
@@ -1021,9 +1093,14 @@ type AppStoreValue = {
       >
     >,
   ) => void;
-  deleteTransaction: (id: string) => void;
-  deleteTransactions: (ids: string[]) => void;
+  deleteTransaction: (id: string) => TransactionDeletion | undefined;
+  deleteTransactions: (ids: string[]) => TransactionDeletion | undefined;
+  undoTransactionDeletion: (deletion: TransactionDeletion) => void;
+  reopenLoanReceivable: (id: string) => void;
+  updateLoanRecord: (id: string, patch: LoanRecordEdit) => void;
   markLoanReceivablesPaid: (ids: string[]) => void;
+  receiveFreeLoanPayment: (id: string, amount: number, date: string, receiptId: string) => void;
+  linkCardLoanInvoice: (id: string, cardId: string, purchaseDate: string, invoiceMonth?: string) => void;
   createLoanRecord: (data: {
     contact: string;
     description?: string;
@@ -1032,10 +1109,15 @@ type AppStoreValue = {
     categoryId: string;
     paymentMethod: string;
     operationType?: LoanOperationType;
+    cardId?: string;
+    cardInvoiceMonth?: string;
+    installments?: number;
     note?: string;
     draftDisplay?: DraftDisplayMode;
     attachments?: { src: string; isImage: boolean; name: string }[];
     collectionMode: "fixed" | "open";
+    freePaymentMode?: "installments" | "flexible";
+    suggestedPaymentAmount?: number;
     receivables?: { amount: number; dueDate: string; installment: number; installments: number }[];
   }) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
@@ -1070,7 +1152,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const active =
       state.profiles.find((p) => p.id === state.activeProfileId) ??
       state.profiles[0];
-    const activeData = active?.data ?? {
+    const activeData: ProfileData = active?.data ?? {
       categories: [] as AppCategory[],
       cards: [] as AppCard[],
         transactions: [] as Transaction[],
@@ -1125,6 +1207,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       ...financingTransactions,
       ...regularTransactions,
     ];
+    const deleteWithUndo = (ids: string[]) => {
+      if (!active) return undefined;
+      const deletion = captureTransactionDeletion(activeData, active.id, ids);
+      if (!deletion) return undefined;
+      setState((s) => ({ ...s, profiles: applyTransactionDeletion(s.profiles, deletion) }));
+      return deletion;
+    };
 
     return {
       profiles: state.profiles,
@@ -1140,6 +1229,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       people: activeData.people,
       reserves: activeData.reserves,
       reservesInBalance: activeData.reservesInBalance,
+      homeBalanceMode: sanitizeHomeBalanceMode(activeData.homeBalanceMode),
+      setHomeBalanceMode: (mode) => patchActiveData((d) => ({ ...d, homeBalanceMode: sanitizeHomeBalanceMode(mode) })),
+      invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(activeData.invoiceCardDisplayMode),
+      setInvoiceCardDisplayMode: (mode) => patchActiveData((data) => setInvoiceCardDisplayPreference(data, mode)),
+      loanValueMode: sanitizeLoanValueMode(activeData.loanValueMode),
+      setLoanValueMode: (mode) => patchActiveData((d) => ({ ...d, loanValueMode: sanitizeLoanValueMode(mode) })),
+      categoryLimits: sanitizeCategoryLimits(activeData.categoryLimits),
+      setCategoryLimit: (categoryId, limit) => patchActiveData((d) => ({
+        ...d,
+        categoryLimits: updateCategoryLimit(d.categoryLimits ?? {}, categoryId, limit),
+      })),
       notifications: activeData.notifications,
       financings: activeData.financings,
       financingsInFlow: activeData.financingsInFlow,
@@ -1173,12 +1273,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           cards: [...d.cards, { id: uid("card"), ...data }],
         })),
       updateCard: (id, patch) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) =>
-            card.id === id ? { ...card, ...patch } : card,
-          ),
-        })),
+        patchActiveData((data) => updateCardPreservingHistory(data, id, patch)),
+      reorderCards: (ids) => patchActiveData((data) => reorderActiveCards(data, ids)),
       setCardInvoiceStatus: (cardId, month, paid) =>
         patchActiveData((d) => setInvoicePaymentStatus(d, cardId, month, paid)),
       setAllCardInvoiceStatus: (month, paid) =>
@@ -1186,19 +1282,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setCardInvoicePayment: (cardId, month, payment) =>
         patchActiveData((d) => recordInvoicePayment(d, cardId, month, payment)),
       setCardInvoiceOverride: (cardId, month, amount) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.map((card) => {
-            if (card.id !== cardId || !/^\d{4}-\d{2}$/.test(month)) return card;
-            const invoiceOverrideByMonth = { ...(card.invoiceOverrideByMonth ?? {}) };
-            if (typeof amount === "number" && Number.isFinite(amount) && amount >= 0) {
-              invoiceOverrideByMonth[month] = amount;
-            } else {
-              delete invoiceOverrideByMonth[month];
-            }
-            return { ...card, invoiceOverrideByMonth };
-          }),
-        })),
+        patchActiveData((data) => adjustCardInvoice(data, cardId, month, amount)),
       setCardInvoiceReconciled: (cardId, month, reconciled) =>
         patchActiveData((d) => ({
           ...d,
@@ -1214,11 +1298,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               : card,
           ),
         })),
-      deleteCard: (id) =>
-        patchActiveData((d) => ({
-          ...d,
-          cards: d.cards.filter((card) => card.id !== id),
-        })),
+      deleteCard: (id) => patchActiveData((data) => removeUnusedCard(data, id)),
       addPerson: (data) =>
         patchActiveData((d) => ({
           ...d,
@@ -1458,45 +1538,31 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             : d.cards;
           return { ...d, cards, transactions };
         }),
-      deleteTransaction: (id) =>
-        patchActiveData((d) => ({
-          ...d,
-          transactions: d.transactions.filter(
-            (transaction) => transaction.id !== id || transaction.source === "loan",
-          ),
-        })),
-      deleteTransactions: (ids) => {
-        const transactionIds = new Set(ids);
-        if (transactionIds.size === 0) return;
-        patchActiveData((d) => ({
-          ...d,
-          transactions: d.transactions.filter(
-            (transaction) =>
-              !transactionIds.has(transaction.id) || transaction.source === "loan",
-          ),
-        }));
-      },
-      markLoanReceivablesPaid: (ids) => {
-        const receivableIds = new Set(ids);
-        if (receivableIds.size === 0) return;
-        patchActiveData((d) => ({
-          ...d,
-          loanReceivables: d.loanReceivables.map((receivable) =>
-            receivableIds.has(receivable.id) && receivable.status === "open"
-              ? { ...receivable, status: "paid" as const }
-              : receivable,
-          ),
-        }));
-      },
+      deleteTransaction: (id) => deleteWithUndo([id]),
+      deleteTransactions: (ids) => deleteWithUndo(ids),
+      undoTransactionDeletion: (deletion) =>
+        setState((s) => ({ ...s, profiles: restoreTransactionDeletion(s.profiles, deletion) })),
+      reopenLoanReceivable: (id) => patchActiveData((d) => reopenLoanReceivable(d, id)),
+      updateLoanRecord: (id, patch) => patchActiveData((d) => updateLoanRecord(d, id, patch)),
+      markLoanReceivablesPaid: (ids) =>
+        patchActiveData((d) => settleLoanReceivables(d, ids)),
+      receiveFreeLoanPayment: (id, amount, date, receiptId) =>
+        patchActiveData((d) => recordFreeLoanReceipt(d, id, amount, date, receiptId)),
+      linkCardLoanInvoice: (id, cardId, purchaseDate, invoiceMonth) =>
+        patchActiveData((d) => linkCardLoanInvoice(d, id, cardId, purchaseDate, invoiceMonth)),
       createLoanRecord: (data) =>
         patchActiveData((d) => {
           const loanId = uid("loan");
-          const createdAt = new Date().toISOString().slice(0, 10);
+          const createdAt = localDateKey();
           const operationType: LoanOperationType = data.operationType === "card" ? "card" : "loan";
+          const card = operationType === "card" ? d.cards.find((card) => card.id === data.cardId) : undefined;
+          const cardSchedule = operationType === "card" ? getCardLoanSchedule(card, data.date, data.amount, data.installments ?? 1, data.cardInvoiceMonth) : [];
+          if (operationType === "card" && (data.collectionMode !== "fixed" || !cardSchedule.length)) return d;
+          const plannedReceivables = operationType === "card" ? cardSchedule : data.receivables ?? [];
           const operationLabel = operationType === "card" ? "Cartão emprestado" : "Empréstimo";
           const collectionLabel =
             data.collectionMode === "fixed"
-              ? `${data.receivables?.length ?? 0} parcela(s) agendada(s)`
+              ? `${plannedReceivables.length} parcela(s) agendada(s)`
               : "Dívida em aberto";
           const originalNote = [
             data.note?.trim() || undefined,
@@ -1523,6 +1589,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             paymentMethod: data.paymentMethod,
             source: "loan" as const,
             operationType,
+            cardId: card?.id,
+            cardMode: card ? "credito" as const : undefined,
+            cardInvoiceMonth: cardSchedule[0]?.invoiceMonth,
           };
 
           if (data.collectionMode === "open") {
@@ -1532,6 +1601,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               contact: data.contact,
               amount: Math.abs(data.amount),
               status: "open",
+              collectionMode: "open",
+              freePaymentMode: data.freePaymentMode === "installments" ? "installments" : "flexible",
+              suggestedPaymentAmount: data.freePaymentMode === "installments" && data.suggestedPaymentAmount && Number.isFinite(data.suggestedPaymentAmount)
+                ? Math.min(Math.abs(data.amount), Math.max(0.01, Math.round(data.suggestedPaymentAmount * 100) / 100))
+                : undefined,
+              startDate: data.date,
               description: data.description?.trim() || undefined,
               paymentMethod: data.paymentMethod,
               note: data.note?.trim() || undefined,
@@ -1547,7 +1622,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             };
           }
 
-          const scheduled = (data.receivables ?? []).map((item) => {
+          const scheduled = plannedReceivables.map((item, index) => {
             const transactionId = uid("t");
             const receivable: LoanReceivable = {
               id: uid("receivable"),
@@ -1555,7 +1630,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               contact: data.contact,
               amount: Math.abs(item.amount),
               dueDate: item.dueDate,
+              cardId: card?.id,
+              cardInvoiceMonth: cardSchedule[index]?.invoiceMonth,
+              cardClosingDate: cardSchedule[index]?.closingDate,
               status: "scheduled",
+              collectionMode: "fixed",
+              startDate: data.date,
               installment: item.installment,
               installments: item.installments,
               transactionId,
@@ -1584,6 +1664,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
               paymentMethod: data.paymentMethod,
               recurrence: "parcelada" as const,
+              paymentStatus: "pending" as const,
+              dueDate: item.dueDate,
               installments: item.installments,
               source: "loan" as const,
               operationType,

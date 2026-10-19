@@ -2,17 +2,18 @@ import { useId, useMemo, useState } from "react";
 import { BellRing, ChevronDown, CreditCard } from "lucide-react";
 import { Link } from "react-router";
 import { useAppStore } from "@/lib/app-store";
-import { formatCurrency, monthLabel } from "@/lib/mock-data";
+import { formatCurrency, monthLabel, type Transaction } from "@/lib/mock-data";
 import { getPreviousMonthDebts } from "@/lib/previous-month-debts";
 import { TransactionRow } from "./TransactionRow";
 
-export function PreviousMonthDebtReminder({ today, referenceMonth }: { today: string; referenceMonth?: string }) {
+export function PreviousMonthDebtReminder({ today, referenceMonth, sourceTransactions }: { today: string; referenceMonth?: string; sourceTransactions?: Transaction[] }) {
   const { cards, visibleTransactions, loanReceivables, setTransactionPaymentStatus } = useAppStore();
+  const transactions = sourceTransactions ?? visibleTransactions;
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
   const { items, total } = useMemo(
-    () => getPreviousMonthDebts(cards, visibleTransactions, loanReceivables, today, referenceMonth),
-    [cards, visibleTransactions, loanReceivables, today, referenceMonth],
+    () => getPreviousMonthDebts(cards, transactions, loanReceivables, today, referenceMonth),
+    [cards, transactions, loanReceivables, today, referenceMonth],
   );
   if (!items.length) return null;
 

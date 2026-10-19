@@ -1,22 +1,38 @@
-import { getTransactionInvoiceAmount, isCreditCardExpense, isInvoiceMarkedPaid } from "@/lib/card-billing";
-import { useEffect, useState } from "react";
+import "@/components/app/invoice-glass-band.css";
+import { getCardCommittedAmount, parseInvoiceMoney } from "@/lib/card-invoice-view";
+import { getCardGlassBackground, getInvoiceHeaderAppearances, type InvoiceHeaderAppearance } from "@/lib/card-header-appearance";
+import { useLocalDate } from "@/hooks/use-local-date";
+import { CardRemovalDialog } from "@/components/app/CardRemovalDialog";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2,
+  Check,
   CreditCard,
   Pencil,
   Plus,
   Save,
+  Search,
   Archive,
   Trash2,
   Wifi,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { CardBrandMark } from "@/components/app/CardBrandMark";
+import { BankSuggestionInput } from "@/components/app/BankSuggestionInput";
+import { CategoryColorPicker } from "@/components/app/CategoryColorPicker";
+import { SearchHighlight } from "@/components/app/SearchHighlight";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
-import { currentMonthKey, formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/mock-data";
+import { normalizeSearchText } from "@/lib/transaction-view";
+import {
+  CARD_BRAND_LABELS,
+  detectCardBrand,
+  findBankPreset,
+  getInvoiceHeaderColor,
+  type CardBrand,
+} from "@/lib/card-appearance";
 import { cn } from "@/lib/utils";
 
 const PALETTE = [
@@ -30,17 +46,6 @@ const PALETTE = [
   "#0A84FF",
 ];
 
-const BANK_PRESETS = [
-  { aliases: ["nubank", "nu"], name: "Nubank", color: "#820AD1" },
-  { aliases: ["inter", "banco inter"], name: "Inter", color: "#FF7A00" },
-  { aliases: ["c6", "c6 bank", "c6bank"], name: "C6 Bank", color: "#111111" },
-  { aliases: ["itau", "itaú"], name: "Itaú", color: "#EC7000" },
-  { aliases: ["santander"], name: "Santander", color: "#EC0000" },
-  { aliases: ["bradesco"], name: "Bradesco", color: "#CC092F" },
-  { aliases: ["banco do brasil", "bb"], name: "Banco do Brasil", color: "#F8CC46" },
-  { aliases: ["caixa", "caixa economica"], name: "Caixa", color: "#005CA9" },
-];
-
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 
@@ -52,6 +57,9 @@ type CardFormState = {
   closingDay: string;
   dueDay: string;
   color: string;
+  invoiceHeaderColorMode: "bank" | "card";
+  brand: CardBrand;
+  brandCustomized: boolean;
 };
 
 const EMPTY_FORM: CardFormState = {
@@ -62,22 +70,10 @@ const EMPTY_FORM: CardFormState = {
   closingDay: "",
   dueDay: "",
   color: PALETTE[0],
+  invoiceHeaderColorMode: "card",
+  brand: "card",
+  brandCustomized: false,
 };
-
-function normalizeBankText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function findBankPreset(value: string) {
-  const normalized = normalizeBankText(value);
-  return BANK_PRESETS.find((preset) =>
-    preset.aliases.some((alias) => normalized === normalizeBankText(alias)),
-  );
-}
 
 function isHexColor(value: string): boolean {
   return /^#[0-9A-F]{6}$/i.test(value);
@@ -89,12 +85,7 @@ function normalizeHexInput(value: string): string {
 }
 
 function parseAmount(value: string): number | undefined {
-  const cleaned = value.replace(/[^0-9,.-]/g, "");
-  const normalized = cleaned.includes(",")
-    ? cleaned.replace(/\./g, "").replace(",", ".")
-    : cleaned;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  return value.trim() ? (parseInvoiceMoney(value) ?? undefined) : undefined;
 }
 
 function parseDay(value: string): number | undefined {
@@ -110,13 +101,15 @@ export function CardVisual({
   openAmount = 0,
   onEdit,
   onDelete,
-  onToggleInvoice,
+  searchQuery,
+  appearance,
 }: {
   card: AppCard;
   openAmount?: number;
   onEdit?: () => void;
   onDelete?: () => void;
-  onToggleInvoice?: () => void;
+  searchQuery?: string;
+  appearance?: InvoiceHeaderAppearance;
 }) {
   const limit = card.totalLimit;
   const availableLimit =
@@ -125,7 +118,7 @@ export function CardVisual({
     typeof limit === "number" && limit > 0
       ? Math.min(100, Math.max(0, (openAmount / limit) * 100))
       : 0;
-  const safeColor = isHexColor(card.color) ? card.color : PALETTE[0];
+  const visual = appearance ?? getInvoiceHeaderAppearances([{ ...card, archived: false }])[card.id];
   const details = [
     card.closingDay ? `Fechamento: Dia ${card.closingDay}` : "Fechamento: —",
     card.dueDay ? `Vencimento: Dia ${card.dueDay}` : "Vencimento: —",
@@ -134,14 +127,13 @@ export function CardVisual({
   return (
     <div className="relative">
       <div
-        className="group relative overflow-hidden rounded-[1.7rem] border border-white/30 p-5 text-white shadow-[0_28px_55px_-18px_rgba(15,40,90,0.72),inset_0_1px_0_rgba(255,255,255,0.42),inset_0_-1px_0_rgba(0,0,0,0.18)] transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-[0_34px_64px_-18px_rgba(15,40,90,0.78),inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(0,0,0,0.22)] [transform:perspective(1000px)_rotateX(2deg)]"
+        className="invoice-glass-band group relative overflow-hidden rounded-[1.7rem] border border-white/30 p-5 text-white shadow-[0_28px_55px_-18px_rgba(15,40,90,0.72),inset_0_1px_0_rgba(255,255,255,0.42),inset_0_-1px_0_rgba(0,0,0,0.18)] transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-[0_34px_64px_-18px_rgba(15,40,90,0.78),inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(0,0,0,0.22)] [transform:perspective(1000px)_rotateX(2deg)]"
         style={{
-          background: `linear-gradient(145deg, ${safeColor} 0%, ${safeColor}e6 48%, ${safeColor}b8 100%)`,
+          backgroundColor: visual.middle,
+          backgroundImage: getCardGlassBackground(visual),
+          textShadow: "0 1px 2px rgba(0,0,0,0.75), 0 0 1px rgba(0,0,0,0.7)",
         }}
       >
-        <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 blur-[0.5px]" />
-        <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 -left-8 h-36 w-36 rounded-full bg-black/15 blur-3xl" />
 
         <div className="relative flex items-center justify-between">
           {(onEdit || onDelete) && (
@@ -168,23 +160,43 @@ export function CardVisual({
               )}
             </div>
           )}
-          <Wifi className="ml-auto size-5 rotate-90 opacity-80" strokeWidth={2.2} />
+          <Wifi
+            className="ml-auto size-5 rotate-90 opacity-80"
+            strokeWidth={2.2}
+          />
         </div>
 
         <div className="relative mt-5">
           <span className="text-[12.5px] font-bold tracking-widest">
-            {card.name.toUpperCase()}
+            <SearchHighlight
+              query={searchQuery}
+              className="text-[#132235] dark:text-[#132235] dark:bg-[#FFE58F]"
+            >
+              {card.name.toUpperCase()}
+            </SearchHighlight>
           </span>
           <p className="mt-0.5 text-[11px] font-medium text-white/75">
-            {card.institution || "Banco / instituição"}
+            <SearchHighlight
+              query={searchQuery}
+              className="text-[#132235] dark:text-[#132235] dark:bg-[#FFE58F]"
+            >
+              {card.institution || "Banco / instituição"}
+            </SearchHighlight>
           </p>
         </div>
         <p className="amount-tabular relative mt-8 text-[18px] font-semibold tracking-[0.18em]">
-          •••• •••• •••• {card.last4 || "0000"}
+          •••• •••• ••••{" "}
+          <SearchHighlight
+            query={searchQuery}
+            className="text-[#132235] dark:text-[#132235] dark:bg-[#FFE58F]"
+          >
+            {card.last4 || "0000"}
+          </SearchHighlight>
         </p>
         <div className="relative mt-5 grid grid-cols-2 gap-2 text-[10px] font-medium text-white/75">
           <span>
-            Limite total {typeof limit === "number" ? formatCurrency(limit) : "—"}
+            Limite total{" "}
+            {typeof limit === "number" ? formatCurrency(limit) : "—"}
           </span>
           <span className="text-right">{details}</span>
         </div>
@@ -217,25 +229,13 @@ export function CardVisual({
               : "Limite não informado"}
           </p>
         </div>
-        {onToggleInvoice && (
-          <button
-            type="button"
-            onClick={onToggleInvoice}
-            aria-pressed={card.invoicePaid === true}
-            className="relative mt-2 flex items-center gap-1.5 rounded-full border border-white/25 bg-black/10 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-md transition-colors hover:bg-white/20 active:scale-95"
-          >
-            <CheckCircle2 className="size-3.5" />
-            Fatura {card.invoicePaid === true ? "paga" : "em aberto"}
-          </button>
-        )}
         <div className="relative mt-4 flex items-center justify-between">
           <span className="text-[11px] font-medium text-white/75">
             GranaScan · Cartão pessoal
           </span>
-          <CardBrandMark card={card} />
+          <CardBrandMark card={card} className="[text-shadow:none]" />
         </div>
       </div>
-
     </div>
   );
 }
@@ -253,6 +253,8 @@ function FormCardPreview({ form }: { form: CardFormState }) {
         closingDay: parseDay(form.closingDay),
         dueDay: parseDay(form.dueDay),
         color: safeColor,
+        invoiceHeaderColorMode: form.invoiceHeaderColorMode,
+        brand: form.brand,
       }}
     />
   );
@@ -260,29 +262,38 @@ function FormCardPreview({ form }: { form: CardFormState }) {
 
 export default function CardsPage() {
   const location = useLocation();
-  const requestedEditId = (location.state as { editCardId?: string } | null)?.editCardId;
+  const navigate = useNavigate();
+  const today = useLocalDate();
+  const request = location.state as { editCardId?: string; returnInvoiceMonth?: string } | null;
+  const requestedEditId = request?.editCardId;
   const {
     cards,
     transactions,
+    loanTransactions,
+    loanReceivables,
     activeProfile,
     addCard,
-    setCardInvoiceStatus,
     updateCard,
     deleteCard,
   } = useAppStore();
 
+  const cardAppearances = useMemo(() => getInvoiceHeaderAppearances(cards), [cards]);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const normalizedQuery = normalizeSearchText(searchQuery.trim());
   const activeCards = cards.filter((card) => !card.archived);
-  const openAmountByCard = transactions.reduce<Record<string, number>>(
-    (totals, transaction) => {
-      const card = cards.find((item) => item.id === transaction.cardId);
-      if (card && isCreditCardExpense(transaction)) {
-        totals[card.id] =
-          (totals[card.id] ?? 0) + getTransactionInvoiceAmount(transaction, card, currentMonthKey);
-      }
-      return totals;
-    },
-    {},
+  const filteredCards = activeCards.filter(
+    (card) =>
+      !normalizedQuery ||
+      normalizeSearchText(
+        `${card.name} ${card.institution ?? ""} ${card.last4}`,
+      ).includes(normalizedQuery),
   );
+  useEffect(() => {
+    setSearchQuery("");
+  }, [activeProfile?.id]);
+  const openAmountByCard = Object.fromEntries(cards.map((card) => [card.id, getCardCommittedAmount(card, transactions, today)]));
+  const [removingCard, setRemovingCard] = useState<AppCard | null>(null);
   const initialEditingCard = cards.find((card) => card.id === requestedEditId);
   const [form, setForm] = useState<CardFormState>(() =>
     initialEditingCard
@@ -301,12 +312,22 @@ export default function CardsPage() {
             ? String(initialEditingCard.dueDay)
             : "",
           color: initialEditingCard.color,
+          invoiceHeaderColorMode: initialEditingCard.invoiceHeaderColorMode ?? "bank",
+          brand: detectCardBrand(initialEditingCard),
+          brandCustomized: Boolean(initialEditingCard.brand),
         }
       : EMPTY_FORM,
   );
   const [editingId, setEditingId] = useState<string | null>(
     initialEditingCard?.id ?? null,
   );
+
+  const displayedFormColor = form.invoiceHeaderColorMode === "bank"
+    ? getInvoiceHeaderColor(form)
+    : form.color;
+  const handleColorChange = (color: string) => {
+    setForm((current) => ({ ...current, color, invoiceHeaderColorMode: "card" }));
+  };
 
   const updateField = <K extends keyof CardFormState>(
     field: K,
@@ -320,7 +341,8 @@ export default function CardsPage() {
     setForm((current) => ({
       ...current,
       institution: preset ? preset.name : value,
-      ...(preset ? { color: preset.color } : {}),
+      ...(preset ? { color: preset.color, invoiceHeaderColorMode: "bank" as const } : {}),
+      ...(!current.brandCustomized ? { brand: preset?.brand ?? "card" } : {}),
     }));
   };
 
@@ -342,16 +364,30 @@ export default function CardsPage() {
       closingDay: card.closingDay ? String(card.closingDay) : "",
       dueDay: card.dueDay ? String(card.dueDay) : "",
       color: card.color,
+      invoiceHeaderColorMode: card.invoiceHeaderColorMode ?? "bank",
+      brand: detectCardBrand(card),
+      brandCustomized: Boolean(card.brand),
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.requestAnimationFrame(() => {
+      const editor = document.getElementById("card-editor");
+      editor?.scrollIntoView({ block: "start", behavior: "smooth" });
+      editor?.querySelector("input")?.focus({ preventScroll: true });
+    });
   };
 
-  // O menu da fatura entrega o cartão a ser editado via estado de navegação.
+  const handledEdit = useRef<string | null>(null);
   useEffect(() => {
-    if (!requestedEditId) return;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    window.history.replaceState({}, "", window.location.href);
-  }, [requestedEditId]);
+    if (!requestedEditId || handledEdit.current === location.key) return;
+    const card = cards.find((item) => item.id === requestedEditId);
+    if (!card) return;
+    handledEdit.current = location.key;
+    handleEdit(card);
+  }, [requestedEditId, location.key, cards]);
+  const editorProfile = useRef(activeProfile?.id);
+  useEffect(() => {
+    if (editorProfile.current === activeProfile?.id) return;
+    editorProfile.current = activeProfile?.id; resetForm(); setRemovingCard(null);
+  }, [activeProfile?.id]);
 
   const handleSave = () => {
     const trimmedName = form.name.trim();
@@ -378,15 +414,21 @@ export default function CardsPage() {
       return;
     }
 
+    const totalLimit = parseAmount(form.totalLimit);
+    if (form.totalLimit.trim() && totalLimit === undefined) {
+      toast("Informe um limite válido, como 1.500,00"); return;
+    }
     const color = isHexColor(form.color) ? form.color : PALETTE[0];
     const data = {
       name: trimmedName,
       institution: form.institution.trim() || undefined,
+      brand: form.brand,
       last4: digits,
-      totalLimit: parseAmount(form.totalLimit),
+      totalLimit,
       closingDay,
       dueDay,
       color,
+      invoiceHeaderColorMode: form.invoiceHeaderColorMode,
     };
 
     if (editingId) {
@@ -397,6 +439,7 @@ export default function CardsPage() {
       toast("Cartão adicionado");
     }
     resetForm();
+    if (editingId && requestedEditId) navigate("/dashboard/compras-cartao", { state: { cardId: editingId, invoiceMonth: request?.returnInvoiceMonth } });
   };
 
   return (
@@ -404,10 +447,38 @@ export default function CardsPage() {
       <SettingsHeader title="Cartões" />
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Cartões de{" "}
-        <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        cada perfil tem os seus.
+        <span className="font-bold text-glass-sub">{activeProfile?.name}</span>{" "}
+        — cada perfil tem os seus.
       </p>
 
+      <div className="glass grid min-h-11 min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-2xl px-3">
+        <Search className="size-4 shrink-0 text-glass-faint" />
+        <input
+          type="search"
+          enterKeyHint="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Buscar cartão, banco ou final..."
+          aria-label="Buscar cartões por nome, banco ou últimos quatro dígitos"
+          className="h-11 w-full min-w-0 bg-transparent text-[16px] text-glass-ink outline-none placeholder:text-glass-faint sm:text-[15px] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:appearance-none"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            aria-label="Limpar busca de cartões"
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-glass-faint hover:text-glass-ink focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+      {normalizedQuery && (
+        <p role="status" className="px-1 text-[12px] text-glass-sub">
+          {filteredCards.length} de {activeCards.length}{" "}
+          {activeCards.length === 1 ? "cartão" : "cartões"}
+        </p>
+      )}
       <div className="space-y-4">
         {cards.length === 0 && (
           <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
@@ -425,22 +496,27 @@ export default function CardsPage() {
           </div>
         )}
 
-        {activeCards.map((card) => (
-            <CardVisual
+        {normalizedQuery &&
+          activeCards.length > 0 &&
+          filteredCards.length === 0 && (
+            <div className="glass rounded-3xl px-5 py-6 text-center">
+              <p className="text-[14px] font-semibold text-glass-ink">
+                Nenhum cartão encontrado
+              </p>
+              <p className="mt-1 break-words text-[12px] text-glass-sub">
+                Tente outro nome, banco ou os últimos quatro dígitos.
+              </p>
+            </div>
+          )}
+        {filteredCards.map((card) => (
+          <CardVisual
             key={card.id}
-            card={{ ...card, invoicePaid: isInvoiceMarkedPaid(card, currentMonthKey) }}
+            searchQuery={searchQuery}
+            card={card}
+            appearance={cardAppearances[card.id]}
             openAmount={openAmountByCard[card.id] ?? 0}
             onEdit={() => handleEdit(card)}
-            onDelete={() => {
-              deleteCard(card.id);
-              if (editingId === card.id) resetForm();
-              toast("Cartão removido");
-            }}
-            onToggleInvoice={() => {
-              const nextPaid = !isInvoiceMarkedPaid(card, currentMonthKey);
-              setCardInvoiceStatus(card.id, currentMonthKey, nextPaid);
-              toast(nextPaid ? "Fatura marcada como paga" : "Fatura reaberta");
-            }}
+            onDelete={() => setRemovingCard(card)}
           />
         ))}
 
@@ -450,14 +526,19 @@ export default function CardsPage() {
               <Archive className="size-6 text-glass-faint" />
             </div>
             <div>
-              <p className="text-[15px] font-semibold text-glass-ink">Todos os cartões estão arquivados</p>
-              <p className="mt-1 text-[13px] text-glass-sub">Consulte a seção de arquivados abaixo para restaurar um cartão.</p>
+              <p className="text-[15px] font-semibold text-glass-ink">
+                Todos os cartões estão arquivados
+              </p>
+              <p className="mt-1 text-[13px] text-glass-sub">
+                Abra Arquivados para consultar ou restaurar um cartão.
+              </p>
+              <button type="button" onClick={() => navigate("/dashboard/cartoes/arquivados")} className="mt-3 min-h-11 rounded-full bg-primary px-4 text-[12px] font-bold text-white">Abrir arquivados</button>
             </div>
           </div>
         )}
       </div>
 
-      <div className="glass rounded-3xl p-4">
+      <div id="card-editor" className="glass scroll-mt-4 rounded-3xl p-4">
         <FormCardPreview form={form} />
         <div className="mt-4 flex items-center justify-between">
           <p className="text-[15px] font-bold text-glass-ink">
@@ -482,19 +563,62 @@ export default function CardsPage() {
           maxLength={24}
           className={cn(inputClass, "mt-3")}
         />
-        <input
+        <BankSuggestionInput
           value={form.institution}
-          onChange={(e) => handleInstitutionChange(e.target.value)}
-          placeholder="Banco / instituição (ex.: Nubank)"
-          maxLength={32}
-          list="bank-presets"
-          className={cn(inputClass, "mt-2.5")}
+          onChange={handleInstitutionChange}
+          onSelect={(bank) => handleInstitutionChange(bank.name)}
+          className={inputClass}
         />
-        <datalist id="bank-presets">
-          {BANK_PRESETS.map((preset) => (
-            <option key={preset.name} value={preset.name} />
-          ))}
-        </datalist>
+        <div className="mt-3 rounded-2xl border border-glass-ink/10 p-3">
+          <p className="text-[12px] font-semibold text-glass-ink">
+            Bandeira do cartão
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-glass-sub">
+            Confira a sugestão e escolha a bandeira que aparece no seu cartão.
+          </p>
+          <div
+            role="group"
+            aria-label="Bandeira do cartão"
+            className="mt-2 grid grid-cols-2 gap-2"
+          >
+            {(Object.keys(CARD_BRAND_LABELS) as CardBrand[]).map((brand) => (
+              <button
+                key={brand}
+                type="button"
+                aria-label={`Bandeira ${CARD_BRAND_LABELS[brand]}`}
+                aria-pressed={form.brand === brand}
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    brand,
+                    brandCustomized: true,
+                  }))
+                }
+                className={cn(
+                  "flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[12px] font-semibold",
+                  form.brand === brand
+                    ? "border-primary bg-primary text-white"
+                    : "border-glass-ink/10 bg-white/30 text-glass-ink dark:bg-white/5",
+                )}
+              >
+                {form.brand === brand && (
+                  <Check className="size-3.5 shrink-0" />
+                )}
+                {brand === "card" ? (
+                  "Não informada"
+                ) : (
+                  <CardBrandMark
+                    card={{ name: "", brand }}
+                    className={cn(
+                      "border-0 bg-transparent p-0 backdrop-blur-none",
+                      form.brand === brand ? "text-white" : "text-glass-ink",
+                    )}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
         <input
           value={form.last4}
           onChange={(e) =>
@@ -517,7 +641,10 @@ export default function CardsPage() {
           <input
             value={form.closingDay}
             onChange={(e) =>
-              updateField("closingDay", e.target.value.replace(/\D/g, "").slice(0, 2))
+              updateField(
+                "closingDay",
+                e.target.value.replace(/\D/g, "").slice(0, 2),
+              )
             }
             placeholder="Dia de fechamento"
             inputMode="numeric"
@@ -545,29 +672,28 @@ export default function CardsPage() {
               key={color}
               type="button"
               aria-label={`Cor ${color}`}
-              onClick={() => updateField("color", color)}
+              aria-pressed={displayedFormColor.toUpperCase() === color.toUpperCase()}
+              onClick={() => handleColorChange(color)}
               className={cn(
                 "size-11 bg-clip-content rounded-full p-1.5 transition-transform active:scale-90",
-                form.color === color &&
+                displayedFormColor.toUpperCase() === color.toUpperCase() &&
                   "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
               )}
               style={{ backgroundColor: color }}
             />
           ))}
-          <label className="relative flex size-11 cursor-pointer overflow-hidden rounded-full border-2 border-white/70 p-1.5 shadow-sm dark:border-[#111c3c]">
-            <input
-              type="color"
-              value={isHexColor(form.color) ? form.color : PALETTE[0]}
-              onChange={(e) => updateField("color", e.target.value.toUpperCase())}
-              className="absolute inset-[-8px] size-14 cursor-pointer"
-              aria-label="Escolher cor personalizada"
-            />
-          </label>
+          <CategoryColorPicker
+            value={isHexColor(displayedFormColor) ? displayedFormColor : PALETTE[0]}
+            palette={PALETTE}
+            onChange={handleColorChange}
+          />
           <input
-            value={form.color}
-            onChange={(e) => updateField("color", normalizeHexInput(e.target.value))}
+            value={displayedFormColor}
+            onChange={(e) =>
+              handleColorChange(normalizeHexInput(e.target.value))
+            }
             onBlur={() => {
-              if (!isHexColor(form.color)) updateField("color", PALETTE[0]);
+              if (!isHexColor(displayedFormColor)) handleColorChange(PALETTE[0]);
             }}
             placeholder="#FF5733"
             maxLength={7}
@@ -581,7 +707,11 @@ export default function CardsPage() {
           onClick={handleSave}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14.5px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
         >
-          {editingId ? <Save className="size-4" /> : <Plus className="size-4" />}
+          {editingId ? (
+            <Save className="size-4" />
+          ) : (
+            <Plus className="size-4" />
+          )}
           {editingId ? "Salvar alterações" : "Adicionar cartão"}
         </button>
       </div>
@@ -590,6 +720,9 @@ export default function CardsPage() {
         As compras parceladas por terceiros no seu cartão aparecem na aba
         Empréstimos → Cartão Emprestado.
       </p>
+      {removingCard && <CardRemovalDialog card={removingCard} mode="delete" transactions={[...transactions, ...loanTransactions]} receivables={loanReceivables}
+        onClose={() => setRemovingCard(null)} onArchive={() => { updateCard(removingCard.id, { archived: true }); if (editingId === removingCard.id) resetForm(); setRemovingCard(null); toast("Cartão arquivado. Você pode restaurá-lo em Arquivados."); }}
+        onDelete={() => { deleteCard(removingCard.id); if (editingId === removingCard.id) resetForm(); setRemovingCard(null); toast("Cartão removido"); }} />}
     </div>
   );
 }
