@@ -1306,7 +1306,7 @@ export default function CardPurchasesPage() {
             );
           })}
           </div>
-        </div>
+        </div>}
         <div className="border-t border-glass-ink/10 pt-3">
           <label className="flex items-center justify-between gap-3 text-[12px] font-semibold text-glass-ink"><span>Incluir cartão emprestado</span><input type="checkbox" role="switch" aria-label="Incluir cartão emprestado" checked={includeBorrowedCardPurchases} onChange={(event) => setIncludeBorrowedCardPurchases(event.target.checked)} className="size-5 accent-primary" /></label>
           <p className="mt-2 text-[11px] text-glass-sub">{includeBorrowedCardPurchases ? "Ativado: compras para outras pessoas entram nos valores e extratos deste perfil." : "Desativado: mostra apenas compras pessoais. A escolha fica salva neste perfil."}</p>
