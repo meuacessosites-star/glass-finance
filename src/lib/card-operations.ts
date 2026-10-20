@@ -3,6 +3,7 @@ import type { Transaction } from "./mock-data";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
 import { selectTransactionLedgers } from "./transaction-ledgers";
 import { getCardInvoiceMetrics, getCardStatementTotal } from "./card-invoice-view";
+import { getBorrowedCardTransactions } from "./card-loan-purchases";
 
 /** Reorder active cards without moving archived slots or losing newly added cards. */
 export function reorderActiveCards(data: ProfileData, ids: string[]): ProfileData {
@@ -51,7 +52,9 @@ export function removeUnusedCard(data: ProfileData, id: string): ProfileData {
 export function adjustCardInvoice(data: ProfileData, id: string, month: string, amount: number | undefined, today = localDateKey()): ProfileData {
   const card = data.cards.find((item) => item.id === id);
   if (!card || !sanitizeInvoiceMonth(month) || (amount !== undefined && (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(Math.round(amount * 100))))) return data;
-  const purchases = selectTransactionLedgers(data.transactions, data.loanReceivables).regularTransactions;
+  const regular = selectTransactionLedgers(data.transactions, data.loanReceivables).regularTransactions;
+  const borrowed = data.includeBorrowedCardPurchases ? getBorrowedCardTransactions(data.loanReceivables) : [];
+  const purchases = [...regular, ...borrowed];
   const current = getCardInvoiceMetrics(card, purchases, month, today);
   const automatic = getCardStatementTotal(card, purchases, month, "month");
   const total = amount === undefined ? automatic : Math.round(amount * 100) / 100;
