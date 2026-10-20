@@ -40,6 +40,8 @@ import {
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router";
 import { getInvoiceDates, getInvoicePartsInPeriod, getTransactionInvoiceSchedule, localDateKey, sanitizeInvoiceMonth } from "@/lib/card-billing";
+import { getBorrowedCardTransactions } from "@/lib/card-loan-purchases";
+import { CardMonthsDialog } from "@/components/app/CardMonthsDialog";
 import { getCardCommittedAmount, getCardInvoiceMetrics, getCardInvoiceStatus, getCardStatementTotal, getInvoicePaymentAmount, parseInvoiceMoney, selectCardPurchases } from "@/lib/card-invoice-view";
 import { useLocalDate } from "@/hooks/use-local-date";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -896,6 +898,8 @@ export default function CardPurchasesPage() {
     reorderCards,
     invoiceCardDisplayMode,
     setInvoiceCardDisplayMode,
+    includeBorrowedCardPurchases,
+    setIncludeBorrowedCardPurchases,
     setCardInvoiceStatus,
     setCardInvoicePayment,
     setCardInvoiceOverride,
@@ -903,6 +907,10 @@ export default function CardPurchasesPage() {
   } = useAppStore();
   const [month, setMonth] = useState<string>(currentMonthKey);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
+  const [monthsDialogOpen, setMonthsDialogOpen] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [loanHelpExpanded, setLoanHelpExpanded] = useState(false);
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>("");
@@ -950,6 +958,7 @@ export default function CardPurchasesPage() {
     setPaymentCard(null); setReopenCard(null); setZeroInvoiceCard(null); setCardRemoval(null);
     setUtilityCard(null); setUtilityKind(null); setSelectedCardId("");
     setTransactionSearch(""); setTransactionCategory("todas"); setTransactionSearchScope("month");
+    setSelectedMonths([]); setFiltersExpanded(false); setMonthsDialogOpen(false); setLoanHelpExpanded(false);
   }, [activeProfile?.id]);
 
   useEffect(() => {
@@ -962,10 +971,11 @@ export default function CardPurchasesPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [statementRequest, selectedCardId]);
 
-  const cardTransactions = useMemo(
-    () => selectCardPurchases(transactions).sort((a, b) => b.date.localeCompare(a.date)),
-    [transactions],
-  );
+  const cardTransactions = useMemo(() => {
+    const personal = selectCardPurchases(transactions);
+    const borrowed = includeBorrowedCardPurchases ? getBorrowedCardTransactions(loanReceivables) : [];
+    return [...personal, ...borrowed].sort((a, b) => b.date.localeCompare(a.date));
+  }, [transactions, loanReceivables, includeBorrowedCardPurchases]);
   const monthOptions = useMemo(() => {
     const invoiceHistoryMonths = cards.flatMap((card) =>
       [...Object.keys(card.invoicePaidByMonth ?? {}), ...Object.keys(card.invoicePaymentsByMonth ?? {}), ...Object.keys(card.invoiceOverrideByMonth ?? {})].filter((key) =>
@@ -981,9 +991,10 @@ export default function CardPurchasesPage() {
         ...navigableMonths,
         ...cardTransactions.flatMap((transaction) => getTransactionInvoiceSchedule(transaction, cards.find((card) => card.id === transaction.cardId)).map((part) => part.month)),
         ...invoiceHistoryMonths,
+        ...loanReceivables.filter((row) => row.operationType === "card" && row.cardInvoiceMonth).map((row) => row.cardInvoiceMonth!),
       ]),
     ].sort((a, b) => b.localeCompare(a));
-  }, [cardTransactions, cards, currentMonthKey, month]);
+  }, [cardTransactions, cards, currentMonthKey, month, loanReceivables]);
 
   useEffect(() => {
     if (periodMode === "current") setMonth(currentMonthKey);
@@ -997,21 +1008,26 @@ export default function CardPurchasesPage() {
   const activeRangeEnd = periodMode === "custom" && rangeStart && rangeEnd ? rangeEnd : null;
   const selectedPeriodLabel = activeRangeStart && activeRangeEnd
     ? `${formatDateLabel(activeRangeStart)} → ${formatDateLabel(activeRangeEnd)}`
-    : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
+    : selectedMonths.length > 0
+      ? selectedMonths.map((key) => `${monthShortLabel(key)} ${key.slice(0, 4)}`).join(" · ")
+      : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`;
   const handleSelectMonth = (nextMonth: string) => {
+    setSelectedMonths([]);
     setMonth(nextMonth);
     setPeriodMode(nextMonth === currentMonthKey ? "current" : "month");
     setRangeStart(null);
     setRangeEnd(null);
   };
   const hasInvoiceFilters = Boolean(
-    month !== currentMonthKey ||
+    selectedMonths.length > 0 ||
+      month !== currentMonthKey ||
       periodMode !== "current" ||
       rangeStart ||
       rangeEnd ||
       invoiceStatusFilter !== "all",
   );
   const clearInvoiceFilters = () => {
+    setSelectedMonths([]);
     setMonth(currentMonthKey);
     setPeriodMode("current");
     setRangeStart(null);
@@ -1029,6 +1045,31 @@ export default function CardPurchasesPage() {
     card.id, { ...getCardInvoiceMetrics(card, cardTransactions, selectedMonth, today), committedAmount: getCardCommittedAmount(card, cardTransactions, today) },
   ])), [cards, cardTransactions, selectedMonth, today]);
   const invoiceMetricsFor = (card: AppCard) => metricsByCard[card.id];
+  const overviewMonths = useMemo(() => {
+    if (selectedMonths.length > 0) return [...new Set(selectedMonths)].sort();
+    if (activeRangeStart && activeRangeEnd) return monthOptions.filter((key) =>
+      cards.some((card) => {
+        const due = getInvoiceDates(card, key)?.dueDate;
+        return Boolean(due && due >= activeRangeStart && due <= activeRangeEnd);
+      })
+    );
+    return [selectedMonth];
+  }, [selectedMonths, activeRangeStart, activeRangeEnd, monthOptions, cards, selectedMonth]);
+  const overview = useMemo(() => {
+    let totalCents = 0, paidCents = 0, count = 0;
+    for (const card of cards) {
+      if (card.archived) continue;
+      for (const invoiceMonth of overviewMonths) {
+        const values = getCardInvoiceMetrics(card, cardTransactions, invoiceMonth, today);
+        if (invoiceStatusFilter === "paid" && !values.invoicePaid) continue;
+        if (invoiceStatusFilter === "open" && (values.invoicePaid || values.openAmount <= 0)) continue;
+        totalCents += Math.round(values.invoiceTotal * 100);
+        paidCents += Math.round(values.paidAmount * 100);
+        count += 1;
+      }
+    }
+    return { total: totalCents / 100, paid: paidCents / 100, open: (totalCents - paidCents) / 100, count };
+  }, [cards, cardTransactions, overviewMonths, invoiceStatusFilter, today]);
   const visibleCards = cards.filter((card) => !card.archived && (
     invoiceStatusFilter === "all" || (invoiceStatusFilter === "paid"
       ? invoiceMetricsFor(card).invoicePaid
@@ -1184,6 +1225,7 @@ export default function CardPurchasesPage() {
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Acompanhe cada fatura e veja o extrato separado por cartão.
       </p>
+      {!selectedCard ? (<>
       <div className={cn("grid grid-cols-2 items-center gap-1.5 px-1 sm:flex sm:justify-end sm:gap-2", cards.filter((card) => !card.archived).length > 1 && "grid-cols-3")}>
         <button type="button" onClick={() => navigate("/dashboard/cartoes/arquivados")}
           className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-full bg-white/45 px-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 active:scale-95 sm:gap-2 sm:px-4 sm:text-[12px]"
@@ -1213,9 +1255,7 @@ export default function CardPurchasesPage() {
           >
             <ChevronLeft className="size-4" />
           </button>
-          <p className="min-w-0 flex-1 truncate text-center text-[13px] font-bold uppercase tracking-wide text-glass-ink dark:text-white">
-            {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)}
-          </p>
+          <button type="button" onClick={() => setMonthsDialogOpen(true)} aria-label="Selecionar meses" className="flex min-w-0 flex-1 items-center justify-center gap-1.5 text-[13px] font-bold text-glass-ink dark:text-white"><CalendarDays className="size-4 text-primary" /><span className="truncate">{selectedMonths.length ? `${selectedMonths.length} meses selecionados` : `${monthShortLabel(selectedMonth)} ${selectedMonth.slice(0, 4)}`}</span><ChevronDown className="size-3.5" /></button>
           <button
             type="button"
             aria-label="Próximo mês"
@@ -1226,14 +1266,17 @@ export default function CardPurchasesPage() {
           </button>
         </div>
 
-        <div className="mt-3 min-w-0 space-y-3 border-t border-glass-ink/5 pt-3 dark:border-white/10">
+        {selectedMonths.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{selectedMonths.map((key) => <button key={key} type="button" onClick={() => setSelectedMonths((months) => months.filter((item) => item !== key))} className="rounded-full bg-primary/10 px-2.5 py-1.5 text-[11px] font-semibold text-primary" title="Remover mês">{monthShortLabel(key)} {key.slice(0, 4)} ×</button>)}</div>}
+        <button type="button" onClick={() => setFiltersExpanded((value) => !value)} aria-expanded={filtersExpanded} className="mt-2 flex min-h-11 w-full items-center justify-between rounded-xl px-2 text-left text-[12px] font-semibold text-primary"><span className="flex items-center gap-2"><SlidersHorizontal className="size-4" />{filtersExpanded ? "Recolher filtros e detalhes" : "Expandir filtros e detalhes"}</span><ChevronDown className={cn("size-4 transition-transform", filtersExpanded && "rotate-180")} /></button>
+        {filtersExpanded && <div className="mt-3 min-w-0 space-y-3 border-t border-glass-ink/5 pt-3 dark:border-white/10">
           <PeriodPicker
             mode={periodMode}
             selectedMonth={selectedMonth}
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
-            onModeChange={(mode) => { if (mode === "current") handleSelectMonth(currentMonthKey); else setPeriodMode(mode); }}
+            onModeChange={(mode) => { if (mode === "current") handleSelectMonth(currentMonthKey); else { setSelectedMonths([]); setPeriodMode(mode); } }}
             onRangeChange={(start, end) => {
+              setSelectedMonths([]);
               setRangeStart(start);
               setRangeEnd(end);
             }}
@@ -1264,6 +1307,17 @@ export default function CardPurchasesPage() {
           })}
           </div>
         </div>
+        <div className="border-t border-glass-ink/10 pt-3">
+          <label className="flex items-center justify-between gap-3 text-[12px] font-semibold text-glass-ink"><span>Incluir cartão emprestado</span><input type="checkbox" role="switch" aria-label="Incluir cartão emprestado" checked={includeBorrowedCardPurchases} onChange={(event) => setIncludeBorrowedCardPurchases(event.target.checked)} className="size-5 accent-primary" /></label>
+          <p className="mt-2 text-[11px] text-glass-sub">{includeBorrowedCardPurchases ? "Ativado: compras para outras pessoas entram nos valores e extratos deste perfil." : "Desativado: mostra apenas compras pessoais. A escolha fica salva neste perfil."}</p>
+          <button type="button" onClick={() => setLoanHelpExpanded((value) => !value)} aria-expanded={loanHelpExpanded} className="mt-2 flex w-full items-center justify-between rounded-xl bg-primary/5 px-3 py-3 text-left text-[12px] font-semibold text-primary">Como essa opção funciona?<ChevronDown className={cn("size-4", loanHelpExpanded && "rotate-180")} /></button>
+          {loanHelpExpanded && <div className="space-y-2 rounded-b-xl bg-primary/5 p-3 text-[11px] leading-relaxed text-glass-sub">
+            <p><strong>Ao ativar:</strong> compras de outras pessoas cadastradas em Empréstimos → Cartão emprestado, com cartão e fatura vinculados, entram no resumo e nos cálculos daquele cartão.</p>
+            <p><strong>Receber e pagar o banco são ações separadas:</strong> receber o dinheiro da pessoa não significa quitar a fatura no banco; registrar o pagamento da fatura não registra automaticamente o recebimento.</p>
+            <p>Exemplo: R$ 100 em compras pessoais + R$ 50 emprestados = R$ 150 na fatura. Mesmo recebendo R$ 50 da pessoa, ainda é preciso pagar o banco.</p>
+            <p><strong>Ao desativar:</strong> os lançamentos emprestados deixam de compor os totais. Nenhum registro é apagado. Empréstimos em dinheiro não entram nesta opção.</p>
+          </div>}
+        </div>
         {activeRangeStart && <p className="mt-3 px-1 text-[11px] leading-relaxed text-glass-sub">O período personalizado filtra o extrato pelas datas de vencimento. Os cards e pagamentos continuam na fatura de {monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)}.</p>}
         {hasInvoiceFilters && (
           <div className="mt-2 flex justify-end">
@@ -1279,6 +1333,13 @@ export default function CardPurchasesPage() {
         )}
       </div>
 
+      <section aria-label="Resumo das faturas dos cartões" className="glass rounded-3xl px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><p className="flex items-center gap-2 text-[12px] font-semibold text-glass-sub"><CreditCard className="size-4 text-primary" /> Falta pagar no período</p><p className="amount-tabular mt-2 text-[27px] font-bold text-[#FF3B30]">{formatCurrency(overview.open)}</p></div>
+          <div className="text-right text-[11px] text-glass-sub"><p>{selectedPeriodLabel}</p><p>Soma de {overview.count} {overview.count === 1 ? "fatura" : "faturas"}</p><p>{includeBorrowedCardPurchases ? "Inclui cartão emprestado" : "Só compras pessoais"}</p></div>
+        </div>
+        <div className="mt-2 flex flex-wrap justify-between gap-2 border-t border-glass-ink/10 pt-3 text-[12px] text-glass-sub"><span>Faturas <strong className="amount-tabular text-glass-ink">{formatCurrency(overview.total)}</strong></span><span>Já pago <strong className="amount-tabular text-[#1FBF4F]">{formatCurrency(overview.paid)}</strong></span></div>
+      </section>
       {cards.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
@@ -1337,6 +1398,10 @@ export default function CardPurchasesPage() {
         </div>
       )}
 
+      </>) : (
+        <button type="button" onClick={() => setSelectedCardId("")} className="flex min-h-11 items-center gap-2 self-start rounded-full bg-primary/10 px-4 py-2 text-[12px] font-semibold text-primary"><ChevronLeft className="size-4" />Voltar aos cartões</button>
+      )}
+      <CardMonthsDialog open={monthsDialogOpen && !selectedCard} onClose={() => setMonthsDialogOpen(false)} selectedMonths={selectedMonths} referenceMonth={selectedMonth} onApply={(months) => { setSelectedMonths(months); if (months.length > 0) { setMonth(months[0]); setPeriodMode("month"); setRangeStart(null); setRangeEnd(null); } }} />
       {orderOpen && <CardOrderDialog cards={cards} onClose={() => setOrderOpen(false)} onSave={(ids) => { reorderCards(ids); setOrderOpen(false); toast("Ordem dos cartões salva"); }} />}
 
       {selectedCard && (
