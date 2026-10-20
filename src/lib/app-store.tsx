@@ -183,6 +183,7 @@ export type ProfileData = {
   reservesInBalance: boolean;
   homeBalanceMode?: HomeBalanceMode;
   invoiceCardDisplayMode?: InvoiceCardDisplayMode;
+  includeBorrowedCardPurchases?: boolean;
   loanValueMode?: LoanValueMode;
   categoryLimits?: CategoryLimits;
   notifications: AppNotification[];
@@ -242,6 +243,7 @@ function defaultData(): ProfileData {
     reservesInBalance: true,
     homeBalanceMode: "monthly",
     invoiceCardDisplayMode: "expanded",
+    includeBorrowedCardPurchases: false,
     loanValueMode: "uniform",
     categoryLimits: {},
     notifications: seedNotifications.map((n) => ({ ...n })),
@@ -830,6 +832,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
               : true,
           homeBalanceMode: sanitizeHomeBalanceMode(nested.homeBalanceMode),
           invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(nested.invoiceCardDisplayMode),
+          includeBorrowedCardPurchases: nested.includeBorrowedCardPurchases === true,
           loanValueMode: sanitizeLoanValueMode(nested.loanValueMode),
           categoryLimits: sanitizeCategoryLimits(nested.categoryLimits),
           notifications: sanitizeNotifications(nested.notifications),
@@ -991,6 +994,8 @@ type AppStoreValue = {
   setHomeBalanceMode: (value: HomeBalanceMode) => void;
   invoiceCardDisplayMode: InvoiceCardDisplayMode | undefined;
   setInvoiceCardDisplayMode: (value: InvoiceCardDisplayMode) => void;
+  includeBorrowedCardPurchases: boolean;
+  setIncludeBorrowedCardPurchases: (enabled: boolean) => void;
   loanValueMode: LoanValueMode;
   setLoanValueMode: (value: LoanValueMode) => void;
   categoryLimits: CategoryLimits;
@@ -1233,6 +1238,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setHomeBalanceMode: (mode) => patchActiveData((d) => ({ ...d, homeBalanceMode: sanitizeHomeBalanceMode(mode) })),
       invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(activeData.invoiceCardDisplayMode),
       setInvoiceCardDisplayMode: (mode) => patchActiveData((data) => setInvoiceCardDisplayPreference(data, mode)),
+      includeBorrowedCardPurchases: activeData.includeBorrowedCardPurchases === true,
+      setIncludeBorrowedCardPurchases: (enabled) => patchActiveData((data) => ({ ...data, includeBorrowedCardPurchases: enabled })),
       loanValueMode: sanitizeLoanValueMode(activeData.loanValueMode),
       setLoanValueMode: (mode) => patchActiveData((d) => ({ ...d, loanValueMode: sanitizeLoanValueMode(mode) })),
       categoryLimits: sanitizeCategoryLimits(activeData.categoryLimits),
