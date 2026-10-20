@@ -1340,6 +1340,7 @@ export default function CardPurchasesPage() {
         </div>
         <div className="mt-2 flex flex-wrap justify-between gap-2 border-t border-glass-ink/10 pt-3 text-[12px] text-glass-sub"><span>Faturas <strong className="amount-tabular text-glass-ink">{formatCurrency(overview.total)}</strong></span><span>Já pago <strong className="amount-tabular text-[#1FBF4F]">{formatCurrency(overview.paid)}</strong></span></div>
       </section>
+      {selectedMonths.length > 1 && <p className="rounded-2xl bg-primary/5 px-3 py-3 text-[12px] leading-relaxed text-glass-sub">O resumo acima soma os meses selecionados. Os cartões, os extratos e os pagamentos abaixo permanecem na fatura de <strong>{monthShortLabel(selectedMonth)} {selectedMonth.slice(0, 4)}</strong> para evitar misturar cobranças de meses diferentes. Para conferir ou pagar outro mês, selecione somente ele.</p>}
       {cards.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-glass-ink/10">
