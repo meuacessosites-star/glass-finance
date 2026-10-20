@@ -27,10 +27,12 @@ export function LoanEditDialog({
   item,
   purchaseDate,
   onClose,
+  onSaved,
 }: {
   item: LoanReceivable;
   purchaseDate?: string;
   onClose: () => void;
+  onSaved?: () => void;
 }) {
   const { loanReceivables, updateLoanRecord } = useAppStore();
   const [contact, setContact] = useState(item.contact);
@@ -80,7 +82,7 @@ export function LoanEditDialog({
     if (error || !changed || addingFiles) return;
     updateLoanRecord(item.id, patch);
     toast.success("Alterações salvas");
-    onClose();
+    if (onSaved) onSaved(); else onClose();
   };
   const addFiles = async (files: FileList | null) => {
     if (!files?.length) return;

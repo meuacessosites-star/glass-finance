@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
+import { sanitizeDueDate } from "@/lib/transaction-status";
 import { getCardBillingChoices, getTransactionBillingCycle, localDateKey, sanitizeInvoiceMonth } from "@/lib/card-billing";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -45,6 +46,7 @@ import {
   type PaymentMethodId,
 } from "./PaymentMethodSelector";
 import { PersonSelector } from "./PersonSelector";
+import type { NotificationTransactionInput } from "@/lib/notification-actions";
 
 // ---------------------------------------------------------------------------
 // AddTransactionSheet — full-screen iOS-style page opened by “Adicionar
@@ -172,6 +174,8 @@ export function AddTransactionSheet({
   editTransactionId,
   fullScreen = false,
   overlayParentId,
+  onCommit,
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
@@ -188,6 +192,9 @@ export function AddTransactionSheet({
   fullScreen?: boolean;
   /** ID do overlay pai quando o formulário é aberto dentro de outro fluxo. */
   overlayParentId?: string;
+  /** Review flows can save the record and its source notification together. */
+  onCommit?: (data: NotificationTransactionInput) => void;
+  onSaved?: () => void;
 }) {
   const navigate = useNavigate();
   const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
@@ -360,7 +367,10 @@ export function AddTransactionSheet({
     currency: "BRL",
   });
 
-  const canSave = cents > 0 && title.trim().length > 0 && !!categoryId;
+  const canSave = cents > 0 && title.trim().length > 0 && !!categoryId &&
+    (!onCommit || (Boolean(sanitizeDueDate(date)) &&
+      (!cardId || Boolean(selectedCard && !selectedCard.archived)) &&
+      (!isCreditExpense || Boolean(billingCycle))));
 
   const quickIds = type === "income" ? QUICK_INCOME_IDS : QUICK_EXPENSE_IDS;
   const quickCategories = categories.filter((c) => quickIds.includes(c.id));
@@ -460,12 +470,12 @@ export function AddTransactionSheet({
         description: "As alterações já aparecem no resumo e no histórico.",
       });
     } else {
-      addTransaction(payload);
+      if (onCommit) onCommit(payload); else addTransaction(payload);
       toast(type === "expense" ? "Despesa adicionada" : "Receita adicionada", {
         description: "Já aparece no seu resumo e no histórico.",
       });
     }
-    onClose();
+    if (onSaved) onSaved(); else onClose();
   };
 
   const handleSave = () => {

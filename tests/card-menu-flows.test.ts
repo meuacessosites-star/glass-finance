@@ -105,6 +105,7 @@ test("reopening a paid invoice leaves other invoice payments intact", () => {
 });
 
 test("history and associated expenses reset old search/category filters to their own scope", () => {
+  assert.deepEqual(emptyCardStatementFilters(), { query: "", category: "todas", scope: "month" });
   assert.deepEqual(emptyCardStatementFilters("all"), { query: "", category: "todas", scope: "all" });
   assert.deepEqual(emptyCardStatementFilters("month"), { query: "", category: "todas", scope: "month" });
   const rows = [purchase("x", 300, { recurrence: "parcelada", installments: 3 })];

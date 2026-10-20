@@ -2,12 +2,35 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppCard } from "../src/lib/app-store";
 import type { Transaction } from "../src/lib/mock-data";
-import { getCardCommittedAmount, getCardHeaderForeground, getCardInvoiceMetrics, getCardInvoiceStatus, getCardStatementTotal, getInvoicePaymentAmount, parseInvoiceMoney, selectCardPurchases } from "../src/lib/card-invoice-view";
+import { getCardCommittedAmount, getCardHeaderForeground, getCardInvoiceMetrics, getCardInvoiceStatus, getCardStatementTotal, getInvoicePaymentAmount, getSelectedInvoiceParts, parseInvoiceMoney, selectCardPurchases } from "../src/lib/card-invoice-view";
 import { getCardBillingReminders } from "../src/lib/card-billing";
 
 const today = "2026-10-18";
 const card: AppCard = { id: "a", name: "Principal", last4: "1234", color: "#2F6BFF", closingDay: 10, dueDay: 17, totalLimit: 1000 };
 const purchase = (id: string, amount: number, extra: Partial<Transaction> = {}): Transaction => ({ id, title: "Compra", amount: -amount, categoryId: "compras", date: "2026-10-08", cardId: "a", cardMode: "credito", paymentMethod: "cartao", paymentStatus: "pending", ...extra });
+
+test("selected statement months display each selected installment once, with exact cents and no gap month", () => {
+  const row = purchase("split", 100, { recurrence: "parcelada", installments: 3 });
+  const months = ["2026-10", "2026-12", "2026-10"];
+  const parts = getSelectedInvoiceParts(row, card, "2026-10", null, null, months);
+  assert.deepEqual(parts.map((part) => [part.number, part.month, part.amount]), [[1, "2026-10", 33.34], [3, "2026-12", 33.33]]);
+  assert.equal(getCardStatementTotal(card, [row], "2026-10", "month", null, null, months), 66.67);
+  assert.equal(getCardStatementTotal(card, [row], "2026-10", "all", null, null, months), 100);
+});
+
+test("a single selected month preserves the original statement, while changing scope is explicit", () => {
+  const row = purchase("split", 300, { recurrence: "parcelada", installments: 3 });
+  assert.deepEqual(getSelectedInvoiceParts(row, card, "2026-10"), getSelectedInvoiceParts(row, card, "2026-10", null, null, ["2026-10"]));
+  assert.equal(getCardStatementTotal(card, [row], "2026-10", "month", null, null, ["2026-11"]), 100);
+  assert.equal(getCardStatementTotal(card, [row], "2026-10", "month", null, null, ["2025-01", "invalid"]), 0);
+  assert.equal(getCardStatementTotal(card, [row], "2026-10", "all"), 300);
+});
+
+test("statement date ranges use due dates even when a separate selection is retained", () => {
+  const row = purchase("split", 300, { recurrence: "parcelada", installments: 3 });
+  const parts = getSelectedInvoiceParts(row, card, "2026-10", "2026-11-01", "2026-11-30", ["2026-10", "2026-12"]);
+  assert.deepEqual(parts.map((part) => part.month), ["2026-11"]);
+});
 
 test("paid and empty invoices never acquire an overdue warning", () => {
   assert.equal(getCardInvoiceStatus(card, "2026-10", { invoicePaid: true, invoiceTotal: 100, paidAmount: 100 }, today), "paid");

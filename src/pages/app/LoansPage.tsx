@@ -1,3 +1,4 @@
+import { useLocation } from "react-router";
 import { LoanEditDialog } from "@/components/app/LoanEditDialog";
 import { LoanInstallmentProgress } from "@/components/app/LoanInstallmentProgress";
 import { LoanValueSettings } from "@/components/app/LoanValueSettings";
@@ -9,7 +10,7 @@ import { getLoanReopenAmount } from "@/lib/loan-record-actions";
 import { LoanDetailsDialog } from "@/components/app/LoanDetailsDialog";
 import { needsCardLoanInvoice } from "@/lib/card-loans";
 import { CardLoanInvoiceDialog } from "@/components/app/CardLoanInvoiceDialog";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Banknote,
   CalendarDays,
@@ -398,6 +399,7 @@ function LoanRow({
 }
 
 export default function LoansPage() {
+  const location = useLocation();
   const [valueSettingsOpen, setValueSettingsOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("dinheiro");
   const [chosenMonth, setChosenMonth] = useState<string | null>(null);
@@ -449,6 +451,15 @@ export default function LoansPage() {
     reopenLoanReceivable,
     receiveFreeLoanPayment,
   } = useAppStore();
+  useEffect(() => {
+    const id = (location.state as { receivableId?: string } | null)?.receivableId;
+    if (!id) return;
+    const item = loanReceivables.find((row) => row.id === id);
+    if (!item) { toast("O empréstimo não está mais disponível neste perfil"); return; }
+    setTab(item.operationType === "card" ? "cartao" : "dinheiro");
+    setSearch(""); setFilter("all"); setModeFilter("all"); setScope("all");
+    setDetailsId(id);
+  }, [location.key]);
   const stored: Row[] = loanReceivables.map((item) => {
     const transaction =
       loanTransactions.find((row) => row.id === item.transactionId) ??

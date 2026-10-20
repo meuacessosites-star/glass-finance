@@ -25,10 +25,16 @@ export function ReportMonthSelector({
   months,
   currentMonth,
   onChange,
+  multiple = true,
+  embedded = false,
+  context = "relatórios",
 }: {
   months: string[];
   currentMonth: string;
   onChange: (months: string[]) => void;
+  multiple?: boolean;
+  embedded?: boolean;
+  context?: string;
 }) {
   const [open, setOpen] = useState(false);
   const lastMonth = months[months.length - 1] ?? currentMonth;
@@ -40,13 +46,13 @@ export function ReportMonthSelector({
       : monthLabel(months[0] ?? currentMonth);
   const toggle = (key: string) =>
     setDraft((current) =>
-      current.includes(key)
+      !multiple ? [key] : current.includes(key)
         ? current.filter((value) => value !== key)
         : normalizeReportMonths([...current, key]),
     );
 
   return (
-    <div className="glass rounded-3xl p-3">
+    <div className={embedded ? "min-w-0" : "glass rounded-3xl p-3"}>
       <div className="flex items-center justify-between gap-1">
         <button
           type="button"
@@ -74,7 +80,7 @@ export function ReportMonthSelector({
           <DialogTrigger asChild>
             <button
               type="button"
-              aria-label={`Selecionar meses dos relatórios: ${label}`}
+              aria-label={`Selecionar ${multiple ? "meses" : "mês"} de ${context}: ${label}`}
               className="flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-full px-2 text-[13px] font-bold text-glass-ink focus-visible:ring-2 focus-visible:ring-primary"
             >
               <CalendarDays className="size-4 shrink-0 text-primary" />
@@ -84,9 +90,9 @@ export function ReportMonthSelector({
           </DialogTrigger>
           <DialogContent className="glass-strong flex max-h-[85dvh] flex-col gap-0 overflow-hidden rounded-3xl p-0 text-glass-ink">
             <DialogHeader className="shrink-0 px-5 py-4 pr-12 text-left">
-              <DialogTitle>Selecionar meses</DialogTitle>
+              <DialogTitle>{multiple ? "Selecionar meses" : "Selecionar mês"}</DialogTitle>
               <DialogDescription>
-                Marque um ou mais meses, inclusive de anos diferentes.
+                {multiple ? "Marque um ou mais meses, inclusive de anos diferentes." : "Escolha o mês e use as setas para mudar o ano."}
               </DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 pb-4">
@@ -234,7 +240,7 @@ export function ReportMonthSelector({
             <button
               key={key}
               type="button"
-              aria-label={`Remover ${monthLabel(key)} do relatório`}
+              aria-label={`Remover ${monthLabel(key)} de ${context}`}
               onClick={() => onChange(months.filter((value) => value !== key))}
               className="inline-flex min-h-8 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary focus-visible:ring-2 focus-visible:ring-primary"
             >

@@ -13,6 +13,13 @@ entries.push("card-menu-flows.test");
 entries.push("card-invoice-interactions.test");
 entries.push("card-header-appearance.test");
 entries.push("invoice-card-display.test");
+entries.push("card-invoice-summary.test");
+entries.push("notification-actions.test", "payment-notifications.test");
+entries.push("notification-history.test");
+entries.push("notification-redo.test");
+entries.push("notification-search.test");
+entries.push("home-alerts.test");
+entries.push("home-alert-preferences.test");
 try {
   await build({ entryPoints: entries.map((name) => path.join(root, "tests", `${name}.ts`)), outdir: output, outExtension: { ".js": ".mjs" }, bundle: true, platform: "node", format: "esm", tsconfig: path.join(root, "tsconfig.app.json") });
   const result = spawnSync(process.execPath, ["--test", ...entries.map((name) => path.join(output, `${name}.mjs`))], { cwd: root, env: { ...process.env, TZ: "America/Sao_Paulo" }, stdio: "inherit" });

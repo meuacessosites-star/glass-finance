@@ -79,7 +79,7 @@ test("the new overdue example is added once to the demonstration profile while p
   assert.deepEqual(state, snapshot);
   assert.equal(upgraded.activeProfileId, personal.id);
   assert.equal(upgraded.profiles[0], personal);
-  assert.deepEqual(upgraded.profiles[1].data.transactions[1], demo.data.transactions[0]);
+  assert.deepEqual(upgraded.profiles[1].data.transactions.find((row) => row.id === "my-edit"), demo.data.transactions[0]);
   const example = upgraded.profiles[1].data.transactions.find((t) => t.id === OVERDUE_DEMO_ID)!;
   assert.equal(getTransactionPaymentStatus(example, [], [], today), "overdue");
   assert.equal(example.date, today);

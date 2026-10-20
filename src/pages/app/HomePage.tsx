@@ -14,10 +14,10 @@ import { HomeBalanceSettings } from "@/components/app/HomeBalanceSettings";
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransactionRow } from "@/components/app/TransactionRow";
-import { PreviousMonthDebtReminder } from "@/components/app/PreviousMonthDebtReminder";
+import { HomeNotificationsCarousel } from "@/components/app/HomeNotificationsCarousel";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocalDate } from "@/hooks/use-local-date";
-import { getDueTodayAlerts } from "@/lib/due-today";
+import { getPaymentNotifications } from "@/lib/payment-notifications";
 import { useAppStore } from "@/lib/app-store";
 import { getHomeBalance, shiftBalanceMonth } from "@/lib/home-balance";
 import { selectTransactionLedgers } from "@/lib/transaction-ledgers";
@@ -39,6 +39,9 @@ export default function HomePage() {
     homeBalanceMode,
     setHomeBalanceMode,
     notifications,
+    visibleTransactions,
+    readPaymentNotificationIds,
+    includeBorrowedCardInvoices,
   } = useAppStore();
 
   const calculation = getHomeBalance(
@@ -66,7 +69,7 @@ export default function HomePage() {
     "pessoa";
   const pendingCount =
     notifications.filter((n) => n.status === "pending").length +
-    getDueTodayAlerts(cards, transactions, loanReceivables).length;
+    getPaymentNotifications({ cards, transactions: visibleTransactions, loanReceivables, readPaymentNotificationIds, includeBorrowedCardInvoices }, today).length;
 
   return (
     <div className="space-y-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
@@ -100,11 +103,7 @@ export default function HomePage() {
         <ThemeToggle />
       </motion.header>
 
-      <PreviousMonthDebtReminder
-        today={today}
-        referenceMonth={selectedMonth}
-        sourceTransactions={transactions}
-      />
+      <HomeNotificationsCarousel />
 
       {/* Balance hero */}
       <motion.section

@@ -23,7 +23,7 @@ import { localDateKey } from "@/lib/card-billing";
 import { getCardLoanSchedule } from "@/lib/card-loans";
 import { CardLoanBillingFields } from "./CardLoanBillingFields";
 import { scheduledLoanDueDates } from "@/lib/loan-repayments";
-import { useAppStore } from "@/lib/app-store";
+import { useAppStore, type LoanCreationInput } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
@@ -75,9 +75,15 @@ function formatDate(date: string) {
 export function LoanTransactionSheet({
   open,
   onClose,
+  initial,
+  onCommit,
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
+  initial?: { amount: number; date: string; description?: string; note?: string; cardId?: string; operationType?: OperationType };
+  onCommit?: (data: LoanCreationInput) => void;
+  onSaved?: () => void;
 }) {
   const { createLoanRecord, categories, cards } = useAppStore();
   const overlay = useExclusiveOverlay({
@@ -90,16 +96,17 @@ export function LoanTransactionSheet({
   const people = useQuery(api.people.list) as
     | Array<{ _id: string; name: string }>
     | undefined;
-  const [cents, setCents] = useState(0);
-  const [operationType, setOperationType] = useState<OperationType>("loan");
+  const [cents, setCents] = useState(Math.round((initial?.amount ?? 0) * 100));
+  const [operationType, setOperationType] = useState<OperationType>(initial?.operationType ?? "loan");
+  const savedRef = useRef(false);
   const [personId, setPersonId] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [note, setNote] = useState("");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [note, setNote] = useState(initial?.note ?? "");
   const [draftDisplay, setDraftDisplay] = useState<DraftDisplayMode>("hidden");
   const [attachments, setAttachments] = useState<PickedAttachment[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>("pix");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>(initial?.operationType === "card" ? "cartao" : "pix");
   const [collectionMode, setCollectionMode] = useState<CollectionMode>("fixed");
   const [freePaymentMode, setFreePaymentMode] = useState<
     "installments" | "flexible"
@@ -107,8 +114,8 @@ export function LoanTransactionSheet({
   const [freeInstallmentCents, setFreeInstallmentCents] = useState(0);
   const [installments, setInstallments] = useState(1);
   const [dueDay, setDueDay] = useState(() => new Date().getDate());
-  const [date, setDate] = useState(() => localDateKey());
-  const [cardId, setCardId] = useState("");
+  const [date, setDate] = useState(initial?.date ?? localDateKey());
+  const [cardId, setCardId] = useState(initial?.cardId ?? "");
   const [invoiceMonth, setInvoiceMonth] = useState<string | undefined>();
   const effectiveCollectionMode =
     operationType === "card" ? "fixed" : collectionMode;
@@ -168,6 +175,7 @@ export function LoanTransactionSheet({
       : PAYMENT_OPTIONS.filter((option) => option.id !== "cartao");
 
   const reset = () => {
+    savedRef.current = false;
     setCents(0);
     setOperationType("loan");
     setPersonId(null);
@@ -226,7 +234,8 @@ export function LoanTransactionSheet({
   };
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (!canSave || savedRef.current) return;
+    savedRef.current = true;
 
     const normalizedContact = contact.trim();
     const normalizedDescription = description.trim() || undefined;
@@ -241,7 +250,7 @@ export function LoanTransactionSheet({
       };
     });
 
-    createLoanRecord({
+    (onCommit ?? createLoanRecord)({
       contact: normalizedContact,
       description: normalizedDescription,
       amount: cents / 100,
@@ -277,7 +286,7 @@ export function LoanTransactionSheet({
             : `A devolução de ${normalizedContact} ficou registrada sem vencimento fixo.`,
       },
     );
-    handleClose();
+    if (onSaved) { reset(); onSaved(); } else handleClose();
   };
 
   return (

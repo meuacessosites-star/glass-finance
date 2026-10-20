@@ -21,7 +21,7 @@ export function cardHasHistory(card: AppCard, transactions: Transaction[], recei
     receivables.some((row) => row.cardId === card.id) ||
     Object.values(card.invoicePaidByMonth ?? {}).some(Boolean) ||
     Object.values(card.invoiceOverrideByMonth ?? {}).some((amount) => amount > 0) ||
-    Object.values(card.invoicePaymentsByMonth ?? {}).some((payment) => payment.totalAmount > 0 || payment.paidAmount > 0);
+    [...Object.values(card.invoicePaymentsByMonth ?? {}), ...Object.values(card.borrowedInvoicePaymentsByMonth ?? {})].some((payment) => payment.totalAmount > 0 || payment.paidAmount > 0);
 }
 
 /** Existing purchases retain their original invoice month when billing days change. */

@@ -69,14 +69,149 @@ export function createDemoProfile(base: ProfileData, now = new Date()): AppProfi
   } };
 }
 
-export function installDemoExamples<T extends { profiles: AppProfile[]; activeProfileId: string; exampleDataVersion?: number }>(state: T, base: ProfileData, now = new Date()): T {
+export const NOTIFICATION_EXAMPLE_VERSION = 3;
+export const NOTIFICATION_EXAMPLE_PAYMENT = "demo-notification-payment-v3";
+export const NOTIFICATION_EXAMPLE_RECEIPT = "demo-notification-receipt-v3";
+export const NOTIFICATION_EXAMPLE_APPROVED = "demo-notification-approved-v3";
+export const NOTIFICATION_EXAMPLE_TRANSACTION =
+  "demo-notification-approved-transaction-v3";
+
+export function addNotificationReviewExamples(
+  data: ProfileData,
+  now = new Date(),
+): ProfileData {
+  const today = localDateKey(now);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const category =
+    data.categories.find((row) => row.id === "alimentacao")?.id ??
+    data.categories[0]?.id ??
+    "outros";
+  const examples: Transaction[] = [
+    {
+      id: NOTIFICATION_EXAMPLE_PAYMENT,
+      title: "Pagamento de energia · exemplo",
+      categoryId: category,
+      amount: -88.2,
+      date: today,
+      dueDate: today,
+      paymentMethod: "boleto",
+      paymentStatus: "pending",
+      note: "Exemplo no perfil Demonstração.",
+    },
+    {
+      id: NOTIFICATION_EXAMPLE_RECEIPT,
+      title: "Recebimento de serviço · exemplo",
+      categoryId: category,
+      amount: 150,
+      date: today,
+      dueDate: localDateKey(tomorrow),
+      paymentMethod: "pix",
+      paymentStatus: "pending",
+      note: "Exemplo no perfil Demonstração.",
+    },
+    {
+      id: NOTIFICATION_EXAMPLE_TRANSACTION,
+      title: "Mercado · exemplo aprovado",
+      categoryId: category,
+      amount: -54.9,
+      date: today,
+      paymentMethod: "pix",
+      paymentStatus: "paid",
+      paymentDate: today,
+      note: "Exemplo aprovado e salvo em Transações.",
+    },
+  ];
+  return {
+    ...data,
+    transactions: [
+      ...examples.filter(
+        (item) => !data.transactions.some((row) => row.id === item.id),
+      ),
+      ...data.transactions,
+    ],
+    notifications: [
+      ...(!data.notifications.some(
+        (n) => n.id === NOTIFICATION_EXAMPLE_APPROVED,
+      )
+        ? [
+            {
+              id: NOTIFICATION_EXAMPLE_APPROVED,
+              bank: "Nubank",
+              merchant: "Mercado · exemplo aprovado",
+              amount: 54.9,
+              date: today,
+              time: now.toTimeString().slice(0, 5),
+              categoryId: category,
+              status: "approved" as const,
+              approvedAt: now.toISOString(),
+              recordKind: "transaction" as const,
+              transactionId: NOTIFICATION_EXAMPLE_TRANSACTION,
+            },
+          ]
+        : []),
+      ...(!data.notifications.some(
+        (n) => n.id === "demo-notification-pending-v3",
+      )
+        ? [
+            {
+              id: "demo-notification-pending-v3",
+              bank: "Inter",
+              merchant: "Compra · exemplo para revisar",
+              amount: 42.5,
+              date: today,
+              categoryId: category,
+              status: "pending" as const,
+            },
+          ]
+        : []),
+      ...data.notifications,
+    ],
+  };
+}
+
+export function installDemoExamples<
+  T extends {
+    profiles: AppProfile[];
+    activeProfileId: string;
+    exampleDataVersion?: number;
+  },
+>(state: T, base: ProfileData, now = new Date()): T {
   const version = state.exampleDataVersion ?? 0;
-  if (version >= 2) return state;
-  const existing = state.profiles.some((profile) => profile.id === DEMO_PROFILE_ID);
+  if (version >= NOTIFICATION_EXAMPLE_VERSION) return state;
+  const existing = state.profiles.some(
+    (profile) => profile.id === DEMO_PROFILE_ID,
+  );
   let profiles = state.profiles;
-  if (version < 1 && !existing) profiles = [...profiles, createDemoProfile(base, now)];
-  else profiles = profiles.map((profile) => profile.id === DEMO_PROFILE_ID && !profile.data.transactions.some((transaction) => transaction.id === OVERDUE_DEMO_ID)
-    ? { ...profile, data: { ...profile.data, transactions: [createOverdueExample(now), ...profile.data.transactions] } }
-    : profile);
-  return { ...state, profiles, activeProfileId: version < 1 ? DEMO_PROFILE_ID : state.activeProfileId, exampleDataVersion: 2 };
+  if (version < 1 && !existing)
+    profiles = [...profiles, createDemoProfile(base, now)];
+  else if (version < 2)
+    profiles = profiles.map((profile) =>
+      profile.id === DEMO_PROFILE_ID &&
+      !profile.data.transactions.some(
+        (transaction) => transaction.id === OVERDUE_DEMO_ID,
+      )
+        ? {
+            ...profile,
+            data: {
+              ...profile.data,
+              transactions: [
+                createOverdueExample(now),
+                ...profile.data.transactions,
+              ],
+            },
+          }
+        : profile,
+    );
+  profiles = profiles.map((profile) =>
+    profile.id === DEMO_PROFILE_ID
+      ? { ...profile, data: addNotificationReviewExamples(profile.data, now) }
+      : profile,
+  );
+  return {
+    ...state,
+    profiles,
+    activeProfileId: version < 1 ? DEMO_PROFILE_ID : state.activeProfileId,
+    exampleDataVersion: NOTIFICATION_EXAMPLE_VERSION,
+  };
 }

@@ -35,4 +35,4 @@ export function getCardMonthlyAnalytics(card: AppCard, transactions: Transaction
   });
 }
 
-export const emptyCardStatementFilters = (scope: "month" | "all") => ({ query: "", category: "todas", scope });
+export const emptyCardStatementFilters = (scope: "month" | "all" = "month") => ({ query: "", category: "todas", scope });

@@ -1,6 +1,6 @@
 import type { AppCard } from "./app-store";
 import type { Transaction } from "./mock-data";
-import { getInvoiceDates, getInvoicePartsInPeriod, getTransactionInvoiceSchedule, isCreditCardExpense, isInvoiceMarkedPaid, isInvoicePartPaid, localDateKey } from "./card-billing";
+import { getInvoiceDates, getInvoicePartsInPeriod, getTransactionInvoiceSchedule, isCreditCardExpense, isInvoiceMarkedPaid, isInvoicePartPaid, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
 import { selectTransactionLedgers } from "./transaction-ledgers";
 
 const cents = (amount: number) => Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100)) : 0;
@@ -72,10 +72,17 @@ export function getCardCommittedAmount(card: AppCard, transactions: Transaction[
   return [...months].reduce((sum, month) => sum + cents(getCardInvoiceMetrics(card, purchases, month, today).openAmount), 0) / 100;
 }
 
+/** Exact month selection: omitted months never enter the statement through a date span. */
+export function getSelectedInvoiceParts(transaction: Transaction, card: AppCard, month: string, fromDate?: string | null, untilDate?: string | null, months?: readonly string[]) {
+  if (fromDate || untilDate) return getInvoicePartsInPeriod(transaction, card, month, fromDate, untilDate);
+  const selected = new Set((months?.length ? months : [month]).filter((key) => sanitizeInvoiceMonth(key)));
+  return getTransactionInvoiceSchedule(transaction, card).filter((part) => selected.has(part.month));
+}
+
 /** Sum exactly the displayed rows; history counts each original purchase once. */
-export function getCardStatementTotal(card: AppCard, rows: Transaction[], month: string, scope: "month" | "all", fromDate?: string | null, untilDate?: string | null): number {
+export function getCardStatementTotal(card: AppCard, rows: Transaction[], month: string, scope: "month" | "all", fromDate?: string | null, untilDate?: string | null, months?: readonly string[]): number {
   return selectCardPurchases(rows).filter((row) => row.cardId === card.id).reduce((sum, row) =>
-    sum + (scope === "all" ? cents(Math.abs(row.amount)) : getInvoicePartsInPeriod(row, card, month, fromDate, untilDate).reduce((subtotal, part) => subtotal + cents(part.amount), 0)), 0) / 100;
+    sum + (scope === "all" ? cents(Math.abs(row.amount)) : getSelectedInvoiceParts(row, card, month, fromDate, untilDate, months).reduce((subtotal, part) => subtotal + cents(part.amount), 0)), 0) / 100;
 }
 
 /** Accept Brazilian grouping/comma or an ungrouped decimal point, never truncate. */

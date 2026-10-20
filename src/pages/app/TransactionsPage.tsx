@@ -1,11 +1,12 @@
+import "@/components/app/transaction-navigation.css";
 import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
 import { countUnpaidTransactions, normalizeSearchText, selectTransactionView, transactionInPeriod } from "@/lib/transaction-view";
 import { useReportNavigationPendingCount } from "@/components/app/NavigationPendingContext";
 import { useLocalDate } from "@/hooks/use-local-date";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PeriodPicker, MonthMultiPicker, formatDateLabel, type PeriodMode } from "@/components/app/PeriodPicker";
 import { AnimatePresence, motion } from "framer-motion";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import {
   CalendarDays,
   Check,
@@ -57,9 +58,14 @@ function shiftMonth(key: string, offset: number): string {
 
 export default function TransactionsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const transactionScrollRef = useRef<HTMLDivElement>(null);
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const today = useLocalDate();
   const currentMonthKey = today.slice(0, 7);
   const {
+    activeProfile,
     categories,
     visibleTransactions,
     loanReceivables,
@@ -109,6 +115,25 @@ export default function TransactionsPage() {
     return [...new Set([...navigableMonths, ...allMonths])].sort((a, b) => b.localeCompare(a));
   }, [allMonths, currentMonthKey]);
   const [month, setMonth] = useState<string>(currentMonthKey);
+  useEffect(() => {
+    setNavigationTarget(null);
+    setHighlightedId(null);
+  }, [activeProfile?.id]);
+  useEffect(() => {
+    setNavigationTarget(null);
+    setHighlightedId(null);
+    const id = (location.state as { transactionId?: string } | null)?.transactionId;
+    if (!id) return;
+    const item = visibleTransactions.find((row) => row.id === id);
+    if (!item) { toast("A transação não está mais disponível neste perfil"); return; }
+    setMonth(item.date.slice(0, 7));
+    setPeriodMode("month");
+    setSelectedMonths([]); setRangeStart(null); setRangeEnd(null);
+    setSearchQuery(""); setSelectedCategories([]); setPaymentStatus("all"); setScope("month");
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setNavigationTarget(id);
+  }, [location.key]);
   const selectedMonth = periodMode === "current" && selectedMonths.length === 0
     ? currentMonthKey
     : monthOptions.includes(month)
@@ -203,6 +228,25 @@ export default function TransactionsPage() {
     activeRangeStart,
     selectedMonth,
   ]);
+  useEffect(() => {
+    if (!navigationTarget || !filtered.some((row) => row.id === navigationTarget)) return;
+    const frame = requestAnimationFrame(() => {
+      const card = Array.from(transactionScrollRef.current?.querySelectorAll<HTMLElement>("[data-navigation-record-id]") ?? [])
+        .find((element) => element.dataset.navigationRecordId === navigationTarget);
+      if (!card) return;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      card.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "center" });
+      card.focus({ preventScroll: true });
+      setHighlightedId(navigationTarget);
+      setNavigationTarget(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [navigationTarget, filtered]);
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = window.setTimeout(() => setHighlightedId(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedId]);
   useReportNavigationPendingCount("transactions", countUnpaidTransactions(filtered, (transaction) => getTransactionPaymentStatus(transaction, cards, loanReceivables, today)));
 
   const summaryTransactions = useMemo(
@@ -421,6 +465,7 @@ export default function TransactionsPage() {
 
       <div
         id="transactions-list-scroll"
+        ref={transactionScrollRef}
         className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3 pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pt-4 lg:pb-36"
       >
         <div className="flex flex-col gap-3 lg:gap-4">
@@ -847,9 +892,9 @@ export default function TransactionsPage() {
         grouped.map(([label, list], groupIndex) => (
           <motion.section
             key={label}
-            initial={{ opacity: 0, y: 10 }}
+            initial={list.some((row) => row.id === navigationTarget) ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: groupIndex * 0.05 }}
+            transition={{ delay: list.some((row) => row.id === navigationTarget || row.id === highlightedId) ? 0 : groupIndex * 0.05 }}
             className="last:pb-5 lg:last:pb-0"
           >
             <p className="mb-1 px-2 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground/80 lg:text-[14px]">
@@ -873,21 +918,29 @@ export default function TransactionsPage() {
                 };
 
                 return (
-                  <TransactionRow
+                  <div
                     key={transaction.id}
-                    transaction={transaction}
-                    showDate={false}
-                    swipeable
-                    paymentLabel={paymentLabel}
-                    paymentStatus={status}
-                    paymentActionLabel={paymentActionLabel}
-                    onPaymentAction={handlePaymentAction}
-                    searchQuery={searchQuery}
-                    selectable={selectMode}
-                    selected={selectedIds.has(transaction.id)}
-                    onSelect={toggleSelectedTransaction}
-                    onEdit={() => handleEditTransaction(transaction)}
-                  />
+                    data-navigation-record-id={transaction.id}
+                    role="group"
+                    aria-label={`Transação: ${transaction.title}`}
+                    tabIndex={-1}
+                    className={cn("relative rounded-2xl outline-none", highlightedId === transaction.id && "transaction-navigation-highlight")}
+                  >
+                    <TransactionRow
+                      transaction={transaction}
+                      showDate={false}
+                      swipeable
+                      paymentLabel={paymentLabel}
+                      paymentStatus={status}
+                      paymentActionLabel={paymentActionLabel}
+                      onPaymentAction={handlePaymentAction}
+                      searchQuery={searchQuery}
+                      selectable={selectMode}
+                      selected={selectedIds.has(transaction.id)}
+                      onSelect={toggleSelectedTransaction}
+                      onEdit={() => handleEditTransaction(transaction)}
+                    />
+                  </div>
                 );
               })}
             </div>

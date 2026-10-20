@@ -1,0 +1,26 @@
+.transaction-navigation-highlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border: 2px solid #d99418;
+  border-radius: inherit;
+  box-shadow: inset 0 0 14px #f5bc4b70, 0 0 12px #eeb14560;
+  pointer-events: none;
+  animation: transaction-navigation-glow 1.4s ease-in-out 3;
+}
+
+@keyframes transaction-navigation-glow {
+  0%, 100% { opacity: 0.65; }
+  50% {
+    opacity: 1;
+    box-shadow: inset 0 0 24px #f5bc4b90, 0 0 20px #eeb14580;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transaction-navigation-highlight::after {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -1,3 +1,7 @@
+import { ignoredCountToday, maintainAllNotificationHistory, maintainNotificationHistory, sanitizeNotificationRetention, setNotificationRetention } from "./notification-history";
+import { sanitizeHomeAlertPreferences, updateHomeAlertPreferences, type HomeAlertPreferences } from "./home-alert-preferences";
+import { approveNotificationData, approveLoanNotificationData, ignoreNotificationsData, restoreNotificationsData, readPaymentNotificationsData, sanitizeReadNotificationIds, type NotificationTransactionInput } from "./notification-actions";
+import { createLoanRecordData } from "./loan-creation";
 import { adjustCardInvoice, removeUnusedCard, reorderActiveCards, updateCardPreservingHistory } from "./card-operations";
 import { reopenLoanReceivable, updateLoanRecord, type LoanRecordEdit } from "./loan-record-actions";
 import { getCardLoanSchedule, linkCardLoanInvoice } from "./card-loans";
@@ -10,8 +14,9 @@ import { CATEGORY_CATALOG_VERSION, expandCategoryCatalog } from "./category-cata
 import { sanitizeCardBrand, type CardBrand } from "./card-appearance";
 import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, type TransactionDeletion } from "./transaction-deletion";
 import { sanitizeDueDate } from "./transaction-status";
-import { openUnpaidPurchaseInvoices, recordInvoicePayment, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
+import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
+import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
   createContext,
@@ -76,6 +81,8 @@ export type AppCard = {
   invoiceHeaderColorMode?: "bank" | "card";
   /** Pagamentos parciais/totais por fatura mensal. */
   invoicePaymentsByMonth?: Record<string, InvoicePaymentRecord>;
+  /** Pagamento ao banco das compras feitas para terceiros; independente das devoluções. */
+  borrowedInvoicePaymentsByMonth?: Record<string, InvoicePaymentRecord>;
   /** Reajuste manual do total da fatura, indexado como YYYY-MM. */
   invoiceOverrideByMonth?: Record<string, number>;
   /** Conciliação concluída por fatura mensal. */
@@ -104,7 +111,13 @@ export type AppReserve = {
 };
 
 /** Notificação de banco que aguarda aprovação para virar transação. */
-export type AppNotification = BankNotification;
+export type AppNotification = BankNotification & {
+  approvedAt?: string;
+  recordKind?: "transaction" | "loan" | "legacy";
+  transactionId?: string;
+  receivableId?: string;
+  loanId?: string;
+};
 
 /** Financiamento: parcelas mensais fixas (ex.: carro, casa, faculdade). */
 export type AppFinancing = {
@@ -170,6 +183,26 @@ export type LoanReceivable = {
   createdAt: string;
 };
 
+export type LoanCreationInput = {
+    contact: string;
+    description?: string;
+    amount: number;
+    date: string;
+    categoryId: string;
+    paymentMethod: string;
+    operationType?: LoanOperationType;
+    cardId?: string;
+    cardInvoiceMonth?: string;
+    installments?: number;
+    note?: string;
+    draftDisplay?: DraftDisplayMode;
+    attachments?: { src: string; isImage: boolean; name: string }[];
+    collectionMode: "fixed" | "open";
+    freePaymentMode?: "installments" | "flexible";
+    suggestedPaymentAmount?: number;
+    receivables?: { amount: number; dueDate: string; installment: number; installments: number }[];
+};
+
 /** Data that belongs to a single profile — never shared between profiles. */
 export type ProfileData = {
   categories: AppCategory[];
@@ -182,10 +215,16 @@ export type ProfileData = {
   /** true = reservas aparecem junto com o saldo na tela inicial. */
   reservesInBalance: boolean;
   homeBalanceMode?: HomeBalanceMode;
+  homeAlertPreferences?: HomeAlertPreferences;
   invoiceCardDisplayMode?: InvoiceCardDisplayMode;
+  includeBorrowedCardInvoices?: boolean;
   loanValueMode?: LoanValueMode;
   categoryLimits?: CategoryLimits;
   notifications: AppNotification[];
+  ignoredNotificationCount?: number;
+  ignoredNotificationDate?: string;
+  notificationRetentionDays?: number;
+  readPaymentNotificationIds?: string[];
   financings: AppFinancing[];
   /** true = parcelas dos financiamentos aparecem junto com as transações. */
   financingsInFlow: boolean;
@@ -216,7 +255,7 @@ export type AppProfile = {
 /** When the PIN should be asked: only on profile switch, or also on app open. */
 export type PinUsage = "switch" | "open";
 
-type AppStoreState = {
+export type AppStoreState = {
   exampleDataVersion?: number;
   profiles: AppProfile[];
   activeProfileId: string;
@@ -241,10 +280,16 @@ function defaultData(): ProfileData {
     reserves: [],
     reservesInBalance: true,
     homeBalanceMode: "monthly",
+    homeAlertPreferences: sanitizeHomeAlertPreferences(undefined),
     invoiceCardDisplayMode: "expanded",
+    includeBorrowedCardInvoices: false,
     loanValueMode: "uniform",
     categoryLimits: {},
     notifications: seedNotifications.map((n) => ({ ...n })),
+    ignoredNotificationCount: 0,
+    ignoredNotificationDate: localDateKey(),
+    notificationRetentionDays: 7,
+    readPaymentNotificationIds: [],
     financings: [],
     financingsInFlow: false,
     showCategoryNameOnCard: true,
@@ -418,6 +463,7 @@ function sanitizeCards(v: unknown): AppCard[] {
       invoiceCollapsed: c.invoiceCollapsed === true,
       invoiceHeaderColorMode: c.invoiceHeaderColorMode === "card" ? "card" as const : "bank" as const,
       invoicePaymentsByMonth: sanitizeInvoicePaymentsByMonth(c.invoicePaymentsByMonth),
+      borrowedInvoicePaymentsByMonth: sanitizeInvoicePaymentsByMonth(c.borrowedInvoicePaymentsByMonth),
       invoiceOverrideByMonth: sanitizeInvoiceAmountByMonth(c.invoiceOverrideByMonth),
       invoiceReconciledByMonth: sanitizeInvoicePaidByMonth(c.invoiceReconciledByMonth),
       archived: c.archived === true,
@@ -470,7 +516,7 @@ function sanitizeReserves(v: unknown): AppReserve[] {
 function sanitizeNotifications(v: unknown): AppNotification[] {
   if (!Array.isArray(v)) return seedNotifications.map((n) => ({ ...n }));
   return v
-    .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
+    .filter((n): n is Record<string, unknown> => !!n && typeof n === "object" && (n as Record<string, unknown>).status !== "ignored")
     .map((n) => ({
       id: str(n.id, uid("notif")),
       bank: str(n.bank, "Banco"),
@@ -489,6 +535,11 @@ function sanitizeNotifications(v: unknown): AppNotification[] {
           : undefined,
       categoryId: typeof n.categoryId === "string" ? n.categoryId : undefined,
       cardId: typeof n.cardId === "string" ? n.cardId : undefined,
+      recordKind: n.recordKind === "transaction" || n.recordKind === "loan" || n.recordKind === "legacy" ? n.recordKind : undefined,
+      transactionId: typeof n.transactionId === "string" ? n.transactionId : undefined,
+      receivableId: typeof n.receivableId === "string" ? n.receivableId : undefined,
+      loanId: typeof n.loanId === "string" ? n.loanId : undefined,
+      approvedAt: typeof n.approvedAt === "string" && Number.isFinite(Date.parse(n.approvedAt)) ? n.approvedAt : undefined,
       status:
         n.status === "approved" || n.status === "ignored"
           ? n.status
@@ -829,10 +880,16 @@ function buildProfiles(raw: unknown): AppProfile[] {
               ? nested.reservesInBalance
               : true,
           homeBalanceMode: sanitizeHomeBalanceMode(nested.homeBalanceMode),
+          homeAlertPreferences: sanitizeHomeAlertPreferences(nested.homeAlertPreferences),
           invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(nested.invoiceCardDisplayMode),
+          includeBorrowedCardInvoices: nested.includeBorrowedCardInvoices === true,
           loanValueMode: sanitizeLoanValueMode(nested.loanValueMode),
           categoryLimits: sanitizeCategoryLimits(nested.categoryLimits),
           notifications: sanitizeNotifications(nested.notifications),
+          ignoredNotificationCount: (typeof nested.ignoredNotificationCount === "number" && Number.isFinite(nested.ignoredNotificationCount) ? Math.max(0, Math.floor(nested.ignoredNotificationCount)) : 0) + (Array.isArray(nested.notifications) ? nested.notifications.filter((n: unknown) => !!n && typeof n === "object" && (n as Record<string, unknown>).status === "ignored").length : 0),
+          readPaymentNotificationIds: sanitizeReadNotificationIds(nested.readPaymentNotificationIds),
+          ignoredNotificationDate: sanitizeDueDate(nested.ignoredNotificationDate),
+          notificationRetentionDays: sanitizeNotificationRetention(nested.notificationRetentionDays),
           financings: sanitizeFinancings(nested.financings),
           financingsInFlow:
             typeof nested.financingsInFlow === "boolean"
@@ -876,7 +933,7 @@ function loadState(): AppStoreState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    const profiles = buildProfiles(parsed);
+    const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
     const activeProfileId =
       typeof (parsed as Record<string, unknown>)?.activeProfileId === "string" &&
       profiles.some((p) => p.id === (parsed as Record<string, unknown>).activeProfileId)
@@ -960,12 +1017,13 @@ type AppStoreValue = {
   }) => void;
   updateCard: (id: string, patch: Partial<Omit<AppCard, "id">>) => void;
   reorderCards: (ids: string[]) => void;
-  setCardInvoiceStatus: (cardId: string, month: string, paid: boolean) => void;
+  setCardInvoiceStatus: (cardId: string, month: string, paid: boolean, includeBorrowed?: boolean) => void;
   setAllCardInvoiceStatus: (month: string, paid: boolean) => void;
   setCardInvoicePayment: (
     cardId: string,
     month: string,
     payment: InvoicePaymentRecord,
+    includeBorrowed?: boolean,
   ) => void;
   setCardInvoiceOverride: (
     cardId: string,
@@ -988,17 +1046,29 @@ type AppStoreValue = {
   deleteReserve: (id: string) => void;
   setReservesInBalance: (value: boolean) => void;
   homeBalanceMode: HomeBalanceMode;
+  homeAlertPreferences: HomeAlertPreferences;
+  setHomeAlertPreferences: (preferences: HomeAlertPreferences) => void;
   setHomeBalanceMode: (value: HomeBalanceMode) => void;
   invoiceCardDisplayMode: InvoiceCardDisplayMode | undefined;
   setInvoiceCardDisplayMode: (value: InvoiceCardDisplayMode) => void;
+  includeBorrowedCardInvoices: boolean;
+  setIncludeBorrowedCardInvoices: (include: boolean) => void;
   loanValueMode: LoanValueMode;
   setLoanValueMode: (value: LoanValueMode) => void;
   categoryLimits: CategoryLimits;
   setCategoryLimit: (categoryId: string, value: number | null) => void;
   /** Aprova a notificação: cria a transação no cartão e marca como aprovada. */
-  approveNotification: (id: string) => void;
+  ignoredNotificationCount: number;
+  notificationRetentionDays: number;
+  setNotificationRetentionDays: (days: number) => void;
+  readPaymentNotificationIds: string[];
+  approveNotification: (id: string, input?: NotificationTransactionInput) => void;
+  approveLoanNotification: (id: string, input: LoanCreationInput) => void;
+  ignoreNotifications: (ids: string[]) => void;
+  restoreNotifications: (ids: string[]) => void;
+  markPaymentNotificationsRead: (ids: string[]) => void;
   ignoreNotification: (id: string) => void;
-  /** Restaura todas as notificações para "pendente" (demo). */
+  /** Refaz todas as notificações para "pendente" (demo). */
   resetNotifications: () => void;
   addFinancing: (data: {
     name: string;
@@ -1101,25 +1171,7 @@ type AppStoreValue = {
   markLoanReceivablesPaid: (ids: string[]) => void;
   receiveFreeLoanPayment: (id: string, amount: number, date: string, receiptId: string) => void;
   linkCardLoanInvoice: (id: string, cardId: string, purchaseDate: string, invoiceMonth?: string) => void;
-  createLoanRecord: (data: {
-    contact: string;
-    description?: string;
-    amount: number;
-    date: string;
-    categoryId: string;
-    paymentMethod: string;
-    operationType?: LoanOperationType;
-    cardId?: string;
-    cardInvoiceMonth?: string;
-    installments?: number;
-    note?: string;
-    draftDisplay?: DraftDisplayMode;
-    attachments?: { src: string; isImage: boolean; name: string }[];
-    collectionMode: "fixed" | "open";
-    freePaymentMode?: "installments" | "flexible";
-    suggestedPaymentAmount?: number;
-    receivables?: { amount: number; dueDate: string; installment: number; installments: number }[];
-  }) => void;
+  createLoanRecord: (data: LoanCreationInput) => void;
   addProfile: (data: { name: string; avatar: ProfileAvatar }) => void;
   updateProfile: (
     id: string,
@@ -1138,6 +1190,15 @@ const AppStoreContext = createContext<AppStoreValue | null>(null);
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppStoreState>(loadState);
+
+  useEffect(() => {
+    const refresh = () => setState((current) => maintainAllNotificationHistory(current));
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, []);
 
   // Persist on every change (try/catch so blocked localStorage never crashes).
   useEffect(() => {
@@ -1173,7 +1234,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     // Mutations only ever touch the ACTIVE profile's data.
     const patchActiveData = (fn: (d: ProfileData) => ProfileData) =>
-      setState((s) => ({
+      setState((s) => s.activeProfileId !== active?.id ? s : ({
         ...s,
         profiles: s.profiles.map((p) =>
           p.id === s.activeProfileId ? { ...p, data: fn(p.data) } : p,
@@ -1230,9 +1291,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       reserves: activeData.reserves,
       reservesInBalance: activeData.reservesInBalance,
       homeBalanceMode: sanitizeHomeBalanceMode(activeData.homeBalanceMode),
+      homeAlertPreferences: sanitizeHomeAlertPreferences(activeData.homeAlertPreferences),
+      setHomeAlertPreferences: (preferences) => patchActiveData((data) => updateHomeAlertPreferences(data, preferences)),
       setHomeBalanceMode: (mode) => patchActiveData((d) => ({ ...d, homeBalanceMode: sanitizeHomeBalanceMode(mode) })),
       invoiceCardDisplayMode: sanitizeInvoiceCardDisplayMode(activeData.invoiceCardDisplayMode),
       setInvoiceCardDisplayMode: (mode) => patchActiveData((data) => setInvoiceCardDisplayPreference(data, mode)),
+      includeBorrowedCardInvoices: activeData.includeBorrowedCardInvoices === true,
+      setIncludeBorrowedCardInvoices: (include) => patchActiveData((data) => ({ ...data, includeBorrowedCardInvoices: include === true })),
       loanValueMode: sanitizeLoanValueMode(activeData.loanValueMode),
       setLoanValueMode: (mode) => patchActiveData((d) => ({ ...d, loanValueMode: sanitizeLoanValueMode(mode) })),
       categoryLimits: sanitizeCategoryLimits(activeData.categoryLimits),
@@ -1241,6 +1306,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         categoryLimits: updateCategoryLimit(d.categoryLimits ?? {}, categoryId, limit),
       })),
       notifications: activeData.notifications,
+      ignoredNotificationCount: ignoredCountToday(activeData),
+      notificationRetentionDays: sanitizeNotificationRetention(activeData.notificationRetentionDays),
+      setNotificationRetentionDays: (days) => patchActiveData((data) => setNotificationRetention(data, days)),
+      readPaymentNotificationIds: activeData.readPaymentNotificationIds ?? [],
       financings: activeData.financings,
       financingsInFlow: activeData.financingsInFlow,
       showCategoryNameOnCard: activeData.showCategoryNameOnCard,
@@ -1275,12 +1344,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateCard: (id, patch) =>
         patchActiveData((data) => updateCardPreservingHistory(data, id, patch)),
       reorderCards: (ids) => patchActiveData((data) => reorderActiveCards(data, ids)),
-      setCardInvoiceStatus: (cardId, month, paid) =>
-        patchActiveData((d) => setInvoicePaymentStatus(d, cardId, month, paid)),
+      setCardInvoiceStatus: (cardId, month, paid, includeBorrowed = false) =>
+        patchActiveData((d) => setScopedInvoiceStatus(d, cardId, month, paid, includeBorrowed)),
       setAllCardInvoiceStatus: (month, paid) =>
         patchActiveData((d) => d.cards.reduce((next, card) => setInvoicePaymentStatus(next, card.id, month, paid), d)),
-      setCardInvoicePayment: (cardId, month, payment) =>
-        patchActiveData((d) => recordInvoicePayment(d, cardId, month, payment)),
+      setCardInvoicePayment: (cardId, month, payment, includeBorrowed = false) =>
+        patchActiveData((d) => recordScopedInvoicePayment(d, cardId, month, payment, includeBorrowed)),
       setCardInvoiceOverride: (cardId, month, amount) =>
         patchActiveData((data) => adjustCardInvoice(data, cardId, month, amount)),
       setCardInvoiceReconciled: (cardId, month, reconciled) =>
@@ -1352,56 +1421,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         })),
       setReservesInBalance: (value) =>
         patchActiveData((d) => ({ ...d, reservesInBalance: value })),
-      approveNotification: (id) =>
-        patchActiveData((d) => {
-          const n = d.notifications.find((x) => x.id === id);
-          if (!n || n.status !== "pending") return d;
-          const categoryId =
-            n.categoryId && d.categories.some((c) => c.id === n.categoryId)
-              ? n.categoryId
-              : "outros";
-          const cardId =
-            n.cardId && d.cards.some((c) => c.id === n.cardId)
-              ? n.cardId
-              : undefined;
-          const transaction: Transaction = {
-            id: uid("t"),
-            title: n.merchant,
-            categoryId,
-            amount: -Math.abs(n.amount),
-            date: n.date,
-            time: n.time,
-            note: `Aprovado da notificação do ${n.bank}`,
-            paymentMethod: "cartao",
-            cardId,
-            cardMode: "credito",
-            paymentStatus: "pending",
-          };
-          return {
-            ...openUnpaidPurchaseInvoices(d, transaction),
-            transactions: [transaction, ...d.transactions],
-            notifications: d.notifications.map((x) =>
-              x.id === id ? { ...x, status: "approved" as const } : x,
-            ),
-          };
-        }),
-      ignoreNotification: (id) =>
-        patchActiveData((d) => ({
-          ...d,
-          notifications: d.notifications.map((x) =>
-            x.id === id && x.status === "pending"
-              ? { ...x, status: "ignored" as const }
-              : x,
-          ),
-        })),
-      resetNotifications: () =>
-        patchActiveData((d) => ({
-          ...d,
-          notifications: d.notifications.map((x) => ({
-            ...x,
-            status: "pending" as const,
-          })),
-        })),
+      approveNotification: (id, input) => patchActiveData((d) => approveNotificationData(d, id, input, uid)),
+      approveLoanNotification: (id, input) => patchActiveData((d) => approveLoanNotificationData(d, id, input, uid)),
+      ignoreNotifications: (ids) => patchActiveData((d) => ignoreNotificationsData(d, ids)),
+      restoreNotifications: (ids) => patchActiveData((d) => restoreNotificationsData(d, ids)),
+      markPaymentNotificationsRead: (ids) => patchActiveData((d) => readPaymentNotificationsData(d, ids)),
+      ignoreNotification: (id) => patchActiveData((d) => ignoreNotificationsData(d, [id])),
+      resetNotifications: () => patchActiveData((d) => restoreNotificationsData(d, d.notifications.filter((n) => n.status === "approved").map((n) => n.id))),
       addFinancing: (data) =>
         patchActiveData((d) => ({
           ...d,
@@ -1460,13 +1486,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       importState: (raw) => {
         try {
           const parsed = JSON.parse(raw) as unknown;
-          const profiles = buildProfiles(parsed);
+          const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
           if (profiles.length === 0) {
             return { ok: false, error: "Nenhum perfil encontrado no arquivo." };
           }
           const p = (parsed ?? {}) as Record<string, unknown>;
           const next: AppStoreState = {
-            exampleDataVersion: 2,
+            exampleDataVersion: Number(p.exampleDataVersion) || 0,
             profiles,
             activeProfileId:
               typeof p.activeProfileId === "string" &&
@@ -1550,137 +1576,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         patchActiveData((d) => recordFreeLoanReceipt(d, id, amount, date, receiptId)),
       linkCardLoanInvoice: (id, cardId, purchaseDate, invoiceMonth) =>
         patchActiveData((d) => linkCardLoanInvoice(d, id, cardId, purchaseDate, invoiceMonth)),
-      createLoanRecord: (data) =>
-        patchActiveData((d) => {
-          const loanId = uid("loan");
-          const createdAt = localDateKey();
-          const operationType: LoanOperationType = data.operationType === "card" ? "card" : "loan";
-          const card = operationType === "card" ? d.cards.find((card) => card.id === data.cardId) : undefined;
-          const cardSchedule = operationType === "card" ? getCardLoanSchedule(card, data.date, data.amount, data.installments ?? 1, data.cardInvoiceMonth) : [];
-          if (operationType === "card" && (data.collectionMode !== "fixed" || !cardSchedule.length)) return d;
-          const plannedReceivables = operationType === "card" ? cardSchedule : data.receivables ?? [];
-          const operationLabel = operationType === "card" ? "Cartão emprestado" : "Empréstimo";
-          const collectionLabel =
-            data.collectionMode === "fixed"
-              ? `${plannedReceivables.length} parcela(s) agendada(s)`
-              : "Dívida em aberto";
-          const originalNote = [
-            data.note?.trim() || undefined,
-            data.description?.trim() || undefined,
-            `Tipo: ${operationLabel}`,
-            `Contato: ${data.contact}`,
-            `Cobrança: ${collectionLabel}`,
-            `Referência: ${loanId}`,
-          ]
-            .filter(Boolean)
-            .join("\n");
-          const original = {
-            id: uid("t"),
-            title:
-              operationType === "card"
-                ? `Cartão usado por ${data.contact}`
-                : `Emprestei para ${data.contact}`,
-            categoryId: data.categoryId,
-            amount: -Math.abs(data.amount),
-            date: data.date,
-            note: originalNote,
-            draftDisplay: data.draftDisplay ?? "hidden",
-            attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
-            paymentMethod: data.paymentMethod,
-            source: "loan" as const,
-            operationType,
-            cardId: card?.id,
-            cardMode: card ? "credito" as const : undefined,
-            cardInvoiceMonth: cardSchedule[0]?.invoiceMonth,
-          };
-
-          if (data.collectionMode === "open") {
-              const openDebt: LoanReceivable = {
-              id: uid("receivable"),
-              loanId,
-              contact: data.contact,
-              amount: Math.abs(data.amount),
-              status: "open",
-              collectionMode: "open",
-              freePaymentMode: data.freePaymentMode === "installments" ? "installments" : "flexible",
-              suggestedPaymentAmount: data.freePaymentMode === "installments" && data.suggestedPaymentAmount && Number.isFinite(data.suggestedPaymentAmount)
-                ? Math.min(Math.abs(data.amount), Math.max(0.01, Math.round(data.suggestedPaymentAmount * 100) / 100))
-                : undefined,
-              startDate: data.date,
-              description: data.description?.trim() || undefined,
-              paymentMethod: data.paymentMethod,
-              note: data.note?.trim() || undefined,
-              draftDisplay: data.draftDisplay ?? "hidden",
-              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
-              operationType,
-              createdAt,
-            };
-            return {
-              ...d,
-              transactions: [original, ...d.transactions],
-              loanReceivables: [openDebt, ...d.loanReceivables],
-            };
-          }
-
-          const scheduled = plannedReceivables.map((item, index) => {
-            const transactionId = uid("t");
-            const receivable: LoanReceivable = {
-              id: uid("receivable"),
-              loanId,
-              contact: data.contact,
-              amount: Math.abs(item.amount),
-              dueDate: item.dueDate,
-              cardId: card?.id,
-              cardInvoiceMonth: cardSchedule[index]?.invoiceMonth,
-              cardClosingDate: cardSchedule[index]?.closingDate,
-              status: "scheduled",
-              collectionMode: "fixed",
-              startDate: data.date,
-              installment: item.installment,
-              installments: item.installments,
-              transactionId,
-              description: data.description?.trim() || undefined,
-              paymentMethod: data.paymentMethod,
-              note: data.note?.trim() || undefined,
-              draftDisplay: data.draftDisplay ?? "hidden",
-              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
-              operationType,
-              createdAt,
-            };
-            return { receivable, transaction: {
-              id: transactionId,
-              title: `Devolução de ${data.contact} · ${item.installment}/${item.installments}`,
-              categoryId: data.categoryId,
-              amount: Math.abs(item.amount),
-              date: item.dueDate,
-              note: [
-                data.note?.trim() || undefined,
-                data.description?.trim() || undefined,
-                `${operationLabel} para ${data.contact}`,
-                `Parcela ${item.installment}/${item.installments}`,
-                `Referência: ${loanId}`,
-              ].filter(Boolean).join("\n"),
-              draftDisplay: data.draftDisplay ?? "hidden",
-              attachments: data.attachments?.length ? data.attachments.map((attachment) => attachment.src) : undefined,
-              paymentMethod: data.paymentMethod,
-              recurrence: "parcelada" as const,
-              paymentStatus: "pending" as const,
-              dueDate: item.dueDate,
-              installments: item.installments,
-              source: "loan" as const,
-              operationType,
-              currentInstallment: item.installment,
-            } };
-          });
-          return {
-            ...d,
-            transactions: [original, ...scheduled.map((item) => item.transaction), ...d.transactions],
-            loanReceivables: [
-              ...scheduled.map((item) => item.receivable),
-              ...d.loanReceivables,
-            ],
-          };
-        }),
+      createLoanRecord: (data) => patchActiveData((d) => createLoanRecordData(d, data, uid)),
       addProfile: (data) =>
         setState((s) => {
           const profile: AppProfile = {

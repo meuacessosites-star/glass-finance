@@ -61,6 +61,7 @@ export function LoanDetailsDialog({
   onClose,
   onEdit,
   onReopen,
+  showActions = true,
 }: {
   item: LoanReceivable;
   valueMode?: LoanValueMode;
@@ -71,6 +72,7 @@ export function LoanDetailsDialog({
   onClose: () => void;
   onEdit: () => void;
   onReopen: () => void;
+  showActions?: boolean;
 }) {
   const [expandedAttachment, setExpandedAttachment] = useState<number | null>(
     null,
@@ -116,6 +118,7 @@ export function LoanDetailsDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex shrink-0 items-center gap-1">
+            {showActions && (
             <button
               type="button"
               onClick={onEdit}
@@ -124,6 +127,7 @@ export function LoanDetailsDialog({
               <Pencil className="size-3.5" />
               Editar
             </button>
+            )}
             <DialogClose asChild>
               <button
                 type="button"
@@ -166,10 +170,10 @@ export function LoanDetailsDialog({
             </p>
             <button
               type="button"
-              disabled={item.status !== "paid"}
+              disabled={!showActions || item.status !== "paid"}
               onClick={onReopen}
               aria-label={
-                item.status === "paid"
+                showActions && item.status === "paid"
                   ? "Reabrir registro recebido"
                   : statusLabel(item, today)
               }
@@ -401,7 +405,7 @@ export function LoanDetailsDialog({
               </div>
             </section>
           )}
-          {item.status === "paid" && (
+          {showActions && item.status === "paid" && (
             <button
               type="button"
               onClick={onReopen}
