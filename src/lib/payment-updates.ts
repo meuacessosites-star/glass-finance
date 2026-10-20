@@ -1,6 +1,7 @@
 import type { InvoicePaymentRecord, ProfileData } from "./app-store";
 import { getCurrentInvoiceMonth, getCurrentInstallment, getTransactionInvoiceSchedule, isCreditCardExpense, isInvoiceMarkedPaid, isInvoicePartPaid, localDateKey, sanitizeInvoiceMonth } from "./card-billing";
 import { getCardInvoiceMetrics } from "./card-invoice-view";
+import { getBorrowedCardTransactions } from "./card-loan-purchases";
 import { selectTransactionLedgers } from "./transaction-ledgers";
 
 export function openUnpaidPurchaseInvoices(data: ProfileData, transaction: ProfileData["transactions"][number], today = localDateKey()): ProfileData {
@@ -25,7 +26,8 @@ export function setInvoicePaymentStatus(data: ProfileData, cardId: string, month
   const invoiceItems = selectTransactionLedgers(data.transactions, data.loanReceivables).regularTransactions.filter(belongsToInvoice);
   const ids = new Set(invoiceItems.filter((item) => getTransactionInvoiceSchedule(item, card).some((part) => part.month === month && part.number === getCurrentInstallment(item))).map((item) => item.id));
   const payment = card.invoicePaymentsByMonth?.[month];
-  const gross = invoiceItems.reduce((sum, item) => sum + (getTransactionInvoiceSchedule(item, card).find((part) => part.month === month)?.amount ?? 0), 0);
+  const borrowed = data.includeBorrowedCardPurchases ? getBorrowedCardTransactions(data.loanReceivables).filter(belongsToInvoice) : [];
+  const gross = [...invoiceItems, ...borrowed].reduce((sum, item) => sum + (getTransactionInvoiceSchedule(item, card).find((part) => part.month === month)?.amount ?? 0), 0);
   const total = card.invoiceOverrideByMonth?.[month] ?? Math.max(gross, payment?.totalAmount ?? 0);
   const invoicePaymentsByMonth = { ...(card.invoicePaymentsByMonth ?? {}) };
   if (paid && total > 0) invoicePaymentsByMonth[month] = { totalAmount: total, paidAmount: total, paymentDate: today };
