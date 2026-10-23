@@ -1,3 +1,5 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import "@/components/app/transaction-navigation.css";
 import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
 import { countUnpaidTransactions, normalizeSearchText, selectTransactionView, transactionInPeriod } from "@/lib/transaction-view";
@@ -57,6 +59,7 @@ function shiftMonth(key: string, offset: number): string {
 }
 
 export default function TransactionsPage() {
+  const formatCurrency = usePrivateCurrency();
   const navigate = useNavigate();
   const location = useLocation();
   const transactionScrollRef = useRef<HTMLDivElement>(null);
@@ -458,7 +461,7 @@ export default function TransactionsPage() {
           >
             <ListChecks className="size-4" />
           </button>
-          <ThemeToggle />
+          <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
         </div>
       </header>
       </div>

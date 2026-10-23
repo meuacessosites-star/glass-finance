@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useRef, useState } from "react";
 import {
   CalendarDays,
@@ -61,6 +62,7 @@ export function ReportCategoryDetails({
   triggerId: string;
   onClose: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const { cards, loanReceivables } = useAppStore();
   const today = useLocalDate();
   const [localQuery, setLocalQuery] = useState("");

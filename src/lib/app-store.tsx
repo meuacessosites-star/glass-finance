@@ -1,5 +1,8 @@
+import { sanitizeReserves, recordReserveMovement, type AppReserve, type ReserveDetails, type ReserveMovement } from "./reserves";
+export type { AppReserve } from "./reserves";
 import { ignoredCountToday, maintainAllNotificationHistory, maintainNotificationHistory, sanitizeNotificationRetention, setNotificationRetention } from "./notification-history";
 import { sanitizeHomeAlertPreferences, updateHomeAlertPreferences, type HomeAlertPreferences } from "./home-alert-preferences";
+import { startPaymentNoticeSession } from "./payment-notice-session";
 import { approveNotificationData, approveLoanNotificationData, ignoreNotificationsData, restoreNotificationsData, readPaymentNotificationsData, sanitizeReadNotificationIds, type NotificationTransactionInput } from "./notification-actions";
 import { createLoanRecordData } from "./loan-creation";
 import { adjustCardInvoice, removeUnusedCard, reorderActiveCards, updateCardPreservingHistory } from "./card-operations";
@@ -98,15 +101,6 @@ export type AppPerson = {
   name: string;
   /** Número normalizado (só dígitos). Vazio = ainda não informado. */
   phone: string;
-  createdAt: string;
-};
-
-/** Cofrinho/reserva: dinheiro guardado para um objetivo (viagem, investimento…). */
-export type AppReserve = {
-  id: string;
-  name: string;
-  amount: number; // BRL (positivo)
-  color: string;
   createdAt: string;
 };
 
@@ -489,26 +483,6 @@ function sanitizePeople(v: unknown): AppPerson[] {
           : new Date().toISOString().slice(0, 10),
     }))
     .filter((p) => p.name !== "Pessoa" || p.phone.length > 0);
-}
-
-function sanitizeReserves(v: unknown): AppReserve[] {
-  if (!Array.isArray(v)) return [];
-  return v
-    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
-    .map((r) => ({
-      id: str(r.id, uid("reserve")),
-      name: str(r.name, "Reserva"),
-      amount:
-        typeof r.amount === "number" && Number.isFinite(r.amount)
-          ? Math.max(0.01, r.amount)
-          : 0.01,
-      color: str(r.color, "#2F6BFF"),
-      createdAt:
-        typeof r.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(r.createdAt)
-          ? r.createdAt.slice(0, 10)
-          : new Date().toISOString().slice(0, 10),
-    }))
-    .filter((r) => r.name !== "Reserva");
 }
 
 /** Notificações de banco. Quando o campo não existe no storage (migração),
@@ -1038,10 +1012,11 @@ type AppStoreValue = {
     patch: Partial<Pick<AppPerson, "name" | "phone">>,
   ) => void;
   deletePerson: (id: string) => void;
-  addReserve: (data: { name: string; amount: number; color?: string }) => void;
+  addReserve: (data: ReserveDetails & { amount: number }) => void;
+  moveReserve: (id: string, entry: Omit<ReserveMovement, "id">) => void;
   updateReserve: (
     id: string,
-    patch: Partial<Pick<AppReserve, "name" | "amount" | "color">>,
+    patch: Partial<ReserveDetails>,
   ) => void;
   deleteReserve: (id: string) => void;
   setReservesInBalance: (value: boolean) => void;
@@ -1189,7 +1164,13 @@ type AppStoreValue = {
 const AppStoreContext = createContext<AppStoreValue | null>(null);
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppStoreState>(loadState);
+  const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(loadState()));
+
+  useEffect(() => {
+    const reopen = (event: PageTransitionEvent) => { if (event.persisted) setState((current) => startPaymentNoticeSession(current)); };
+    window.addEventListener("pageshow", reopen);
+    return () => window.removeEventListener("pageshow", reopen);
+  }, []);
 
   useEffect(() => {
     const refresh = () => setState((current) => maintainAllNotificationHistory(current));
@@ -1393,32 +1374,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           ...d,
           people: d.people.filter((p) => p.id !== id),
         })),
-      addReserve: (data) =>
-        patchActiveData((d) => ({
-          ...d,
-          reserves: [
-            {
-              id: uid("reserve"),
-              name: data.name,
-              amount: Math.max(0.01, data.amount),
-              color: data.color ?? "#2F6BFF",
-              createdAt: new Date().toISOString().slice(0, 10),
-            },
-            ...d.reserves,
-          ],
-        })),
+      addReserve: (data) => {
+        const id = uid("reserve");
+        const createdAt = localDateKey(new Date());
+        const movements = data.amount > 0 ? [{ id: `${id}-opening`, kind: "opening", amount: data.amount, date: createdAt, note: "Valor guardado ao criar a reserva" }] : [];
+        const added = sanitizeReserves([{ ...data, id, createdAt, movements }]);
+        patchActiveData((d) => ({ ...d, reserves: [...added, ...d.reserves] }));
+      },
       updateReserve: (id, patch) =>
-        patchActiveData((d) => ({
-          ...d,
-          reserves: d.reserves.map((r) =>
-            r.id === id ? { ...r, ...patch } : r,
-          ),
-        })),
+        patchActiveData((d) => ({ ...d, reserves: d.reserves.map((r) =>
+          r.id === id ? sanitizeReserves([{ ...r, ...patch, id: r.id, amount: r.amount, movements: r.movements }])[0] : r,
+        ) })),
+      moveReserve: (id, entry) => {
+        const movement = { ...entry, id: uid("reserve-movement") };
+        patchActiveData((d) => ({ ...d, reserves: d.reserves.map(r => r.id === id ? recordReserveMovement(r, movement) : r) }));
+      },
       deleteReserve: (id) =>
-        patchActiveData((d) => ({
-          ...d,
-          reserves: d.reserves.filter((r) => r.id !== id),
-        })),
+        patchActiveData((d) => ({ ...d, reserves: d.reserves.filter((r) => r.id !== id || r.amount !== 0) })),
       setReservesInBalance: (value) =>
         patchActiveData((d) => ({ ...d, reservesInBalance: value })),
       approveNotification: (id, input) => patchActiveData((d) => approveNotificationData(d, id, input, uid)),

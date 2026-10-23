@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
@@ -136,6 +137,7 @@ export function TransactionRow({
   displayAmount?: number;
   displayInstallment?: number;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const { categoryById, cards, loanReceivables, deleteTransaction, undoTransactionDeletion, showCategoryNameOnCard } = useAppStore();
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
   const [open, setOpen] = useState(false);
@@ -317,7 +319,7 @@ export function TransactionRow({
               </div>
               {showCategoryNameOnCard && (
                 <span
-                  className="pointer-events-none block w-[calc(100%+18px)] max-w-[calc(100%+18px)] truncate whitespace-nowrap text-center leading-none opacity-60"
+                  className="pointer-events-none block w-[calc(100%+18px)] max-w-[calc(100%+18px)] truncate whitespace-nowrap text-center leading-none opacity-60 dark:opacity-100 dark:brightness-150"
                   style={{
                     color: category.color,
                     fontFamily: "'Caveat', 'Segoe Script', 'Bradley Hand', cursive",
@@ -575,7 +577,7 @@ export function TransactionRow({
               }
             }}
             className={cn(
-              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3 py-2.5 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+              "relative z-10 flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-0 bg-[#f4f8ff] px-3 py-2.5 text-left outline-none shadow-none ring-0 transition-colors dark:bg-[#1d2632] lg:gap-5 lg:px-5 lg:py-3",
             )}
           >
             {rowContent}
@@ -596,7 +598,7 @@ export function TransactionRow({
             }
           }}
           className={cn(
-            "flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3 py-2.5 text-left transition-colors dark:bg-[#0d1b3e] lg:gap-5 lg:px-5 lg:py-3",
+            "flex w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl bg-[#f4f8ff] px-3 py-2.5 text-left transition-colors dark:bg-[#1d2632] lg:gap-5 lg:px-5 lg:py-3",
           )}
         >
           {rowContent}

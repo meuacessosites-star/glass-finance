@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { AttachmentImageViewer } from "./AttachmentImageViewer";
 import {
   getTransactionBillingCycle,
@@ -62,6 +63,7 @@ export function TransactionDetailsSheet({
   onClose: () => void;
   onEdit?: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const { categoryById, cards, loanReceivables, updateTransaction } =
     useAppStore();
   const today = useLocalDate();

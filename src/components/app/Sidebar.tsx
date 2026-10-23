@@ -126,7 +126,7 @@ const items: {
   {
     to: "/dashboard/reservas",
     label: "Reservas",
-    desc: "Cofrinhos e objetivos",
+    desc: "Dinheiro separado e rendimentos",
     icon: PiggyBank,
     color: "#AF52DE",
   },
@@ -234,7 +234,7 @@ export function Sidebar() {
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={{ duration: 0.24, ease: "easeOut" }}
-            className="glass glass-strong fixed inset-y-2 left-2 z-[220] flex w-[286px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[1.9rem] bg-white p-4 dark:bg-[#f4f8ff] md:inset-y-3 md:left-3"
+            className="glass glass-strong fixed inset-y-2 left-2 z-[220] flex w-[286px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[1.9rem] bg-white p-4 dark:bg-[#202631] md:inset-y-3 md:left-3"
           >
               {/* Header */}
               <div className="flex items-center justify-between">

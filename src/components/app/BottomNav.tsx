@@ -71,7 +71,7 @@ export function BottomNav({
             aria-label="Adicionar transação"
             onClick={onToggleAdd}
             className={cn(
-              "absolute -top-[1.625rem] flex size-[3.25rem] items-center justify-center rounded-full bg-gradient-to-b from-[#5b9dff] to-[#2f6bff] text-white shadow-[0_10px_24px_-6px_rgba(47,107,255,0.55),inset_0_1px_0_rgba(255,255,255,0.5)] ring-4 ring-white/80 transition-transform duration-300 active:scale-90 dark:ring-[#f4f8ff]/80",
+              "absolute -top-[1.625rem] flex size-[3.25rem] items-center justify-center rounded-full bg-gradient-to-b from-[#5b9dff] to-[#2f6bff] text-white shadow-[0_10px_24px_-6px_rgba(47,107,255,0.55),inset_0_1px_0_rgba(255,255,255,0.5)] ring-4 ring-white/80 transition-transform duration-300 active:scale-90 dark:ring-[#17263c]/95",
               addOpen && "rotate-45",
             )}
           >

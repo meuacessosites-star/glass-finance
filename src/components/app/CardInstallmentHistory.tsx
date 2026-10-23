@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { AlertTriangle, Check, Clock, Layers } from "lucide-react";
 import type { CardInstallment } from "@/lib/card-installments";
 import { formatCurrency, shortDate } from "@/lib/mock-data";
@@ -11,6 +12,7 @@ const presentation = {
 };
 
 export function CardInstallmentHistory({ installments, accent }: { installments: CardInstallment[]; accent: string }) {
+  const formatCurrency = usePrivateCurrency();
   if (!installments.length) return null;
   return (
     <section aria-label="Histórico de parcelas" className="mt-4 rounded-3xl border border-[#D8D4EC] bg-[#F7F5FF]/90 p-3.5 dark:border-[#483D61] dark:bg-[#19172B]">

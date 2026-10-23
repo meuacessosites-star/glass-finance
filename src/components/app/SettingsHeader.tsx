@@ -1,3 +1,4 @@
+import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import { ArrowLeft } from "lucide-react";
 import { SidebarTrigger } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
@@ -31,7 +32,7 @@ export function SettingsHeader({
       <h1 className={`text-[20px] font-bold tracking-tight text-foreground ${titleClassName}`}>
         {title}
       </h1>
-      <ThemeToggle />
+      <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
     </header>
   );
 }

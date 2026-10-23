@@ -140,7 +140,7 @@ test("upcoming closing is distinguished from upcoming due date and closing does 
   assert.equal(notices(input, "2026-10-29")[0].phase, "today");
 });
 
-test("read one or all hides messages after reload while leaving underlying debts unpaid", () => {
+test("read one or all hides messages in the current opening while leaving underlying debts unpaid", () => {
   const data = {
     transactions: [transaction("a"), transaction("b")],
     loanReceivables: [loan("loan")],

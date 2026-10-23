@@ -88,7 +88,7 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* Glass surfaces stay LIGHT in both modes (no dark glass) */
+  /* Light glass palette; dark mode supplies its own surfaces and text. */
   --glass-bg: rgba(255, 255, 255, 0.55);
   --glass-bg-strong: rgba(255, 255, 255, 0.8);
   --glass-bg-soft: rgba(255, 255, 255, 0.38);
@@ -104,7 +104,7 @@
   --aurora-3: #7fe0cd;
 }
 
-/* Dark mode: deep twilight backdrop, but panels remain LIGHT frosted glass */
+/* Dark mode: twilight backdrop with low-glare glass and readable text. */
 .dark {
   --background: oklch(0.16 0.022 252);
   --foreground: oklch(0.93 0.012 244);
@@ -138,15 +138,14 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
-  /* Panels stay light; bump opacity so they read clearly on the dark backdrop */
-  --glass-bg: rgba(244, 248, 255, 0.8);
-  --glass-bg-strong: rgba(250, 252, 255, 0.94);
-  --glass-bg-soft: rgba(244, 248, 255, 0.52);
-  --glass-edge: rgba(255, 255, 255, 0.96);
-  --glass-ink: oklch(0.2 0.026 252);
-  --glass-sub: oklch(0.42 0.022 252);
-  --glass-faint: oklch(0.55 0.02 252);
-  --glass-shadow: 0 20px 50px -16px oklch(0.06 0.03 260 / 0.6);
+  --glass-bg: rgba(24, 38, 58, 0.88);
+  --glass-bg-strong: rgba(26, 40, 60, 0.98);
+  --glass-bg-soft: rgba(40, 57, 78, 0.72);
+  --glass-edge: rgba(167, 192, 222, 0.19);
+  --glass-ink: #eaf1fb;
+  --glass-sub: #b9c8dd;
+  --glass-faint: #9bafc9;
+  --glass-shadow: 0 18px 42px -20px #000000a6;
 
   --aurora-1: #22508f;
   --aurora-2: #463a93;
@@ -357,3 +356,41 @@
     background-image: none;
   }
 }
+
+/* Dark surfaces are shared by screens, sheets and floating menus. */
+.dark { color-scheme: dark; }
+.dark .glass { background: var(--glass-bg); border-color: var(--glass-edge); box-shadow: var(--glass-shadow), inset 0 1px 0 #d8eaff12; }
+.dark .glass-strong { background: var(--glass-bg-strong); }
+.dark .glass-soft { background: var(--glass-bg-soft); }
+.dark :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="sheet-content"]) { background-color: #1a283c; color: var(--glass-ink); border-color: var(--glass-edge); }
+.dark :is(.glass, #app-content-scroll) [class*="bg-white/"] { background-color: #b8d5ff0d; }
+.dark input::placeholder, .dark textarea::placeholder { color: #92a7c2; }
+.dark input[type="date"] { color-scheme: dark; }
+.dark :is(input,textarea,select):focus-visible { outline-color: #89b7ff; }
+.dark :is(.border-black\/10,.border-black\/5) { border-color: #b4c7e024; }
+.dark .recharts-default-tooltip { background: #1a283c !important; border-color: #435675 !important; color:#edf3fc !important; }
+.dark .recharts-tooltip-label { color:#edf3fc !important; }
+.dark .recharts-cartesian-axis-tick-value { fill:#afc3dd; }
+.dark [data-sonner-toast] { background:#23364b; color:#edf4ff; border-color:#496077; }
+
+/* Night palette: restrained charcoal surfaces; light-mode tokens are untouched. */
+.dark {
+  --primary: #86b2ee;
+  --primary-foreground: #101b2a;
+  --glass-bg: rgba(28,33,42,.94);
+  --glass-bg-strong: #202631;
+  --glass-bg-soft: rgba(47,55,68,.74);
+  --glass-edge: rgba(159,179,205,.18);
+  --glass-ink: #eef1f6;
+  --glass-sub: #bbc4d1;
+  --glass-faint: #9ca9bc;
+  --aurora-1: #273b51;
+  --aurora-2: #37324b;
+  --aurora-3: #25453d;
+}
+.dark :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="sheet-content"]) { background-color:var(--glass-bg-strong); }
+.dark .recharts-default-tooltip { background:var(--glass-bg-strong) !important; }
+.dark [data-sonner-toast] { background:#26313b; color:#edf2f6; border-color:#566575; }
+
+/* Light primary buttons need dark lettering only in the dark theme. */
+.dark .bg-primary.text-white { color: var(--primary-foreground); }

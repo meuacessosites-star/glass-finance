@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import {
   AlertTriangle,
   Banknote,
@@ -63,6 +64,7 @@ export function LoanInstallmentHistory({
   card?: AppCard;
   today: string;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const free = isFreeLoan(item);
   const isCard = item.operationType === "card";
   const parts = getLoanInstallmentHistory(item, items, today);

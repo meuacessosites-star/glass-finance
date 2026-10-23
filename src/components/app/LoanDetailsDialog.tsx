@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useState } from "react";
 import {
   getLoanValueDisplay,
@@ -74,6 +75,7 @@ export function LoanDetailsDialog({
   onReopen: () => void;
   showActions?: boolean;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const [expandedAttachment, setExpandedAttachment] = useState<number | null>(
     null,
   );

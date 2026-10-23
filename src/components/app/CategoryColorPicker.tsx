@@ -237,3 +237,27 @@ export function CategoryColorPicker({
     </Dialog>
   );
 }
+
+/** Color editor for a form already inside a dialog; opening it keeps the draft mounted. */
+export function InlineColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(() => hexToTone(value));
+  const id = useId();
+  const chosen = toneToHex(draft);
+  const controls = [
+    { key: 'h', label: 'Tom da cor', max: 360, background: 'linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)' },
+    { key: 's', label: 'Intensidade', max: 100, background: `linear-gradient(to right,${toneToHex({...draft,s:0})},${toneToHex({...draft,s:100})})` },
+    { key: 'v', label: 'Luminosidade', max: 100, background: `linear-gradient(to right,#000,${toneToHex({...draft,v:100})})` },
+  ] as const;
+  return <div>
+    <button type="button" aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => { if (!open) setDraft(hexToTone(value)); setOpen(!open); }} className="glass glass-soft flex min-h-11 items-center gap-2 rounded-2xl px-3 py-2 text-[13px] font-semibold text-glass-ink">
+      <span aria-hidden="true" className="size-7 rounded-lg border border-black/10" style={{backgroundColor:value}}/><Palette className="size-4 text-primary"/>Personalizar cor
+    </button>
+    {open && <section id={`${id}-panel`} aria-label="Personalizar cor da reserva" className="mt-3 space-y-3 rounded-2xl border border-glass-ink/15 bg-glass-bg-soft p-4">
+      <p className="text-xs text-glass-sub">Ajuste a cor e toque em Usar esta cor. Sua reserva só será salva ao confirmar o formulário.</p>
+      <div className="grid grid-cols-2 gap-3">{[{label:'Cor atual',color:value},{label:'Nova cor',color:chosen}].map(p=><div key={p.label}><span className="text-xs text-glass-sub">{p.label}</span><div className="mt-1 h-12 rounded-xl border border-glass-ink/15" style={{backgroundColor:p.color}} aria-label={`${p.label}: ${p.color}`}/><span className="text-xs text-glass-sub">{p.color}</span></div>)}</div>
+      {controls.map(c=><div key={c.key}><div className="flex justify-between text-xs text-glass-sub"><span id={`${id}-${c.key}`}>{c.label}</span><span>{Math.round(draft[c.key])}{c.key==='h'?'°':'%'}</span></div><Slider.Root value={[draft[c.key]]} min={0} max={c.max} step={1} onValueChange={([next])=>setDraft(previous=>({...previous,[c.key]:next}))} className="relative flex h-11 w-full touch-none select-none items-center"><Slider.Track className="relative h-4 grow rounded-full border border-black/10" style={{background:c.background}}/><Slider.Thumb aria-labelledby={`${id}-${c.key}`} className="block size-7 rounded-full border-[3px] border-white bg-glass-ink shadow-md ring-1 ring-black/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/50"/></Slider.Root></div>)}
+      <div className="flex gap-2"><button type="button" onClick={()=>setOpen(false)} className="glass min-h-11 flex-1 rounded-xl px-3 text-xs font-semibold">Cancelar cor</button><button type="button" onClick={()=>{onChange(chosen);setOpen(false)}} className="min-h-11 flex-1 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground">Usar esta cor</button></div>
+    </section>}
+  </div>;
+}

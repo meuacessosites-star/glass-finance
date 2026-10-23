@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { ChevronDown, ReceiptText, X } from "lucide-react";
 import type { getInvoiceSummary } from "@/lib/card-invoice-summary";
 import { formatCurrency, monthShortLabel } from "@/lib/mock-data";
@@ -22,6 +23,7 @@ export function CardStatementSummary({
   allMonths: boolean;
   onClose: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   return (
     <section aria-label={`Extrato e resumo de ${cardName}`} className="glass rounded-3xl p-4">
       <div className="flex items-start justify-between gap-3">

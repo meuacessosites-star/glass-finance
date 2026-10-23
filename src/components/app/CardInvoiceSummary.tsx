@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { CalendarDays, CreditCard } from "lucide-react";
 import { formatCurrency, monthShortLabel } from "@/lib/mock-data";
 import type { getInvoiceSummary, InvoiceStatusFilter } from "@/lib/card-invoice-summary";
@@ -6,6 +7,7 @@ import { cn } from "@/lib/utils";
 export function CardInvoiceSummary({ summary, periodLabel, status, cardName, includeBorrowed, compact = false }: {
   summary: ReturnType<typeof getInvoiceSummary>; periodLabel: string; status: InvoiceStatusFilter; cardName?: string; includeBorrowed: boolean; compact?: boolean;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const paidOnly = status === "paid";
   return (
     <section aria-label="Resumo mensal dos cartões" className="glass rounded-3xl px-4 py-3.5">

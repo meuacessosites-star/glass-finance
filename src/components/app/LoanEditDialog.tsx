@@ -1,3 +1,5 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { formatCurrency as rawCurrency } from "@/lib/mock-data";
 import { useRef, useState, type FormEvent } from "react";
 import { Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +36,7 @@ export function LoanEditDialog({
   onClose: () => void;
   onSaved?: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const { loanReceivables, updateLoanRecord } = useAppStore();
   const [contact, setContact] = useState(item.contact);
   const [description, setDescription] = useState(item.description ?? "");
@@ -165,7 +168,7 @@ export function LoanEditDialog({
                 : `Valor da parcela ${item.installment ?? 1} de ${item.installments}`}
               <input
                 inputMode="numeric"
-                value={formatCurrency(amountCents / 100)}
+                value={rawCurrency(amountCents / 100)}
                 disabled={item.status === "paid"}
                 onChange={(event) =>
                   setAmountCents(
@@ -268,7 +271,7 @@ export function LoanEditDialog({
                     Valor combinado por parcela
                     <input
                       inputMode="numeric"
-                      value={formatCurrency(suggestedCents / 100)}
+                      value={rawCurrency(suggestedCents / 100)}
                       onChange={(event) =>
                         setSuggestedCents(
                           Number(event.target.value.replace(/\D/g, "")) || 0,

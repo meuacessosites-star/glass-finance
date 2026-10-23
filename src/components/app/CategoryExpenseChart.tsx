@@ -1,3 +1,5 @@
+import { PrivateChart } from "@/components/app/BalancePrivacy";
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
@@ -18,6 +20,7 @@ export function CategoryExpenseChart({
   data: CategoryExpense[];
   total: number;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = data.find((entry) => entry.categoryId === selectedId);
   const percentage = (value: number) =>
@@ -31,7 +34,7 @@ export function CategoryExpenseChart({
         aria-hidden="true"
         className="relative mt-2 h-52 [&_.recharts-layer]:outline-none [&_.recharts-sector]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-wrapper]:outline-none"
       >
-        <ResponsiveContainer width="100%" height="100%">
+        <PrivateChart><ResponsiveContainer width="100%" height="100%">
           <PieChart accessibilityLayer={false}>
             <Pie
               data={data}
@@ -63,7 +66,7 @@ export function CategoryExpenseChart({
               ))}
             </Pie>
           </PieChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer></PrivateChart>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-10 text-center">
           <p className="text-[11px] font-medium text-glass-sub">Total gasto</p>
           <p className="amount-tabular whitespace-nowrap text-[18px] font-bold text-glass-ink">

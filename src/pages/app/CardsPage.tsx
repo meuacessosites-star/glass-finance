@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import "@/components/app/invoice-glass-band.css";
 import { getCardCommittedAmount, parseInvoiceMoney } from "@/lib/card-invoice-view";
 import { getCardGlassBackground, getInvoiceHeaderAppearances, type InvoiceHeaderAppearance } from "@/lib/card-header-appearance";
@@ -111,6 +112,7 @@ export function CardVisual({
   searchQuery?: string;
   appearance?: InvoiceHeaderAppearance;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const limit = card.totalLimit;
   const availableLimit =
     typeof limit === "number" ? Math.max(0, limit - openAmount) : undefined;

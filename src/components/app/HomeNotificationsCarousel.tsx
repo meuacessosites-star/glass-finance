@@ -2,20 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { useReducedMotion } from "framer-motion";
-import {
-  BellRing,
-  CalendarClock,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  Clock3,
-  CheckCheck,
-  Pause,
-  Play,
-} from "lucide-react";
 import { useAppStore } from "@/lib/app-store";
 import { useLocalDate } from "@/hooks/use-local-date";
-import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { HomeAlertCard } from "./HomeAlertCard";
+import {
+  canRotateHomeAlerts,
+  nextHomeAlertIndex,
+  startHomeAlertRotation,
+} from "@/lib/home-alert-rotation";
 import {
   createHomeAlertSession,
   getHomeAlerts,
@@ -24,7 +18,7 @@ import {
   visibleHomeAlerts,
   type HomeAlert,
 } from "@/lib/home-alerts";
-import { homeAlertDurationLabel } from "@/lib/home-alert-preferences";
+import { HomeAlertsPanel } from "./HomeAlertsPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,7 +95,7 @@ function ProfileHomeCarousel({ profileId }: { profileId: string }) {
   });
   const [selected, setSelected] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [seenRequest, setSeenRequest] = useState<HomeAlert | null>(null);
   const [pageVisible, setPageVisible] = useState(
@@ -109,15 +103,26 @@ function ProfileHomeCarousel({ profileId }: { profileId: string }) {
   );
   const activeIndex = Math.min(selected, Math.max(0, items.length - 1));
   const current = items[activeIndex];
-  const rotating =
-    preferences.rotation === "auto" &&
-    items.length > 1 &&
-    !paused &&
-    !hovered &&
-    !focused &&
-    !seenRequest &&
-    pageVisible &&
-    !reducedMotion;
+  const rotating = canRotateHomeAlerts({
+    automatic: preferences.rotation === "auto",
+    count: items.length,
+    paused,
+    keyboardFocused: focused,
+    dragging,
+    confirming: Boolean(seenRequest),
+    pageVisible,
+  });
+  const go = (direction: number) => {
+    if (carousel)
+      carousel.scrollTo(
+        nextHomeAlertIndex(
+          carousel.selectedScrollSnap(),
+          carousel.scrollSnapList().length,
+          direction,
+        ),
+        Boolean(reducedMotion),
+      );
+  };
 
   useEffect(() => {
     if (preferences.enabled)
@@ -179,20 +184,30 @@ function ProfileHomeCarousel({ profileId }: { profileId: string }) {
     if (!carousel) return;
     const sync = () => setSelected(carousel.selectedScrollSnap());
     sync();
-    carousel.on("select", sync).on("reInit", sync);
+    const dragStart = () => setDragging(true);
+    const dragEnd = () => setDragging(false);
+    carousel
+      .on("select", sync)
+      .on("reInit", sync)
+      .on("pointerDown", dragStart)
+      .on("pointerUp", dragEnd);
     return () => {
-      carousel.off("select", sync).off("reInit", sync);
+      carousel
+        .off("select", sync)
+        .off("reInit", sync)
+        .off("pointerDown", dragStart)
+        .off("pointerUp", dragEnd);
     };
   }, [carousel]);
 
   useEffect(() => {
     if (!carousel || !rotating) return;
-    const timer = window.setInterval(
-      () => carousel.scrollNext(),
-      preferences.intervalSeconds * 1000,
+    return startHomeAlertRotation(
+      carousel,
+      preferences.intervalSeconds,
+      Boolean(reducedMotion),
     );
-    return () => window.clearInterval(timer);
-  }, [carousel, rotating, preferences.intervalSeconds]);
+  }, [carousel, rotating, preferences.intervalSeconds, reducedMotion]);
 
   const hide = (id: string) => {
     const next = hideHomeAlert(session, id);
@@ -207,14 +222,22 @@ function ProfileHomeCarousel({ profileId }: { profileId: string }) {
 
   return (
     <>
-      <section
-        className={`home-alerts home-alerts--${preferences.appearance} glass rounded-3xl p-3 sm:p-4`}
-        role="region"
-        aria-roledescription="carrossel"
-        aria-label="Notificações e vencimentos"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onFocusCapture={() => setFocused(true)}
+      <HomeAlertsPanel
+        preferences={preferences}
+        tone={current.tone}
+        total={items.length}
+        selected={activeIndex}
+        paused={paused || focused}
+        onPrevious={() => go(-1)}
+        onNext={() => go(1)}
+        onPause={() => {
+          setPaused(!(paused || focused));
+          setFocused(false);
+        }}
+        onSeen={() => setSeenRequest(current)}
+        onFocusCapture={(event) =>
+          setFocused((event.target as HTMLElement).matches(":focus-visible"))
+        }
         onBlurCapture={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget))
             setFocused(false);
@@ -222,137 +245,33 @@ function ProfileHomeCarousel({ profileId }: { profileId: string }) {
         onKeyDown={(event) => {
           if (event.key === "ArrowLeft") {
             event.preventDefault();
-            carousel?.scrollPrev();
+            go(-1);
           }
           if (event.key === "ArrowRight") {
             event.preventDefault();
-            carousel?.scrollNext();
+            go(1);
           }
         }}
       >
-        <div className="mb-2 flex items-center gap-2">
-          <h2 className="min-w-0 flex-1 text-[13px] font-bold text-glass-ink sm:text-[14px]">
-            Avisos para você
-          </h2>
-          <span className="text-[11px] font-semibold tabular-nums text-glass-sub">
-            {activeIndex + 1} de {items.length}
-          </span>
-          {preferences.rotation === "auto" &&
-            items.length > 1 &&
-            !reducedMotion && (
-              <button
-                type="button"
-                className="home-alert-control"
-                aria-label={
-                  paused
-                    ? "Continuar troca automática de avisos"
-                    : "Pausar troca automática de avisos"
-                }
-                aria-pressed={paused}
-                onClick={() => setPaused((value) => !value)}
-              >
-                {paused ? (
-                  <Play className="size-4" />
-                ) : (
-                  <Pause className="size-4" />
-                )}
-              </button>
-            )}
-          <button
-            type="button"
-            className="home-alert-control"
-            aria-label="Marcar este aviso como visto"
-            title="Marcar como visto nesta abertura do app"
-            onClick={() => setSeenRequest(current)}
-          >
-            <CheckCheck className="size-4" />
-          </button>
-        </div>
         <div
           className="overflow-hidden rounded-2xl"
           ref={viewportRef}
           aria-live={rotating ? "off" : "polite"}
         >
           <div className="flex" style={{ touchAction: "pan-y pinch-zoom" }}>
-            {items.map((item, index) => {
-              const Icon =
-                item.tone === "overdue"
-                  ? CircleAlert
-                  : item.tone === "message"
-                    ? BellRing
-                    : item.tone === "closing"
-                      ? CalendarClock
-                      : Clock3;
-              return (
-                <article
-                  key={item.id}
-                  className={`home-alert home-alert--${item.tone} min-w-0 flex-[0_0_100%]`}
-                  role="group"
-                  aria-roledescription="slide"
-                  aria-label={`${index + 1} de ${items.length}`}
-                  aria-hidden={index !== activeIndex}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="home-alert-icon">
-                      <Icon className="size-5" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="home-alert-label">{item.label}</p>
-                      <h3 className="mt-0.5 line-clamp-2 break-words text-[14px] font-bold leading-5 text-glass-ink sm:text-[15px]">
-                        {item.title}
-                      </h3>
-                      <p className="mt-1 text-[12px] leading-5 text-glass-sub">
-                        {item.description ? `${item.description} · ` : ""}
-                        {shortDate(item.date)} ·{" "}
-                        <strong className="amount-tabular whitespace-nowrap">
-                          {formatCurrency(item.amount)}
-                        </strong>
-                        {item.receiving ? " a receber" : ""}
-                      </p>
-                      <button
-                        type="button"
-                        className="home-alert-open mt-2"
-                        tabIndex={index === activeIndex ? 0 : -1}
-                        onClick={() => open(item)}
-                      >
-                        {item.action}
-                        <ChevronRight className="size-4" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+            {items.map((item, index) => (
+              <HomeAlertCard
+                key={item.id}
+                item={item}
+                index={index}
+                total={items.length}
+                active={index === activeIndex}
+                onOpen={open}
+              />
+            ))}
           </div>
         </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <p className="min-w-0 text-[10px] leading-4 text-glass-sub">
-            {preferences.displaySeconds === 0
-              ? "Até marcar como visto ou concluir."
-              : `Até ${homeAlertDurationLabel(preferences.displaySeconds)} · pendências voltam ao reabrir.`}
-          </p>
-          {items.length > 1 && (
-            <div className="flex shrink-0 gap-1">
-              <button
-                type="button"
-                className="home-alert-control"
-                aria-label="Aviso anterior"
-                onClick={() => carousel?.scrollPrev()}
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                className="home-alert-control"
-                aria-label="Próximo aviso"
-                onClick={() => carousel?.scrollNext()}
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
+      </HomeAlertsPanel>
       <AlertDialog
         open={seenRequest !== null}
         onOpenChange={(open) => {

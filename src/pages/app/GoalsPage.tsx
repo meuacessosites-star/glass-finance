@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useMemo, useState } from "react";
 import { CalendarClock, Pencil, Plus, Target, Trash2, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
@@ -39,6 +40,7 @@ function monthsBetween(fromIso: string, toIso: string): number {
 }
 
 export default function GoalsPage() {
+  const formatCurrency = usePrivateCurrency();
   const {
     goals,
     activeProfile,

@@ -51,6 +51,7 @@ test("legacy profiles retain the existing automatic eight-second, three-minute g
 });
 test("manual mode, custom interval, short display duration and design survive save/reload", () => {
   const preferences = {
+    ...DEFAULT_HOME_ALERT_PREFERENCES,
     enabled: true,
     rotation: "manual",
     intervalSeconds: 20,
@@ -149,10 +150,46 @@ test("reapplying saved settings resets only the selected profile's temporary dis
   assert.deepEqual(loadHomeAlertSession("a").hiddenIds, []);
   assert.deepEqual(loadHomeAlertSession("b").hiddenIds, [alerts[0].id]);
 });
-test("all three appearance models and disabling the area are retained", () => {
-  for (const appearance of ["glass", "compact", "banner"] as const) {
+test("all five appearance models and disabling the area are retained", () => {
+  for (const appearance of ["glass", "compact", "banner", "outline", "ticket"] as const) {
     const value = sanitizeHomeAlertPreferences({ appearance, enabled: false });
     assert.equal(value.appearance, appearance);
     assert.equal(value.enabled, false);
   }
+});
+
+
+test("personalized sizing and individually hidden controls survive export and reload", () => {
+  const custom = { ...DEFAULT_HOME_ALERT_PREFERENCES, sizePercent: 85, widthPercent: 75,
+    showPause: false, showSeen: false, showArrows: false, showPosition: false,
+    showHeadingCount: false, showTiming: false };
+  assert.deepEqual(sanitizeHomeAlertPreferences(JSON.parse(JSON.stringify(custom))), custom);
+  for (const key of ["showPause", "showSeen", "showArrows", "showPosition", "showHeadingCount", "showTiming"] as const) {
+    const result = sanitizeHomeAlertPreferences({ ...custom, [key]: true });
+    assert.equal(result[key], true);
+    for (const other of ["showPause", "showSeen", "showArrows", "showPosition", "showHeadingCount", "showTiming"] as const)
+      if (other !== key) assert.equal(result[other], false);
+  }
+});
+test("legacy appearance settings gain visible controls and normal size without changing existing choices", () => {
+  const result = sanitizeHomeAlertPreferences({ appearance: "ticket", rotation: "manual", displaySeconds: 0 });
+  assert.equal(result.appearance, "ticket");
+  assert.equal(result.rotation, "manual");
+  assert.equal(result.displaySeconds, 0);
+  assert.equal(result.sizePercent, 100);
+  assert.equal(result.widthPercent, 100);
+  assert.equal(result.showPause, true);
+  assert.equal(result.showSeen, true);
+  assert.equal(result.showArrows, true);
+});
+test("imported sizes are finite and bounded and non-boolean visibility cannot hide controls", () => {
+  const result = sanitizeHomeAlertPreferences({ sizePercent: -20, widthPercent: 800, showPause: "false", showArrows: null });
+  assert.equal(result.sizePercent, 75);
+  assert.equal(result.widthPercent, 100);
+  assert.equal(result.showPause, true);
+  assert.equal(result.showArrows, true);
+  assert.equal(sanitizeHomeAlertPreferences({ sizePercent: Infinity }).sizePercent, 100);
+  assert.equal(sanitizeHomeAlertPreferences({ widthPercent: NaN }).widthPercent, 100);
+  assert.equal(sanitizeHomeAlertPreferences({ sizePercent: 200, widthPercent: 20 }).sizePercent, 125);
+  assert.equal(sanitizeHomeAlertPreferences({ widthPercent: 20 }).widthPercent, 70);
 });

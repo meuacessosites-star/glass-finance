@@ -1,3 +1,6 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { formatCurrency as rawCurrency } from "@/lib/mock-data";
+import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import { useLocation } from "react-router";
 import { LoanEditDialog } from "@/components/app/LoanEditDialog";
 import { LoanInstallmentProgress } from "@/components/app/LoanInstallmentProgress";
@@ -150,6 +153,7 @@ function LoanRow({
   onDetails: () => void;
   onReopen: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const needsInvoice = needsCardLoanInvoice(item);
   const status = getLoanRepaymentStatus(item, today);
   const paid = status === "paid";
@@ -399,6 +403,7 @@ function LoanRow({
 }
 
 export default function LoansPage() {
+  const formatCurrency = usePrivateCurrency();
   const location = useLocation();
   const [valueSettingsOpen, setValueSettingsOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("dinheiro");
@@ -605,7 +610,7 @@ export default function LoansPage() {
           >
             <Settings2 className="size-[18px]" />
           </button>
-          <ThemeToggle />
+          <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
         </div>
       </header>
       <LoanValueSettings
@@ -1114,7 +1119,7 @@ export default function LoansPage() {
                     aria-label="Valor recebido do empréstimo"
                     placeholder="R$ 0,00"
                     value={
-                      receiptCents ? formatCurrency(receiptCents / 100) : ""
+                      receiptCents ? rawCurrency(receiptCents / 100) : ""
                     }
                     onChange={(event) =>
                       setReceiptCents(

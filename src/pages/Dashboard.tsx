@@ -1,3 +1,4 @@
+import { BalancePrivacyProvider } from "@/components/app/BalancePrivacy";
 import { useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
@@ -130,11 +131,13 @@ function DashboardShell() {
 export default function Dashboard() {
   return (
     <AppStoreProvider>
+      <BalancePrivacyProvider>
       <NavigationPendingProvider>
       <SidebarProvider>
         <DashboardShell />
       </SidebarProvider>
       </NavigationPendingProvider>
+      </BalancePrivacyProvider>
     </AppStoreProvider>
   );
 }

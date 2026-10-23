@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { Check } from "lucide-react";
 import {
   Dialog,
@@ -10,8 +11,7 @@ import type { getHomeBalance, HomeBalanceMode } from "@/lib/home-balance";
 import { formatCurrency, monthLabel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-const signed = (value: number) =>
-  `${value < 0 ? "−" : ""}${formatCurrency(value)}`;
+
 
 export function HomeBalanceSettings({
   open,
@@ -28,6 +28,9 @@ export function HomeBalanceSettings({
   calculation: ReturnType<typeof getHomeBalance>;
   selectedMonth: string;
 }) {
+  const formatCurrency = usePrivateCurrency();
+  const signed = (value: number) =>
+  `${value < 0 ? "−" : ""}${formatCurrency(value)}`;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-strong max-h-[85dvh] overflow-y-auto rounded-3xl p-5 text-glass-ink">

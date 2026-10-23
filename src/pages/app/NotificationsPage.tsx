@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import {
   NOTIFICATION_RETENTION_OPTIONS,
   notificationExpiry,
@@ -84,6 +85,7 @@ export default function NotificationsPage() {
 }
 
 function NotificationInbox() {
+  const formatCurrency = usePrivateCurrency();
   const store = useAppStore();
   const {
     cards,
@@ -494,44 +496,41 @@ function NotificationInbox() {
         title={titles[view]}
         onBack={view === "overview" ? undefined : () => setView("overview")}
       />
-      <div className="flex flex-wrap gap-2">
-        <HomeAlertSettings />
+      <div className={view === "overview" || view === "payments" ? "notification-toolbar" : "flex flex-wrap gap-2"}>
         <button
           className={`${action} notification-action--history`}
           onClick={() => setRetentionDraft(store.notificationRetentionDays)}
         >
           <Settings2 className="size-4" />
-          Guardar aprovadas:{" "}
+          <span>Guardar aprovadas:{" "}
           {store.notificationRetentionDays
             ? `${store.notificationRetentionDays} dias`
-            : "sempre"}
+            : "sempre"}</span>
         </button>
+        {(view === "overview" || view === "payments") && (
+          <>
+            <HomeAlertSettings />
+            <button
+              className={readAction}
+              disabled={payments.length === 0}
+              onClick={() => requestRead(payments.map((row) => row.id), true)}
+            >
+              <CheckCheck className="size-4" />
+              <span>Marcar todos como lidos</span>
+            </button>
+          </>
+        )}
       </div>
       {(view === "overview" || view === "payments") && (
         <section className="space-y-3" aria-label="Avisos de pagamento">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-[16px] font-bold text-glass-ink">
-              Pagamentos e recebimentos
-            </h2>
-            {payments.length > 0 && (
-              <button
-                className={readAction}
-                onClick={() =>
-                  requestRead(
-                    payments.map((row) => row.id),
-                    true,
-                  )
-                }
-              >
-                <CheckCheck className="size-4" />
-                Marcar todos como lidos
-              </button>
-            )}
-          </div>
+          <h2 className="text-[16px] font-bold text-glass-ink">
+            Pagamentos e recebimentos
+          </h2>
           <p className={muted}>
-            Vencidos, de hoje e dos próximos 7 dias. Marcar como lido remove o
-            aviso desta lista; o pagamento ou recebimento continua pendente no
-            registro.
+            Pagamentos e recebimentos vencidos, de hoje e dos próximos 7 dias.
+            Marcar como lido só oculta nesta abertura: ao reabrir o app, o que
+            continuar pendente volta a aparecer. O aviso deixa de voltar quando
+            o pagamento ou recebimento for efetivado no registro.
           </p>
           {payments.length ? (
             (view === "payments" ? payments : payments.slice(0, 3)).map(

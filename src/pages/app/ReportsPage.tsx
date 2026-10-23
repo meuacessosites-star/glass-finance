@@ -1,3 +1,6 @@
+import { PrivateChart } from "@/components/app/BalancePrivacy";
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Search, X } from "lucide-react";
 import {
@@ -42,6 +45,7 @@ type GlassTooltipProps = {
 };
 
 function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
+  const formatCurrency = usePrivateCurrency();
   if (!active || !payload?.length) return null;
   return (
     <div className="glass glass-strong rounded-2xl px-3 py-2 text-[12px]">
@@ -60,6 +64,7 @@ function GlassTooltip({ active, payload, label }: GlassTooltipProps) {
 }
 
 export default function ReportsPage() {
+  const formatCurrency = usePrivateCurrency();
   const {
     categoryById,
     visibleTransactions,
@@ -151,7 +156,7 @@ export default function ReportsPage() {
             </p>
           </div>
         </div>
-        <ThemeToggle />
+        <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
       </header>
 
       <ReportMonthSelector
@@ -231,7 +236,7 @@ export default function ReportsPage() {
                   : undefined,
             }}
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <PrivateChart><ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={report.series}
                 margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
@@ -269,7 +274,7 @@ export default function ReportsPage() {
                   maxBarSize={14}
                 />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></PrivateChart>
           </div>
         </div>
         {report.series.length > 6 && (

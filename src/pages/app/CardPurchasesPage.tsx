@@ -1,3 +1,5 @@
+import { PrivateChart } from "@/components/app/BalancePrivacy";
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import "@/components/app/invoice-glass-band.css";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -488,6 +490,7 @@ function InvoicePaymentModal({
   onClose,
   onConfirm,
 }: InvoicePaymentModalProps) {
+  const formatCurrency = usePrivateCurrency();
   const outstandingAmount = Math.max(
     0,
     totalAmount - Math.min(totalAmount, Math.max(0, alreadyPaidAmount)),
@@ -691,6 +694,7 @@ function CardAnalyticsModal({ card, kind, transactions, categoryById, month, onC
   card: AppCard; kind: CardAnalyticsKind; transactions: Transaction[]; month: string;
   categoryById: Record<string, { label: string; color: string }>; onClose: () => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const [analyticsMonth, setAnalyticsMonth] = useState(month);
   const [scope, setScope] = useState<"invoice" | "history">("invoice");
   const [trendMode, setTrendMode] = useState<"history" | "forecast">("history");
@@ -715,11 +719,11 @@ function CardAnalyticsModal({ card, kind, transactions, categoryById, month, onC
       <CategoryExpenseChart key={`${analyticsMonth}-${scope}`} data={categories.data} total={categories.total} />
     </> : <>
       <div className="mt-4 overflow-x-auto pb-2"><div className="h-52 min-w-[32rem]">
-        <ResponsiveContainer width="100%" height="100%"><LineChart data={monthlyData} margin={{ top: 10, right: 12, left: 12, bottom: 0 }}>
+        <PrivateChart><ResponsiveContainer width="100%" height="100%"><LineChart data={monthlyData} margin={{ top: 10, right: 12, left: 12, bottom: 0 }}>
           <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} tick={{ fontSize: 10, fill: "var(--glass-sub)" }} /><YAxis hide />
           <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: 14, background: "#f4f8ff", color: "#1c2a4a" }} />
           <Line type="linear" dataKey="value" name="Compras na fatura" stroke="#2F6BFF" strokeWidth={3} dot={{ r: 3 }} isAnimationActive={false} />
-        </LineChart></ResponsiveContainer>
+        </LineChart></ResponsiveContainer></PrivateChart>
       </div></div>
       <p className="text-[10px] text-glass-sub">Arraste o gráfico para ver todos os meses.</p>
       <ul aria-label="Valores por mês" className="mt-3 space-y-2">{monthlyData.map((entry) => <li key={entry.key} className={cn("flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-[12px]", entry.key === analyticsMonth && "bg-primary/10 font-bold")}><span>{monthShortLabel(entry.key)} {entry.key.slice(0, 4)}</span><span className="amount-tabular font-semibold">{formatCurrency(entry.value)}</span></li>)}</ul>
@@ -732,6 +736,7 @@ function InvoiceNumberModal({ card, month, kind, initialValue, minimumAmount, au
   minimumAmount: number; automaticTotal: number; hasOverride: boolean;
   onClose: () => void; onConfirm: (value: number | undefined) => void;
 }) {
+  const formatCurrency = usePrivateCurrency();
   const [value, setValue] = useState(kind === "amount" ? initialValue.toFixed(2).replace(".", ",") : String(initialValue));
   const amount = kind === "amount";
   const parsed = amount ? parseInvoiceMoney(value) : Number(value);
@@ -761,6 +766,7 @@ function InvoiceSummaryCard({
   onEdit, onRecalculate, onInstallInvoice, onEditClosingDay, onHistory,
   onExpenses, onCategoryChart, onMonthlyTrend, onArchive, onDelete, onToggleHeaderColor,
 }: InvoiceSummaryCardProps) {
+  const formatCurrency = usePrivateCurrency();
   const bodyId = useId();
   const limit = card.totalLimit;
   const availableLimit = typeof limit === "number"
@@ -811,7 +817,7 @@ function InvoiceSummaryCard({
             <p className="amount-tabular mt-0.5 text-[26px] font-bold leading-tight tracking-tight text-glass-ink [overflow-wrap:anywhere]">{formatCurrency(openAmount)}</p>
           </div>
           <div className="ml-auto flex min-w-0 flex-col items-end gap-1.5 text-right">
-            <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-bold", appearance.badge)}>
+            <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-bold", appearance.badge, `invoice-status invoice-status--${status}`)}>
               <StatusIcon className="size-3.5 shrink-0" aria-hidden="true" />{appearance.label}
             </span>
             <span className="text-[10px] font-medium text-glass-sub">{monthShortLabel(month)} {month.slice(0, 4)} · {dates ? `Vence em ${formatDateLabel(dates.dueDate).slice(0, 5)}` : card.dueDay ? `Vence dia ${card.dueDay}` : "Sem vencimento informado"}</span>
@@ -819,18 +825,18 @@ function InvoiceSummaryCard({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="min-w-0 rounded-2xl border border-[#CBD9F3] bg-gradient-to-br from-[#E6EEFF]/90 to-[#F7FAFF]/65 p-3 shadow-[inset_3px_0_0_#6E9CE5]">
+          <div className="invoice-metric invoice-metric--total min-w-0 rounded-2xl border border-[#CBD9F3] bg-gradient-to-br from-[#E6EEFF]/90 to-[#F7FAFF]/65 p-3 shadow-[inset_3px_0_0_#6E9CE5]">
             <p className="flex min-h-8 items-center gap-1.5 text-[11px] font-medium text-glass-sub"><span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#C9DBFA]/65 text-[#2455A0]"><ReceiptText className="size-3.5" aria-hidden="true" /></span><span>Total desta fatura</span></p>
             <p className="amount-tabular mt-1 text-[14px] font-bold text-[#2455A0] [overflow-wrap:anywhere]">{formatCurrency(invoiceTotal)}</p>
           </div>
-          <div className="min-w-0 rounded-2xl border border-[#BFDCC9] bg-gradient-to-bl from-[#E5F6EC]/90 to-[#F5FCF8]/65 p-3 text-right shadow-[inset_-3px_0_0_#62AD82]">
+          <div className="invoice-metric invoice-metric--paid min-w-0 rounded-2xl border border-[#BFDCC9] bg-gradient-to-bl from-[#E5F6EC]/90 to-[#F5FCF8]/65 p-3 text-right shadow-[inset_-3px_0_0_#62AD82]">
             <p className="flex min-h-8 items-center justify-end gap-1.5 text-[11px] font-medium text-[#236947]"><span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#C5E7D1]/65 text-[#166534]"><CheckCircle2 className="size-3.5" aria-hidden="true" /></span><span>Já pago</span></p>
             <p className="amount-tabular mt-1 text-[14px] font-bold text-[#166534] [overflow-wrap:anywhere]">{formatCurrency(paidAmount)}</p>
           </div>
         </div>
 
         <details className="group border-t border-glass-ink/10 pt-3" onClick={(event) => event.stopPropagation()}>
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl border border-[#AFDAE8] bg-gradient-to-r from-[#E7F7FC]/90 to-[#F3FBFF]/75 px-3 py-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+          <summary className="invoice-metric invoice-metric--available flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl border border-[#AFDAE8] bg-gradient-to-r from-[#E7F7FC]/90 to-[#F3FBFF]/75 px-3 py-2.5 text-[11px] focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
             <span className="min-w-0 font-medium text-[#19576C]">Disponível no limite</span>
             <span className="flex shrink-0 items-center gap-2"><span className="amount-tabular whitespace-nowrap text-[14px] font-bold text-[#086B84]">{typeof availableLimit === "number" ? formatCurrency(availableLimit) : "—"}</span><ChevronDown className="size-4 shrink-0 text-[#086B84] transition-transform group-open:rotate-180" aria-hidden="true" /></span>
           </summary>
@@ -841,7 +847,7 @@ function InvoiceSummaryCard({
                 { label: "Comprometido", amount: committedAmount, tone: "border-[#D28C6C] from-[#F8CCBA]/95 to-[#FBE3D6]/90 text-[#8F391E] shadow-[inset_0_2px_0_#C16B46]" },
                 { label: "Disponível", amount: availableLimit, tone: "border-[#A8B75A] from-[#DFE8A5]/95 to-[#EDF1C8]/90 text-[#4E631A] shadow-[inset_0_2px_0_#899D31]" },
               ].map((item, index) => (
-                <div key={item.label} className={cn("min-w-0 rounded-xl border bg-gradient-to-br px-1.5 py-2 sm:px-2.5", item.tone, index === 2 && "text-right")}>
+                <div key={item.label} className={cn("invoice-metric invoice-limit-metric min-w-0 rounded-xl border bg-gradient-to-br px-1.5 py-2 sm:px-2.5", item.tone, index === 2 && "text-right")}>
                   <p className="min-h-5 text-[10px] font-semibold leading-tight [overflow-wrap:anywhere] sm:min-h-0">{item.label}</p>
                   <p className="amount-tabular mt-1 text-[clamp(0.6rem,2.7vw,0.75rem)] font-bold [overflow-wrap:anywhere]">{typeof item.amount === "number" ? formatCurrency(item.amount) : "—"}</p>
                 </div>
@@ -850,13 +856,13 @@ function InvoiceSummaryCard({
             <div role="progressbar" aria-label="Limite comprometido" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(usagePercent))} aria-valuetext={typeof limit === "number" && limit > 0 ? `${Math.round(usagePercent)}% do limite utilizado` : "Limite não informado"} className="h-1.5 overflow-hidden rounded-full bg-glass-ink/10">
               <div className="h-full rounded-full bg-gradient-to-r from-[#DDA58E] to-[#B05D40] transition-[width]" style={{ width: `${Math.min(100, usagePercent)}%` }} />
             </div>
-            <p className="text-[10px] leading-relaxed text-glass-sub"><span className="font-semibold text-[#A2472C]">{typeof limit === "number" && limit > 0 ? `${Math.round(usagePercent)}% utilizado` : "Limite não informado"}</span> · Saldo ainda não pago, incluindo parcelas futuras e faturas anteriores em aberto.</p>
+            <p className="text-[10px] leading-relaxed text-glass-sub"><span className="font-semibold text-[#A2472C] dark:text-[#F8AE84]">{typeof limit === "number" && limit > 0 ? `${Math.round(usagePercent)}% utilizado` : "Limite não informado"}</span> · Saldo ainda não pago, incluindo parcelas futuras e faturas anteriores em aberto.</p>
             <div className="grid grid-cols-2 gap-3 text-[11px]">
-              <div className="flex min-w-0 items-start gap-1.5 rounded-2xl border border-[#D8CCF3] bg-gradient-to-br from-[#EEE8FC]/85 to-[#FBF9FF]/65 p-2.5 text-[#6D4BB0] shadow-[inset_2px_0_0_#A18BCE]">
+              <div className="invoice-metric invoice-metric--closing flex min-w-0 items-start gap-1.5 rounded-2xl border border-[#D8CCF3] bg-gradient-to-br from-[#EEE8FC]/85 to-[#FBF9FF]/65 p-2.5 text-[#6D4BB0] shadow-[inset_2px_0_0_#A18BCE]">
                 <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <div className="min-w-0"><p className="font-medium">Fechamento</p><p className="mt-1 font-bold">{dates ? formatDateLabel(dates.closingDate).slice(0, 5) : card.closingDay ? `Dia ${card.closingDay}` : "Não informado"}</p></div>
               </div>
-              <div className="flex min-w-0 items-start justify-end gap-1.5 rounded-2xl border border-[#EEC5D0] bg-gradient-to-bl from-[#FFEAF0]/85 to-[#FFF8FA]/65 p-2.5 text-right text-[#A13B5A] shadow-[inset_-2px_0_0_#D58AA0]">
+              <div className="invoice-metric invoice-metric--due flex min-w-0 items-start justify-end gap-1.5 rounded-2xl border border-[#EEC5D0] bg-gradient-to-bl from-[#FFEAF0]/85 to-[#FFF8FA]/65 p-2.5 text-right text-[#A13B5A] shadow-[inset_-2px_0_0_#D58AA0]">
                 <CalendarDays className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <div className="min-w-0"><p className="font-medium">Vencimento</p><p className="mt-1 font-bold">{dates ? formatDateLabel(dates.dueDate).slice(0, 5) : card.dueDay ? `Dia ${card.dueDay}` : "Não informado"}</p></div>
               </div>
@@ -882,6 +888,7 @@ function InvoiceSummaryCard({
 }
 
 export default function CardPurchasesPage() {
+  const formatCurrency = usePrivateCurrency();
   const navigate = useNavigate();
   const today = useLocalDate();
   const currentMonthKey = today.slice(0, 7);

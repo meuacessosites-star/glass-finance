@@ -67,7 +67,7 @@ export function SquircleIcon({
           className="size-full rounded-2xl object-cover"
         />
       ) : (
-        <Icon className={iconSize} style={{ color }} strokeWidth={strokeWidth} />
+        <Icon className={cn(iconSize, "dark:brightness-150 dark:saturate-75")} style={{ color }} strokeWidth={strokeWidth} />
       )}
     </div>
   );

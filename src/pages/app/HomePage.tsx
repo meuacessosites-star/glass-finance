@@ -1,3 +1,5 @@
+import { AmountVisibility, BalancePrivacyToggle, useStoredBalancePrivacy } from "@/components/app/BalancePrivacy";
+import { formatPrivateAmount } from "@/lib/balance-privacy";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -25,6 +27,8 @@ import { cn } from "@/lib/utils";
 import { formatCurrency, monthLabel, monthShortLabel } from "@/lib/mock-data";
 
 export default function HomePage() {
+  const summaryPrivacy = useStoredBalancePrivacy("home-summary");
+  const formatSummary = (value: number) => formatPrivateAmount(value, summaryPrivacy.hidden);
   const today = useLocalDate();
   const currentMonthKey = today.slice(0, 7);
   const [balanceSettingsOpen, setBalanceSettingsOpen] = useState(false);
@@ -58,7 +62,7 @@ export default function HomePage() {
     expenseChangePercent,
   } = calculation;
   const signedAmount = (value: number) =>
-    `${value < 0 ? "−" : ""}${formatCurrency(value)}`;
+    `${value < 0 ? "−" : ""}${formatSummary(value)}`;
   const recent = selectTransactionLedgers(transactions, loanReceivables).regularTransactions
     .filter((item) => item.date.startsWith(`${selectedMonth}-`))
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -72,7 +76,7 @@ export default function HomePage() {
     getPaymentNotifications({ cards, transactions: visibleTransactions, loanReceivables, readPaymentNotificationIds, includeBorrowedCardInvoices }, today).length;
 
   return (
-    <div className="space-y-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
+    <AmountVisibility hidden={false}><div className="space-y-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -8 }}
@@ -122,6 +126,7 @@ export default function HomePage() {
                   ? "Saldo do mês"
                   : "Saldo acumulado"}
               </p>
+              <div className="flex shrink-0 items-center gap-1"><BalancePrivacyToggle privacy={summaryPrivacy} summary />
               <button
                 type="button"
                 aria-label="Configurar o saldo e ver os cálculos"
@@ -129,9 +134,9 @@ export default function HomePage() {
                 className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/60 text-glass-sub dark:bg-white/10"
               >
                 <Settings className="size-[18px]" />
-              </button>
+              </button></div>
             </div>
-            <div className="mt-1 flex justify-start">
+            <div className="mt-1 flex justify-end">
               <div className="flex items-center gap-0.5 rounded-full bg-white/50 px-1 py-0.5 text-glass-sub">
                 <button
                   type="button"
@@ -178,7 +183,7 @@ export default function HomePage() {
                   Receitas
                 </p>
                 <p className="amount-tabular mt-1 text-[16px] font-bold text-[#1FBF4F]">
-                  +{formatCurrency(income)}
+                  +{formatSummary(income)}
                 </p>
               </div>
               <div>
@@ -187,7 +192,7 @@ export default function HomePage() {
                   Despesas
                 </p>
                 <p className="amount-tabular mt-1 text-[16px] font-bold text-[#FF3B30]">
-                  −{formatCurrency(expense)}
+                  −{formatSummary(expense)}
                 </p>
               </div>
             </div>
@@ -195,14 +200,14 @@ export default function HomePage() {
         </div>
       </motion.section>
 
-      <HomeBalanceSettings
+      <AmountVisibility hidden={summaryPrivacy.hidden}><HomeBalanceSettings
         open={balanceSettingsOpen}
         onOpenChange={setBalanceSettingsOpen}
         mode={homeBalanceMode}
         onModeChange={setHomeBalanceMode}
         calculation={calculation}
         selectedMonth={selectedMonth}
-      />
+      /></AmountVisibility>
 
       {/* Insight */}
       <motion.section
@@ -232,7 +237,7 @@ export default function HomePage() {
         <div className="min-w-0">
           <p className="text-[15px] font-semibold text-glass-ink">
             {expenseChangePercent === null
-              ? `Resultado do mês: ${signedAmount(monthBalance)}`
+              ? `Resultado do mês: ${monthBalance < 0 ? "−" : ""}${formatCurrency(monthBalance)}`
               : expenseChangePercent === 0
                 ? `Despesas próximas às de ${monthShortLabel(previousMonth).toLocaleLowerCase("pt-BR")}`
                 : `${Math.abs(expenseChangePercent)}% ${expenseChangePercent < 0 ? "menos" : "mais"} que ${monthShortLabel(previousMonth).toLocaleLowerCase("pt-BR")}`}
@@ -273,6 +278,6 @@ export default function HomePage() {
           )}
         </div>
       </motion.section>
-    </div>
+    </div></AmountVisibility>
   );
 }

@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useId, useMemo, useState } from "react";
 import { BellRing, ChevronDown, CreditCard } from "lucide-react";
 import { Link } from "react-router";
@@ -7,6 +8,7 @@ import { getPreviousMonthDebts } from "@/lib/previous-month-debts";
 import { TransactionRow } from "./TransactionRow";
 
 export function PreviousMonthDebtReminder({ today, referenceMonth, sourceTransactions }: { today: string; referenceMonth?: string; sourceTransactions?: Transaction[] }) {
+  const formatCurrency = usePrivateCurrency();
   const { cards, visibleTransactions, loanReceivables, setTransactionPaymentStatus } = useAppStore();
   const transactions = sourceTransactions ?? visibleTransactions;
   const [expanded, setExpanded] = useState(false);

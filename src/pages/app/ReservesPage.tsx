@@ -1,276 +1,109 @@
-import { useMemo, useState } from "react";
-import { Pencil, PiggyBank, Plus, Trash2, X } from "lucide-react";
-import { toast } from "sonner";
-import { SettingsHeader } from "@/components/app/SettingsHeader";
-import { useAppStore } from "@/lib/app-store";
-import { formatCurrency } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import { ReserveBankSuggestions } from '@/components/app/ReserveBankSuggestions';
+import { applyReserveBankPreset } from '@/lib/reserve-bank-presets';
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { formatCurrency as rawCurrency } from "@/lib/mock-data";
+import { useMemo, useState, type CSSProperties } from 'react';
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronRight, History, Pencil, Plus, Search, ShieldCheck, Sparkles, Target, Trash2, Plane, Home, GraduationCap, Heart, Wallet, X, PiggyBank, Landmark, Coins, CreditCard, ReceiptText, ShoppingBag, Car, Bike, KeyRound, Sofa, Wrench, Smartphone, Laptop, Briefcase, Gift, Baby, PawPrint, Stethoscope, Utensils, Music, Dumbbell, TreePalm, Umbrella, Gem } from 'lucide-react';
+import { toast } from 'sonner';
+import { InlineColorPicker } from '@/components/app/CategoryColorPicker';
+import { SettingsHeader } from '@/components/app/SettingsHeader';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useAppStore } from '@/lib/app-store';
+import { formatCurrency } from '@/lib/mock-data';
+import { localDateKey } from '@/lib/card-billing';
+import { sanitizeReserves, sanitizeReserveYield, simulateReserveYield, type ReserveYield, type AppReserve } from '@/lib/reserves';
+import '@/components/app/reserves.css';
 
-const PALETTE = [
-  "#2F6BFF",
-  "#5856D6",
-  "#AF52DE",
-  "#FF2D55",
-  "#FF9500",
-  "#1FBF4F",
-  "#00C7BE",
-  "#0A84FF",
-];
-
-const inputClass =
-  "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
+const icons = { shield: ShieldCheck, plane: Plane, home: Home, study: GraduationCap, heart: Heart, wallet: Wallet, target: Target, piggy: PiggyBank, bank: Landmark, coins: Coins, card: CreditCard, bills: ReceiptText, shopping: ShoppingBag, car: Car, bike: Bike, key: KeyRound, furniture: Sofa, repairs: Wrench, phone: Smartphone, laptop: Laptop, work: Briefcase, gift: Gift, baby: Baby, pet: PawPrint, health: Stethoscope, food: Utensils, music: Music, fitness: Dumbbell, vacation: TreePalm, protection: Umbrella, gem: Gem };
+const iconNames = { shield: 'Segurança', plane: 'Viagem', home: 'Casa', study: 'Estudos', heart: 'Bem-estar', wallet: 'Dinheiro', target: 'Objetivo', piggy: 'Cofrinho', bank: 'Banco', coins: 'Moedas', card: 'Cartão', bills: 'Contas', shopping: 'Compras', car: 'Carro', bike: 'Bicicleta', key: 'Imóvel', furniture: 'Móveis', repairs: 'Reparos', phone: 'Celular', laptop: 'Computador', work: 'Trabalho', gift: 'Presente', baby: 'Bebê', pet: 'Pet', health: 'Saúde', food: 'Alimentação', music: 'Música', fitness: 'Exercícios', vacation: 'Férias', protection: 'Proteção', gem: 'Especial' };
+const palette = ['#2F6BFF','#8458CB','#E45982','#E79126','#21A883','#16A4B5','#64748B','#DB4768','#B457C9','#5368D5','#087FB3','#B96A39','#879B27','#BD5A7D','#285F64','#795548','#D3AC32','#616165'];
+const templates = [{ name: 'Emergências', icon: 'shield', color: '#21A883' }, { name: 'Contas do mês', icon: 'wallet', color: '#8458CB' }, { name: 'Dinheiro separado', icon: 'home', color: '#E79126' }];
+const money = (value: string) => Math.min(99999999900, Number(value.replace(/\D/g, '') || 0));
+const dateLabel = (date: string) => date.split('-').reverse().join('/');
+const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+type Editor = { id?: string; name: string; color: string; icon: string; initial: number; location: string; yield: ReserveYield; note: string };
+const emptyEditor = (): Editor => ({ name: '', color: palette[0], icon: 'shield', initial: 0, location: '', yield: sanitizeReserveYield(null), note: '' });
 
 export default function ReservesPage() {
-  const {
-    reserves,
-    activeProfile,
-    addReserve,
-    updateReserve,
-    deleteReserve,
-  } = useAppStore();
+  const { reserves: stored, addReserve, updateReserve, moveReserve, deleteReserve, activeProfileId } = useAppStore();
+  // Remount form state on profile changes, avoiding cross-profile edits.
+  return <ReserveWorkspace key={activeProfileId} reserves={stored} addReserve={addReserve} updateReserve={updateReserve} moveReserve={moveReserve} deleteReserve={deleteReserve} />;
+}
+function ReserveWorkspace({ reserves: stored, addReserve, updateReserve, moveReserve, deleteReserve }: Pick<ReturnType<typeof useAppStore>, 'reserves' | 'addReserve' | 'updateReserve' | 'moveReserve' | 'deleteReserve'>) {
+  const formatCurrency = usePrivateCurrency();
+  const reserves = useMemo(() => sanitizeReserves(stored), [stored]);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('recent');
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [movement, setMovement] = useState<{ id: string; kind: 'deposit' | 'withdrawal'; cents: number; date: string; note: string } | null>(null);
+  const [removing, setRemoving] = useState<AppReserve | null>(null);
+  const selected = reserves.find(r => r.id === selectedId);
+  const moving = reserves.find(r => r.id === movement?.id);
+  const total = reserves.reduce((sum, r) => sum + Math.round(r.amount * 100), 0) / 100;
+  const withYield = reserves.filter(r => r.yield?.enabled).length;
+  const visible = reserves.filter(r => normalize(`${r.name} ${r.location || ''} ${r.note || ''}`).includes(normalize(query)) && (filter === 'all' || (filter === 'yield' ? r.yield?.enabled : !r.yield?.enabled))).sort((a,b) => sort === 'amount' ? b.amount - a.amount : sort === 'name' ? a.name.localeCompare(b.name, 'pt-BR') : b.createdAt.localeCompare(a.createdAt));
+  function edit(r: AppReserve) { setSelectedId(null); setEditor({ id: r.id, name: r.name, color: r.color, icon: r.icon || 'shield', initial: Math.round(r.amount * 100), location: r.location || '', yield: sanitizeReserveYield(r.yield), note: r.note || '' }); }
+  function startMove(r: AppReserve, kind: 'deposit' | 'withdrawal') { setSelectedId(null); setMovement({ id: r.id, kind, cents: 0, date: localDateKey(new Date()), note: '' }); }
+  function save() {
+    if (!editor?.name.trim()) { toast.error('Dê um nome à reserva.'); return; }
+    if (!/^#[0-9a-f]{6}$/i.test(editor.color)) { toast.error('Use uma cor no formato #2F6BFF.'); return; }
+    if (editor.yield.enabled && editor.yield.annualCdi === null) { toast.error('Informe o CDI anual de referência para simular.'); return; }
+    const details = { name: editor.name.trim(), color: editor.color, icon: editor.icon, location: editor.location.trim(), yield: editor.yield, note: editor.note.trim() };
+    if (editor.id) updateReserve(editor.id, details); else addReserve({ ...details, amount: editor.initial / 100 });
+    toast.success(editor.id ? 'Reserva atualizada!' : 'Reserva criada!', { duration: 1800 }); setEditor(null);
+  }
+  function saveMovement() {
+    if (!movement || !moving) return;
+    if (!movement.cents) { toast.error('Informe um valor maior que zero.'); return; }
+    if (movement.kind === 'withdrawal' && movement.cents > Math.round(moving.amount * 100)) { toast.error('A retirada não pode superar o valor guardado.'); return; }
+    if (!movement.date || movement.date > localDateKey(new Date())) { toast.error('Escolha hoje ou uma data anterior.'); return; }
+    moveReserve(moving.id, { kind: movement.kind, amount: movement.cents / 100, date: movement.date, note: movement.note });
+    toast.success(movement.kind === 'deposit' ? 'Entrada registrada!' : 'Retirada registrada!', { duration: 1800 }); setMovement(null); setSelectedId(moving.id);
+  }
+  return <div className="reserves-page space-y-5">
+    <SettingsHeader title="Reservas" />
+    <section className="reserve-hero">
+      <div className="reserve-hero-top"><span className="reserve-eyebrow"><Sparkles size={15} /> SEU DINHEIRO, SEPARADO</span><ShieldCheck size={30} /></div>
+      <p className="mt-5 text-sm">Total guardado</p><h2 className="reserve-total amount-tabular">{formatCurrency(total)}</h2>
+      <p className="reserve-hero-caption">Organize o que você guardou, separado dos gastos do dia a dia.</p>
+      <div className="reserve-hero-stats"><span><strong>{reserves.length}</strong> {reserves.length===1?'reserva':'reservas'}</span><span><strong>{withYield}</strong> com simulação</span></div>
+      <button className="reserve-new" onClick={() => setEditor(emptyEditor())}><Plus size={18} /> Criar reserva</button>
+    </section>
+    <details className="reserve-explainer glass"><summary>Como funciona o dinheiro aqui?</summary><p>Registre o dinheiro que você separou no banco, em uma conta ou em espécie. Guardar e retirar atualizam esta reserva e seu histórico. Não transferem dinheiro de verdade nem criam receitas ou despesas em Transações. O saldo do Início não é alterado. Esta aba é um controle separado do dinheiro que você já guardou; não some os dois saldos como se fossem valores novos.</p></details>
+    {reserves.length === 0 ? <section className="glass reserve-empty"><div className="reserve-empty-icon"><Target size={32} /></div><h2>Como você quer separar seu dinheiro?</h2><p>Crie uma reserva para cada uso. Você pode só organizar ou ativar uma estimativa de rendimento, sem definir metas.</p><div className="reserve-templates">{templates.map(t => { const Icon = icons[t.icon as keyof typeof icons]; return <button key={t.name} onClick={() => setEditor({ ...emptyEditor(), ...t })}><Icon size={22} /><span>{t.name}</span><ChevronRight size={17} /></button>; })}</div></section> : <>
+      <div className="reserve-search glass"><Search size={19}/><input aria-label="Buscar reservas" placeholder="Buscar reserva ou anotação…" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="Limpar busca" onClick={() => setQuery('')}><X size={16}/></button>}</div>
+      <div className="reserve-filters"><div role="group" aria-label="Filtrar reservas">{[['all','Todas'],['yield','Com simulação'],['plain','Só organizar']].map(([id,label]) => <button key={id} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div><select aria-label="Ordenar reservas" value={sort} onChange={e=>setSort(e.target.value)}><option value="recent">Mais recentes</option><option value="amount">Maior saldo</option><option value="name">Nome</option></select></div>
+      <div className="reserve-grid">{visible.map(r => { const estimate = simulateReserveYield(r.amount, sanitizeReserveYield(r.yield));const Icon=icons[r.icon as keyof typeof icons] || ShieldCheck;return <article key={r.id} className="reserve-card glass" style={{'--reserve-color':r.color} as CSSProperties}>
+        <button className="reserve-card-heading" onClick={()=>setSelectedId(r.id)} aria-label={`Ver reserva ${r.name}`}><span className="reserve-icon"><Icon size={23}/></span><span><strong>{r.name}</strong><small>{r.location || 'Dinheiro separado'}</small></span><ChevronRight size={19}/></button>
+        <div className="reserve-card-value"><span>Guardado</span><strong className="amount-tabular">{formatCurrency(r.amount)}</strong></div>
+        {r.yield?.enabled ? <div className="reserve-yield-peek"><span>{r.yield.cdiPercent}% do CDI · simulação</span>{estimate ? <><strong>+{formatCurrency(estimate.gain)}</strong><small>Estimativa bruta em {estimate.months} {estimate.months===1?'mês':'meses'}. Não incluída no saldo.</small></> : <small>Informe o CDI anual em Editar reserva para calcular.</small>}</div> : <p className="reserve-free">Só organizar · sem simular rendimentos</p>}
+        <div className="reserve-card-actions"><button className="reserve-deposit" onClick={()=>startMove(r,'deposit')}><Plus size={16}/>Guardar</button><button onClick={()=>startMove(r,'withdrawal')} disabled={r.amount===0}><ArrowUpRight size={16}/>Retirar</button><button aria-label={`Histórico de ${r.name}`} onClick={()=>setSelectedId(r.id)}><History size={18}/></button></div>
+      </article>; })}</div>
+      {!visible.length && <p className="glass reserve-empty">Nenhuma reserva neste filtro. Experimente outra busca ou selecione Todas.</p>}
+    </>}
+    <Dialog open={!!editor} onOpenChange={open=>{if(!open)setEditor(null)}}><DialogContent className="reserve-dialog"><DialogHeader><DialogTitle>{editor?.id ? 'Editar reserva' : 'Criar reserva'}</DialogTitle><DialogDescription>Separe um valor e escolha se quer simular seu rendimento.</DialogDescription></DialogHeader>{editor && <form onSubmit={e=>{e.preventDefault();save();}} className="reserve-form">
+      <label>Nome da reserva<input autoFocus maxLength={50} required value={editor.name} onChange={e=>setEditor({...editor,name:e.target.value})} placeholder="Ex.: Minha casa, Emergência…"/></label>
+      {!editor.id && <label>Já tem algum valor guardado?<input inputMode="numeric" aria-label="Saldo inicial" value={rawCurrency(editor.initial/100)} onChange={e=>setEditor({...editor,initial:money(e.target.value)})}/><small>Pode começar com R$ 0,00.</small></label>}
+      <label>Onde está guardado? (opcional)<input maxLength={70} value={editor.location} onChange={e=>setEditor({...editor,location:e.target.value,yield:{...editor.yield,bankPresetId:undefined}})} placeholder="Digite o banco ou onde está guardado" autoComplete="off"/></label>
+      <ReserveBankSuggestions location={editor.location} settings={editor.yield} onSelect={preset=>setEditor({...editor,location:`${preset.bank} · ${preset.product}`,yield:applyReserveBankPreset(editor.yield,preset)})}/>
+      <fieldset><legend>Como usar esta reserva</legend><div className="reserve-mode-picker"><button type="button" aria-pressed={!editor.yield.enabled} onClick={()=>setEditor({...editor,yield:{...editor.yield,enabled:false}})}>Só organizar<small>Saldo e movimentações, sem estimativas</small></button><button type="button" aria-pressed={editor.yield.enabled} onClick={()=>setEditor({...editor,yield:{...editor.yield,enabled:true}})}>Simular rendimento<small>Projeção opcional em % do CDI</small></button></div></fieldset>
+      {editor.yield.enabled && <div className="reserve-yield-settings"><div className="reserve-form-pair"><label>Rendimento (% do CDI)<input type="number" inputMode="decimal" min="0" max="300" step="0.01" required value={editor.yield.cdiPercent} onChange={e=>setEditor({...editor,yield:{...editor.yield,cdiPercent:Number(e.target.value)}})}/><small>Ex.: 100% acompanha o CDI; 110% usa 1,1 vez sua taxa diária.</small></label><label>CDI anual de referência (%)<input type="number" inputMode="decimal" min="0" max="100" step="0.01" required value={editor.yield.annualCdi ?? ''} placeholder="Informe a taxa anual" onChange={e=>setEditor({...editor,yield:{...editor.yield,annualCdi:e.target.value===''?null:Number(e.target.value)}})}/><small>É a taxa anual do índice CDI, não o percentual oferecido pelo banco. Informe a referência que deseja usar; ela não é atualizada automaticamente.</small></label></div><label>Período da simulação<select value={editor.yield.months} onChange={e=>setEditor({...editor,yield:{...editor.yield,months:Number(e.target.value)}})}>{[1,3,6,12,24].map(m=><option key={m} value={m}>{m} {m===1?'mês':'meses'}</option>)}</select></label><ReserveSimulation amount={editor.initial/100} settings={editor.yield}/></div>}
+      <fieldset><legend>Ícone</legend><div className="reserve-icon-picker">{Object.entries(icons).map(([key,Icon])=><button type="button" key={key} title={iconNames[key as keyof typeof iconNames]} aria-label={iconNames[key as keyof typeof iconNames]} aria-pressed={editor.icon===key} onClick={()=>setEditor({...editor,icon:key})}><Icon size={21}/></button>)}</div><p className="text-xs text-glass-sub">Selecionado: {iconNames[editor.icon as keyof typeof iconNames] || 'Segurança'}</p></fieldset>
+      <div><p className="mb-2 text-sm font-semibold">Cor da reserva</p><div className="reserve-colors">{palette.map(c=><button type="button" key={c} aria-label={`Cor ${c}`} aria-pressed={editor.color===c} style={{backgroundColor:c}} onClick={()=>setEditor({...editor,color:c})}>{editor.color===c && <Check size={18}/>}</button>)}</div><InlineColorPicker value={editor.color} onChange={color=>setEditor({...editor,color})}/><label className="mt-3">Cor personalizada (HEX)<input maxLength={7} placeholder="#2F6BFF" value={editor.color} onChange={e=>setEditor({...editor,color:e.target.value.toUpperCase()})}/></label></div>
+      <label>Anotação (opcional)<textarea maxLength={180} value={editor.note} onChange={e=>setEditor({...editor,note:e.target.value})} placeholder="Ex.: Dinheiro separado para contas da casa"/></label>
+      <div className="reserve-form-actions"><button type="button" onClick={()=>setEditor(null)}>Cancelar</button><button type="submit" className="reserve-primary">{editor.id?'Salvar alterações':'Criar reserva'}</button></div>
+    </form>}</DialogContent></Dialog>
+    <Dialog open={!!movement} onOpenChange={open=>{if(!open)setMovement(null)}}><DialogContent className="reserve-dialog"><DialogHeader><DialogTitle>{movement?.kind==='deposit'?'Guardar na reserva':'Retirar da reserva'}</DialogTitle><DialogDescription>{moving?.name} · Guardado: {formatCurrency(moving?.amount || 0)}</DialogDescription></DialogHeader>{movement && moving && <form onSubmit={e=>{e.preventDefault();saveMovement();}} className="reserve-form"><label>Valor<input inputMode="numeric" autoFocus value={rawCurrency(movement.cents/100)} onChange={e=>setMovement({...movement,cents:money(e.target.value)})}/></label><div className="reserve-quick">{(movement.kind==='deposit'?[20,50,100]:[]).map(value=><button type="button" key={value} onClick={()=>setMovement({...movement,cents:value*100})}>{formatCurrency(value)}</button>)}{movement.kind==='withdrawal' && <button type="button" onClick={()=>setMovement({...movement,cents:Math.round(moving.amount*100)})}>Retirar tudo</button>}</div><label>Data do registro<input type="date" required max={localDateKey(new Date())} value={movement.date} onChange={e=>setMovement({...movement,date:e.target.value})}/></label><label>Anotação (opcional)<input maxLength={180} value={movement.note} onChange={e=>setMovement({...movement,note:e.target.value})} placeholder="Ex.: Parte do salário"/></label><p className="reserve-after">Saldo após o registro: <strong>{formatCurrency(moving.amount + movement.cents/100*(movement.kind==='deposit'?1:-1))}</strong></p><p className="text-xs text-glass-sub">Este registro atualiza apenas sua reserva. Não movimenta sua conta bancária.</p><div className="reserve-form-actions"><button type="button" onClick={()=>setMovement(null)}>Cancelar</button><button className="reserve-primary" type="submit" disabled={!movement.cents || (movement.kind==='withdrawal' && movement.cents>Math.round(moving.amount*100))}>Confirmar {movement.kind==='deposit'?'entrada':'retirada'}</button></div></form>}</DialogContent></Dialog>
+    <Dialog open={!!selected} onOpenChange={open=>{if(!open)setSelectedId(null)}}><DialogContent className="reserve-dialog"><DialogHeader><DialogTitle>{selected?.name}</DialogTitle><DialogDescription>Saldo registrado e movimentações desta reserva.</DialogDescription></DialogHeader>{selected && <><div className="reserve-detail-balance"><span>Total guardado</span><strong>{formatCurrency(selected.amount)}</strong>{selected.note && <p>{selected.note}</p>}</div><div className="reserve-detail-tools"><button onClick={()=>edit(selected)}><Pencil size={16}/>Editar reserva</button><button onClick={()=>startMove(selected,'deposit')}><Plus size={16}/>Guardar</button><button onClick={()=>startMove(selected,'withdrawal')} disabled={!selected.amount}><ArrowUpRight size={16}/>Retirar</button></div><ReserveSimulation amount={selected.amount} settings={sanitizeReserveYield(selected.yield)}/><h3 className="font-bold">Histórico da reserva</h3><div className="reserve-history">{[...(selected.movements || [])].reverse().sort((a,b)=>b.date.localeCompare(a.date)).map(m=><div key={m.id} className={`reserve-history-row ${m.kind==='withdrawal'?'is-withdrawal':''}`}><span className="reserve-history-icon">{m.kind==='withdrawal'?<ArrowUpRight size={18}/>:<ArrowDownLeft size={18}/>}</span><div><strong>{m.kind==='opening'?'Saldo inicial':m.kind==='withdrawal'?'Retirada':'Entrada'}</strong><small>{dateLabel(m.date)}{m.note ? ` · ${m.note}`:''}</small></div><b>{m.kind==='withdrawal'?'−':'+'}{formatCurrency(m.amount)}</b></div>)}{!selected.movements?.length && <p className="text-sm text-glass-sub">Nenhum registro ainda. A primeira entrada começa seu histórico.</p>}</div><button className="reserve-delete" disabled={selected.amount>0} onClick={()=>{setSelectedId(null);setRemoving(selected)}}><Trash2 size={16}/>Excluir reserva vazia</button>{selected.amount>0 && <p className="text-xs text-glass-sub">Registre a retirada do saldo antes de excluir esta reserva.</p>}</>}</DialogContent></Dialog>
+    <Dialog open={!!removing} onOpenChange={open=>{if(!open)setRemoving(null)}}><DialogContent className="reserve-dialog"><DialogHeader><DialogTitle>Excluir {removing?.name}?</DialogTitle><DialogDescription>A reserva está vazia. Seu histórico será apagado permanentemente e não poderá ser recuperado.</DialogDescription></DialogHeader><div className="reserve-form-actions"><button onClick={()=>setRemoving(null)}>Cancelar</button><button className="reserve-delete" onClick={()=>{if(removing)deleteReserve(removing.id);setRemoving(null);toast.success('Reserva removida.',{duration:1800})}}>Excluir reserva</button></div></DialogContent></Dialog>
+  </div>;
+}
 
-  const [name, setName] = useState("");
-  const [cents, setCents] = useState(0);
-  const [color, setColor] = useState(PALETTE[0]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  const reservesTotal = useMemo(
-    () => reserves.reduce((s, r) => s + r.amount, 0),
-    [reserves],
-  );
-  const amountLabel = useMemo(
-    () =>
-      (cents / 100).toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }),
-    [cents],
-  );
-
-  const startEdit = (id: string) => {
-    const reserve = reserves.find((r) => r.id === id);
-    if (!reserve) return;
-    setEditingId(id);
-    setName(reserve.name);
-    setCents(Math.round(reserve.amount * 100));
-    setColor(reserve.color);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setName("");
-    setCents(0);
-    setColor(PALETTE[0]);
-  };
-
-  const handleAmount = (value: string) => {
-    const digits = value.replace(/\D/g, "");
-    setCents(digits ? Number(digits) : 0);
-  };
-
-  const handleSave = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast("Dê um nome ao cofrinho");
-      return;
-    }
-    if (cents <= 0) {
-      toast("Informe um valor maior que zero");
-      return;
-    }
-    const amount = cents / 100;
-    if (editingId) {
-      updateReserve(editingId, { name: trimmed, amount, color });
-      toast("Cofrinho atualizado");
-    } else {
-      addReserve({ name: trimmed, amount, color });
-      toast("Cofrinho criado");
-    }
-    cancelEdit();
-  };
-
-  return (
-    <div className="space-y-4">
-      <SettingsHeader title="Reservas" />
-      <p className="px-1 text-[12px] font-medium text-glass-faint">
-        Cofrinhos e reservas de{" "}
-        <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        guarde dinheiro para objetivos (viagem, investimento, emergência).
-      </p>
-
-      {/* Summary */}
-      <div className="glass glass-strong relative overflow-hidden rounded-[1.8rem] p-4">
-        <div className="pointer-events-none absolute -right-10 -top-14 h-32 w-32 rounded-full bg-[#1FBF4F]/20 blur-2xl" />
-        <div className="relative flex items-center gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#1FBF4F]/15">
-            <PiggyBank className="size-6 text-[#17a443]" strokeWidth={2.2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[12.5px] font-semibold uppercase tracking-wide text-glass-sub">
-              Guardado em reservas
-            </p>
-            <p className="amount-tabular mt-0.5 text-[24px] font-bold leading-none text-glass-ink">
-              {formatCurrency(reservesTotal)}
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full bg-white/50 px-2.5 py-1 text-[11px] font-semibold text-glass-sub">
-            {reserves.length} {reserves.length === 1 ? "cofrinho" : "cofrinhos"}
-          </span>
-        </div>
-      </div>
-
-      <div className="glass rounded-3xl p-4">
-        <p className="text-[15px] font-semibold text-glass-ink">Reservas acompanhadas separadamente</p>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">Os cofrinhos ficam aqui. O saldo da tela inicial é calculado pelas receitas e despesas registradas em Transações.</p>
-      </div>
-
-      {/* List */}
-      {reserves.length === 0 ? (
-        <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-[#1FBF4F]/15">
-            <PiggyBank className="size-6 text-[#17a443]" />
-          </div>
-          <div>
-            <p className="text-[15px] font-semibold text-glass-ink">
-              Nenhum cofrinho ainda
-            </p>
-            <p className="mt-1 text-[13px] text-glass-sub">
-              Crie reservas para separar dinheiro dos seus objetivos.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {reserves.map((r) => {
-            const pct =
-              reservesTotal > 0 ? Math.round((r.amount / reservesTotal) * 100) : 0;
-            return (
-              <div key={r.id} className="glass rounded-3xl p-4">
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className="flex size-11 shrink-0 items-center justify-center rounded-2xl text-white"
-                    style={{ backgroundColor: r.color }}
-                  >
-                    <PiggyBank className="size-5" strokeWidth={2.2} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold text-glass-ink">
-                      {r.name}
-                    </p>
-                    <p className="amount-tabular mt-0.5 text-[15px] font-bold text-glass-ink">
-                      {formatCurrency(r.amount)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      aria-label={`Editar ${r.name}`}
-                      onClick={() => startEdit(r.id)}
-                      className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Excluir ${r.name}`}
-                      onClick={() => {
-                        deleteReserve(r.id);
-                        if (editingId === r.id) cancelEdit();
-                        toast("Cofrinho removido");
-                      }}
-                      className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-black/25">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${pct}%`, backgroundColor: r.color }}
-                  />
-                </div>
-                <p className="mt-1 text-[11.5px] text-glass-faint">
-                  {pct}% do total reservado
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Add / edit form */}
-      <div className="glass rounded-3xl p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-[15px] font-bold text-glass-ink">
-            {editingId ? "Editar cofrinho" : "Novo cofrinho"}
-          </p>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
-            >
-              <X className="size-3.5" />
-              Cancelar
-            </button>
-          )}
-        </div>
-
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome (ex.: Viagem, Investimentos, Emergência)"
-          maxLength={30}
-          className={cn(inputClass, "mt-3")}
-        />
-        <div className="mt-3 text-center">
-          <input
-            inputMode="numeric"
-            value={amountLabel}
-            onChange={(e) => handleAmount(e.target.value)}
-            placeholder="R$ 0,00"
-            aria-label="Valor reservado"
-            className="w-full bg-transparent text-center text-[34px] font-bold tracking-tight text-[#17a443] outline-none"
-          />
-          <div className="mx-auto mt-1 h-0.5 w-14 rounded-full bg-[#1FBF4F]/40" />
-        </div>
-
-        <p className="mt-3 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-          Cor
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2.5">
-          {PALETTE.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={`Cor ${c}`}
-              onClick={() => setColor(c)}
-              className={cn(
-                "size-11 rounded-full transition-transform active:scale-90",
-                color === c &&
-                  "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
-              )}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSave}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14.5px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
-        >
-          <Plus className="size-4" />
-          {editingId ? "Salvar alterações" : "Adicionar cofrinho"}
-        </button>
-      </div>
-
-      <p className="px-2 text-[12px] leading-relaxed text-glass-faint">
-        As reservas são contabilizadas à parte do histórico: ao criar um
-        cofrinho, o valor fica guardado aqui e pode aparecer junto ou separado
-        do saldo da tela inicial, conforme o botão acima.
-      </p>
-    </div>
-  );
+function ReserveSimulation({ amount, settings }: { amount: number; settings: ReserveYield }) {
+  const formatCurrency = usePrivateCurrency();
+  const result = simulateReserveYield(amount, settings);
+  if (!settings.enabled) return null;
+  return <section className="reserve-simulation"><h3>Simulação de rendimento</h3>{result ? <><p>Se mantiver {formatCurrency(amount)} por {result.months} {result.months===1?'mês':'meses'}, a {settings.cdiPercent}% do CDI:</p><div className="reserve-simulation-values"><div><small>Rendimento bruto estimado</small><strong>+{formatCurrency(result.gain)}</strong></div><div><small>Total estimado</small><strong>{formatCurrency(result.total)}</strong></div></div></> : <p>Preencha a taxa anual de referência para ver a estimativa.</p>}<p className="reserve-estimate-warning">É uma simulação, não o rendimento real. O resultado pode ser diferente do seu banco e nunca é somado ao saldo registrado.</p><details><summary>Entenda o cálculo e as diferenças</summary><p>Projetamos juros compostos sobre o saldo atual, com CDI anual constante de {settings.annualCdi ?? '—'}%, base de 252 dias úteis por ano e 21 por mês. Não consideramos novas entradas, retiradas, impostos (IR/IOF), tarifas, carência, limites promocionais ou mudanças futuras do CDI. O calendário real e as regras do banco também podem mudar o resultado. Esta projeção é bruta, antes desses descontos.</p><a href="https://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-de-segmentos-e-setoriais/di/metodologia-de-calcudo-acumulado-de-di/" target="_blank" rel="noreferrer">Referência: metodologia DI da B3</a></details></section>;
 }

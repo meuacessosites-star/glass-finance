@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useMemo, useState } from "react";
 import { CalendarDays, Landmark, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +49,7 @@ function dueDateFor(startDate: string, index: number): string {
 }
 
 export default function FinancingsPage() {
+  const formatCurrency = usePrivateCurrency();
   const {
     financings,
     financingsInFlow,

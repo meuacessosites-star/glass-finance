@@ -56,3 +56,30 @@
     z-index: 1;
   }
 }
+
+.dark .invoice-metric { --metric-surface:#1b3556; --metric-ink:#9fc6ff; --metric-edge:#385d8e; background:var(--metric-surface); color:var(--metric-ink); border-color:var(--metric-edge); box-shadow:inset 2px 0 var(--metric-edge); }
+.dark .invoice-metric :is(p,span,svg) { color:inherit; }
+.dark .invoice-metric span[class*="bg-"] { background:#ffffff0e; }
+.dark .invoice-metric--paid { --metric-surface:#1c3a2e; --metric-ink:#8fe0b0; --metric-edge:#3d7557; }
+.dark .invoice-metric--available { --metric-surface:#183b47; --metric-ink:#8bdcec; --metric-edge:#336d7f; }
+.dark .invoice-metric--closing { --metric-surface:#322849; --metric-ink:#cbb2ff; --metric-edge:#6c539a; }
+.dark .invoice-metric--due { --metric-surface:#43293a; --metric-ink:#f2a7c5; --metric-edge:#995573; }
+.dark .invoice-limit-metric:nth-child(1) { --metric-surface:#382f2a; --metric-ink:#dfbfa4; --metric-edge:#82654f; }
+.dark .invoice-limit-metric:nth-child(2) { --metric-surface:#472e26; --metric-ink:#f8ae84; --metric-edge:#a16345; }
+.dark .invoice-limit-metric:nth-child(3) { --metric-surface:#30391d; --metric-ink:#c8df83; --metric-edge:#768b3d; }
+/* Dark-only detail colors keep their meaning without large saturated patches. */
+.dark .invoice-metric { --metric-surface:#222d3b; --metric-ink:#b5cff2; --metric-edge:#4d6482; }
+.dark .invoice-metric--paid { --metric-surface:#21322b; --metric-ink:#a6ddbc; --metric-edge:#4f7a61; }
+.dark .invoice-metric--available { --metric-surface:#203035; --metric-ink:#add9e1; --metric-edge:#48717a; }
+.dark .invoice-metric--closing { --metric-surface:#2c2839; --metric-ink:#cbbde7; --metric-edge:#716387; }
+.dark .invoice-metric--due { --metric-surface:#342931; --metric-ink:#e5bacd; --metric-edge:#8a6276; }
+.dark .invoice-limit-metric:nth-child(1) { --metric-surface:#2e2b28; --metric-ink:#d4c6b7; --metric-edge:#74685c; }
+.dark .invoice-limit-metric:nth-child(2) { --metric-surface:#352c28; --metric-ink:#e5bda3; --metric-edge:#8b6953; }
+.dark .invoice-limit-metric:nth-child(3) { --metric-surface:#2b3026; --metric-ink:#c8d6ae; --metric-edge:#6c7a55; }
+.dark .invoice-status--paid { background:#20392d; color:#9de0b5; border-color:#4e7f60; }
+.dark .invoice-status--overdue { background:#3a252b; color:#ff9eaa; border-color:#995967; }
+.dark .invoice-status--partial { background:#362638; color:#dcb3db; border-color:#825c81; }
+.dark .invoice-status--due { background:#37311d; color:#f0dc89; border-color:#8b7e44; }
+.dark .invoice-status--open { background:#382c20; color:#f1c18f; border-color:#906c48; }
+.dark .invoice-status--empty { background:#2b3038; color:#c7cfdc; border-color:#626d7b; }
+.dark .invoice-glass-band { border-bottom-color:#ffffff20; box-shadow:inset 0 1px #ffffff38,inset 0 -1px #0003; }

@@ -1,3 +1,4 @@
+import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useMemo } from "react";
 import {
   AlertTriangle,
@@ -25,6 +26,7 @@ type Tip = {
 };
 
 export default function InsightsPage() {
+  const formatCurrency = usePrivateCurrency();
   const {
     activeProfile,
     categoryById,
@@ -190,7 +192,7 @@ export default function InsightsPage() {
     });
 
     return list;
-  }, [expense, income, monthName, savingsPct, savingsRate, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingNotifications, firstName]);
+  }, [formatCurrency, expense, income, monthName, savingsPct, savingsRate, topCategory, reservesTotal, goals.length, completedGoals, financings.length, financingMonthly, financingProgress, pendingNotifications, firstName]);
 
   return (
     <div className="space-y-4">
