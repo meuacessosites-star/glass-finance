@@ -1,3 +1,10 @@
+import { InlineColorPicker } from "@/components/app/CategoryColorPicker";
+import { financialOverview } from "@/lib/financial-overview";
+import { ConfirmAction } from '@/components/app/PlanningUI';
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ui/dialog';
+import { goalPlan } from '@/lib/financing-plan';
+import { localDateKey } from '@/lib/card-billing';
+import { getTransactionPaymentStatus } from '@/lib/transaction-status';
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useMemo, useState } from "react";
 import { CalendarClock, Pencil, Plus, Target, Trash2, TrendingUp, X } from "lucide-react";
@@ -42,7 +49,7 @@ function monthsBetween(fromIso: string, toIso: string): number {
 export default function GoalsPage() {
   const formatCurrency = usePrivateCurrency();
   const {
-    goals,
+    goals, cards, loanReceivables,
     activeProfile,
     visibleTransactions,
     addGoal,
@@ -50,6 +57,10 @@ export default function GoalsPage() {
     deleteGoal,
   } = useAppStore();
 
+  const [query,setQuery]=useState('');
+  const [view,setView]=useState('active');
+  const [removing,setRemoving]=useState<string|null>(null);
+  const [contribution,setContribution]=useState<{id:string;kind:'add'|'remove';amount:number}|null>(null);
   const [name, setName] = useState("");
   const [targetCents, setTargetCents] = useState(0);
   const [savedCents, setSavedCents] = useState(0);
@@ -58,22 +69,27 @@ export default function GoalsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Sobra média mensal do perfil (receitas − despesas) em todos os meses.
-  const monthlySurplus = useMemo(() => {
-    const keys = [
-      ...new Set(visibleTransactions.map((t) => monthKey(t.date))),
-    ];
+  const history = useMemo(() => {
+    const current=localDateKey().slice(0,7);
+    const historical=visibleTransactions.filter(t=>t.date.slice(0,7)<current);
+    const keys = [...new Set(historical.map((t) => monthKey(t.date)))].sort().slice(-6);
     const surpluses = keys.map((key) => {
-      const { income, expense } = monthTotals(visibleTransactions, key);
-      return income - expense;
+      if(!activeProfile)return 0;
+      const overview=financialOverview(activeProfile.data,key,localDateKey());
+      return overview.received-overview.paid;
     });
-    if (surpluses.length === 0) return 0;
-    return surpluses.reduce((s, x) => s + x, 0) / surpluses.length;
-  }, [visibleTransactions]);
+    if (surpluses.length === 0) return {amount:0,count:0};
+    return {amount:surpluses.reduce((s, x) => s + x, 0) / surpluses.length,count:surpluses.length};
+  }, [visibleTransactions,activeProfile]);
 
+  const monthlySurplus=history.amount;
   const totalSaved = goals.reduce((s, g) => s + g.savedAmount, 0);
   const totalTarget = goals.reduce((s, g) => s + g.targetAmount, 0);
   const completedCount = goals.filter((g) => g.savedAmount >= g.targetAmount).length;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateKey();
+  const neededTotal=goals.reduce((s,g)=>s+(goalPlan(g,today).monthly??0),0);
+  const activeCount=Math.max(1,goals.filter(g=>g.savedAmount<g.targetAmount).length);
+  const monthlyShare=Math.max(0,monthlySurplus)/activeCount;
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -81,14 +97,14 @@ export default function GoalsPage() {
       toast("Dê um nome à meta");
       return;
     }
-    if (targetCents <= 0) {
+    if (!Number.isFinite(targetCents) || targetCents <= 0 || targetCents>1e11 || !Number.isFinite(savedCents) || savedCents<0 || savedCents>1e11) {
       toast("Informe um valor alvo maior que zero");
       return;
     }
     const data = {
       name: trimmed,
       targetAmount: targetCents / 100,
-      savedAmount: Math.min(savedCents, targetCents) / 100,
+      savedAmount: savedCents / 100,
       deadline: deadline || undefined,
       color,
     };
@@ -133,35 +149,36 @@ export default function GoalsPage() {
     }
     const pct = Math.round((g.savedAmount / g.targetAmount) * 100);
     if (!g.deadline) {
-      const months = monthlySurplus > 0 ? Math.ceil(remaining / monthlySurplus) : Infinity;
+      const months = monthlyShare > 0 ? Math.ceil(remaining / monthlyShare) : Infinity;
       return {
         tone: "info" as const,
         text:
           months === Infinity
             ? `Faltam ${formatCurrency(remaining)}. Com sua sobra atual, ainda não dá para estimar um prazo.`
-            : `Faltam ${formatCurrency(remaining)} (${pct}%). Com sua sobra média de ${formatCurrency(
-                monthlySurplus,
+            : `Faltam ${formatCurrency(remaining)} (${pct}%). Se dividir a sobra histórica entre as metas, ${formatCurrency(
+                monthlyShare,
               )}/mês, você conclui em cerca de ${months} ${months === 1 ? "mês" : "meses"}.`,
       };
     }
-    const monthsLeft = monthsBetween(today, g.deadline);
-    if (monthsLeft <= 0) {
+    const monthsLeft = goalPlan(g,today).months ?? 1;
+    if (g.deadline < today) {
       return {
         tone: "warning" as const,
         text: `O prazo (${g.deadline.split("-").reverse().join("/")}) já chegou — redefina a data ou aumente o valor guardado.`,
       };
     }
-    const needed = remaining / monthsLeft;
-    if (needed <= monthlySurplus * 0.9) {
+    const needed = Math.ceil(remaining / monthsLeft*100)/100;
+    if(!history.count)return {tone:"info" as const,text:`Para alcançar no prazo, reserve ${formatCurrency(needed)}/mês. Ainda não há meses encerrados suficientes para comparar com sua capacidade; confira suas contas antes de definir a contribuição.`};
+    if (needed <= monthlyShare) {
       return {
         tone: "positive" as const,
-        text: `Guardando ${formatCurrency(needed)}/mês você chega em ${monthsLeft} ${monthsLeft === 1 ? "mês" : "meses"} — dentro da sua capacidade de ${formatCurrency(monthlySurplus)}/mês.`,
+        text: `Guardando ${formatCurrency(needed)}/mês você chega em ${monthsLeft} ${monthsLeft === 1 ? "mês" : "meses"} — dentro da divisão indicativa de ${formatCurrency(monthlyShare)}/mês entre as metas.`,
       };
     }
     return {
       tone: "warning" as const,
-      text: `Precisaria guardar ${formatCurrency(needed)}/mês, acima da sua sobra de ${formatCurrency(
-        monthlySurplus,
+      text: `Precisaria guardar ${formatCurrency(needed)}/mês, acima da divisão indicativa de ${formatCurrency(
+        monthlyShare,
       )}/mês. Considere estender o prazo ou reduzir a meta.`,
     };
   };
@@ -208,10 +225,14 @@ export default function GoalsPage() {
           <span className="amount-tabular font-bold text-[#17a443]">
             {formatCurrency(monthlySurplus)}
           </span>
-          . É por isso que suas metas sabem quanto você consegue guardar.
+          . Média de até 6 meses encerrados com registros, usando entradas e saídas marcadas como pagas. Não é garantia de capacidade futura; meses sem registro ficam fora.
         </p>
       </div>
 
+      <p className="planning-notice">Metas com prazo, juntas: {formatCurrency(neededTotal)}/mês. Compare com a sobra disponível antes de distribuir entre os objetivos. Progresso de metas não movimenta a conta e não deve ser somado novamente às Reservas.</p>
+      <input className="planning-search" aria-label="Buscar metas" placeholder="Buscar metas" value={query} onChange={e=>setQuery(e.target.value)}/>
+      <div className="planning-actions planning-filters">{[['active','Em andamento'],['done','Concluídas'],['all','Todas']].map(([v,l])=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{l}</button>)}</div>
+      {goals.length>0&&!goals.some(g=>g.name.toLowerCase().includes(query.toLowerCase())&&(view==='all'||(view==='done'?g.savedAmount>=g.targetAmount:g.savedAmount<g.targetAmount)))&&<p className="planning-muted">Nenhuma meta neste filtro.</p>}
       {/* List */}
       {goals.length === 0 ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
@@ -230,7 +251,7 @@ export default function GoalsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {goals.map((g) => {
+          {goals.filter(g=>g.name.toLowerCase().includes(query.toLowerCase())&&(view==='all'||(view==='done'?g.savedAmount>=g.targetAmount:g.savedAmount<g.targetAmount))).map((g) => {
             const pct = Math.min(
               100,
               Math.round((g.savedAmount / g.targetAmount) * 100),
@@ -274,9 +295,7 @@ export default function GoalsPage() {
                       type="button"
                       aria-label={`Excluir ${g.name}`}
                       onClick={() => {
-                        deleteGoal(g.id);
-                        if (editingId === g.id) cancelEdit();
-                        toast("Meta removida");
+                        setRemoving(g.id);
                       }}
                       className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
                     >
@@ -284,10 +303,12 @@ export default function GoalsPage() {
                     </button>
                   </div>
                 </div>
+                <div className="planning-actions mt-3"><button onClick={()=>setContribution({id:g.id,kind:'add',amount:0})}>Registrar contribuição</button><button disabled={g.savedAmount<=0} onClick={()=>setContribution({id:g.id,kind:'remove',amount:0})}>Registrar retirada</button></div>
+                {!!g.movements?.length&&<details><summary className="planning-muted mt-2">Histórico de ajustes ({g.movements.length})</summary><div className="max-h-48 overflow-auto">{[...g.movements].reverse().map(m=><p className="planning-row" key={m.id}><span>{m.date.split('-').reverse().join('/')}</span><strong>{m.amount>0?'+':''}{formatCurrency(m.amount)}</strong></p>)}</div></details>}
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-black/25">
                   <div
                     className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.max(3, done ? 100 : pct)}%`, backgroundColor: g.color }}
+                    style={{ width: `${Math.max(0, done ? 100 : pct)}%`, backgroundColor: g.color }}
                   />
                 </div>
                 <p
@@ -325,6 +346,7 @@ export default function GoalsPage() {
         </div>
 
         <input
+          aria-label="Nome da meta"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Nome (ex.: Viagem para o Japão)"
@@ -372,8 +394,9 @@ export default function GoalsPage() {
           <CalendarClock className="size-4 shrink-0 text-glass-sub" />
           <input
             type="date"
+            aria-label="Prazo da meta"
             value={deadline}
-            min={new Date().toISOString().slice(0, 10)}
+            min={today}
             onChange={(e) => setDeadline(e.target.value)}
             className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
           />
@@ -398,6 +421,7 @@ export default function GoalsPage() {
             />
           ))}
         </div>
+        <div className="mt-3"><InlineColorPicker value={color} onChange={setColor}/></div>
 
         <button
           type="button"
@@ -408,6 +432,8 @@ export default function GoalsPage() {
           {editingId ? "Salvar alterações" : "Criar meta"}
         </button>
       </div>
+      {removing&&<ConfirmAction title="Excluir meta?" description="O objetivo e seu histórico de ajustes serão removidos. Isso não altera o saldo bancário ou suas reservas." action="Excluir" onCancel={()=>setRemoving(null)} onConfirm={()=>{deleteGoal(removing);if(editingId===removing)cancelEdit();setRemoving(null)}}/>}
+      <Dialog open={!!contribution} onOpenChange={o=>{if(!o)setContribution(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>{contribution?.kind==='remove'?'Retirada':'Contribuição'} da meta</DialogTitle><DialogDescription>Atualiza apenas o progresso registrado. Nenhum dinheiro é transferido.</DialogDescription></DialogHeader>{contribution&&<form className="planning-form" onSubmit={e=>{e.preventDefault();const g=goals.find(g=>g.id===contribution.id);if(!g||contribution.amount<=0||!Number.isFinite(contribution.amount))return;const next=Math.round((g.savedAmount+(contribution.kind==='add'?1:-1)*contribution.amount)*100)/100;if(next<0||next>1e9){toast.error('Confira o valor disponível na meta.');return;}updateGoal(g.id,{savedAmount:next});setContribution(null);toast.success('Progresso atualizado',{duration:1800})}}><label>Valor (R$)<input required type="number" min="0.01" max="1000000000" step="0.01" value={contribution.amount||''} onChange={e=>setContribution({...contribution,amount:Number(e.target.value)})}/></label><button className="planning-button planning-primary">Confirmar</button></form>}</DialogContent></Dialog>
     </div>
   );
 }

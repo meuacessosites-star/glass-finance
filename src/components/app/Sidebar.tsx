@@ -1,3 +1,4 @@
+import { preloadRoute } from '@/lib/route-preload';
 import {
   createContext,
   useContext,
@@ -355,7 +356,7 @@ export function Sidebar() {
                     <button
                       key={item.to}
                       type="button"
-                      onClick={() => go(item.to)}
+                      onPointerEnter={()=>preloadRoute(item.to)} onFocus={()=>preloadRoute(item.to)} onTouchStart={()=>preloadRoute(item.to)} onClick={() => go(item.to)}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
                         active ? "bg-primary/10" : "hover:bg-white/50",

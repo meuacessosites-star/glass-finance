@@ -56,6 +56,9 @@ export const update = mutation({
   args: {
     id: v.id("people"),
     name: v.string(),
+    avatarType: v.optional(v.union(v.literal("letters"),v.literal("emoji"),v.literal("foto"))),
+    avatarValue: v.optional(v.string()),
+    avatarColor: v.optional(v.string()),
     phone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -71,6 +74,9 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.id, {
+      ...(args.avatarType!==undefined?{avatarType:args.avatarType}:{}),
+      ...(args.avatarValue!==undefined?{avatarValue:args.avatarValue}:{}),
+      ...(args.avatarColor!==undefined?{avatarColor:args.avatarColor}:{}),
       name,
       phone: args.phone?.replace(/\D/g, "") || undefined,
     });

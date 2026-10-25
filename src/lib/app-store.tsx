@@ -1,3 +1,6 @@
+import {sanitizeFinancingPaymentMethod,type FinancingPaymentMethod} from './financing-payment-method';
+import { inspectBackup } from "./backup-validation";
+import { financingFlowRows } from './financing-plan';
 import { sanitizeReserves, recordReserveMovement, type AppReserve, type ReserveDetails, type ReserveMovement } from "./reserves";
 export type { AppReserve } from "./reserves";
 import { ignoredCountToday, maintainAllNotificationHistory, maintainNotificationHistory, sanitizeNotificationRetention, setNotificationRetention } from "./notification-history";
@@ -113,8 +116,13 @@ export type AppNotification = BankNotification & {
   loanId?: string;
 };
 
-/** Financiamento: parcelas mensais fixas (ex.: carro, casa, faculdade). */
+/** Financiamento: parcelas mensais (ex.: carro, casa, faculdade). */
 export type AppFinancing = {
+  variableInstallments?: boolean;
+  forecasts?: {installment:number;amount:number}[];
+  institution?: string;
+  contractNote?: string;
+  payments?: { installment: number; date: string; amount: number; paymentMethod?: FinancingPaymentMethod }[];
   id: string;
   name: string;
   totalAmount: number; // BRL (valor total financiado)
@@ -130,6 +138,7 @@ export type AppFinancing = {
 
 /** Meta de economia: quanto quer guardar e quanto já guardou. */
 export type AppGoal = {
+  movements?: {id:string;date:string;amount:number}[];
   id: string;
   name: string;
   targetAmount: number; // BRL
@@ -526,23 +535,24 @@ function sanitizeFinancings(v: unknown): AppFinancing[] {
   return v
     .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
     .map((f) => {
-      const installments = num(f.installments, 12, 1, 480);
+      const installments = Math.trunc(num(f.installments, 12, 1, 480));
       return {
+        variableInstallments: f.variableInstallments === true,
+        forecasts: Array.isArray(f.forecasts) ? f.forecasts.filter((p:any)=>p && Number.isInteger(p.installment) && p.installment>=1 && p.installment<=installments && Number.isFinite(p.amount) && p.amount>0 && p.amount<=1e9).map((p:any)=>({installment:p.installment,amount:Math.round(p.amount*100)/100})) : [],
+        institution: str(f.institution, '').slice(0,70),
+        contractNote: str(f.contractNote, '').slice(0,500),
+        payments: Array.isArray(f.payments) ? f.payments.filter((p:any)=>p && Number.isInteger(p.installment) && p.installment>=1 && p.installment<=installments && sanitizeDueDate(p.date) && Number.isFinite(p.amount) && p.amount>0 && p.amount<=1e9).map((p:any)=>({installment:p.installment,date:p.date,amount:Math.round(p.amount*100)/100,...(sanitizeFinancingPaymentMethod(p.paymentMethod)?{paymentMethod:sanitizeFinancingPaymentMethod(p.paymentMethod)}:{})})) : [],
         id: str(f.id, uid("fin")),
         name: str(f.name, "Financiamento"),
         totalAmount: num(f.totalAmount, 10000, 0.01, 1e9),
         installments,
         currentInstallment: Math.min(
-          installments,
-          num(f.currentInstallment, 1, 1, 480),
+          installments + 1,
+          Math.trunc(num(f.currentInstallment, 1, 1, 481)),
         ),
         installmentValue: num(f.installmentValue, 100, 0.01, 1e7),
-        dueDay: Math.min(31, Math.max(1, num(f.dueDay, 5, 1, 31))),
-        startDate:
-          typeof f.startDate === "string" &&
-          /^\d{4}-\d{2}-\d{2}/.test(f.startDate)
-            ? f.startDate.slice(0, 10)
-            : new Date().toISOString().slice(0, 10),
+        dueDay: Math.trunc(num(f.dueDay, 5, 1, 31)),
+        startDate: sanitizeDueDate(f.startDate) ?? localDateKey(),
         categoryId:
           typeof f.categoryId === "string" && f.categoryId.trim()
             ? f.categoryId.trim().slice(0, 40)
@@ -555,7 +565,7 @@ function sanitizeFinancings(v: unknown): AppFinancing[] {
             : new Date().toISOString().slice(0, 10),
       };
     })
-    .filter((f) => f.name !== "Financiamento");
+    .filter((f) => f.name.trim().length > 0);
 }
 
 function sanitizeGoals(v: unknown): AppGoal[] {
@@ -563,21 +573,19 @@ function sanitizeGoals(v: unknown): AppGoal[] {
   return v
     .filter((g): g is Record<string, unknown> => !!g && typeof g === "object")
     .map((g) => ({
+      movements: Array.isArray(g.movements) ? g.movements.filter((m:any)=>m&&typeof m.id==='string'&&sanitizeDueDate(m.date)&&Number.isFinite(m.amount)&&Math.abs(m.amount)<=1e9).map((m:any)=>({id:m.id,date:m.date,amount:m.amount})) : [],
       id: str(g.id, uid("goal")),
       name: str(g.name, "Meta"),
       targetAmount: num(g.targetAmount, 1000, 0.01, 1e9),
       savedAmount: num(g.savedAmount, 0, 0, 1e9),
-      deadline:
-        typeof g.deadline === "string" && /^\d{4}-\d{2}-\d{2}/.test(g.deadline)
-          ? g.deadline.slice(0, 10)
-          : undefined,
+      deadline: sanitizeDueDate(g.deadline),
       color: str(g.color, "#FF9500"),
       createdAt:
         typeof g.createdAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(g.createdAt)
           ? g.createdAt.slice(0, 10)
           : new Date().toISOString().slice(0, 10),
     }))
-    .filter((g) => g.name !== "Meta");
+    .filter((g) => g.name.trim().length > 0);
 }
 
 export function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
@@ -1224,26 +1232,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     // Parcelas de financiamento injetadas no fluxo quando "junto com as
     // transações" está ativo: cada parcela vira uma despesa com data própria.
-    const financingTransactions: Transaction[] = [];
-    if (activeData.financingsInFlow) {
-      const today = new Date().toISOString().slice(0, 10);
-      for (const f of activeData.financings) {
-        const total = Math.min(f.currentInstallment, f.installments);
-        for (let i = 1; i <= total; i++) {
-          const date = financingDueDate(f.startDate, i);
-          if (date > today) continue;
-          financingTransactions.push({
-            id: `fin-${f.id}-${i}`,
-            title: `${f.name} · Parcela ${i}/${f.installments}`,
-            categoryId: f.categoryId ?? "moradia",
-            amount: -Math.abs(f.installmentValue),
-            date,
-            note: "Parcela do financiamento",
-            paymentMethod: "boleto",
-          });
-        }
-      }
-    }
+    const financingTransactions: Transaction[] = activeData.financingsInFlow ? financingFlowRows(activeData.financings, localDateKey()) : [];
     const { regularTransactions, loanTransactions } = selectTransactionLedgers(activeData.transactions, activeData.loanReceivables);
     const visibleTransactions: Transaction[] = [
       ...financingTransactions,
@@ -1447,7 +1436,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateGoal: (id, patch) =>
         patchActiveData((d) => ({
           ...d,
-          goals: d.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+          goals: d.goals.map((g) => {
+            if(g.id!==id)return g;
+            const delta=patch.savedAmount===undefined?0:Math.round((patch.savedAmount-g.savedAmount)*100)/100;
+            return {...g,...patch,movements:delta?[...(g.movements??[]),{id:uid('goal-move'),date:localDateKey(),amount:delta}]:g.movements};
+          }),
         })),
       deleteGoal: (id) =>
         patchActiveData((d) => ({
@@ -1457,6 +1450,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       exportState: () => JSON.stringify(state),
       importState: (raw) => {
         try {
+          inspectBackup(raw);
           const parsed = JSON.parse(raw) as unknown;
           const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
           if (profiles.length === 0) {
@@ -1476,7 +1470,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
           } catch {
-            // storage unavailable — keep in-memory state only
+            return {ok:false,error:"Não há espaço ou permissão para salvar neste navegador. Seus dados atuais foram mantidos. Exporte um backup antes de liberar espaço."};
           }
           setState(next);
           return { ok: true };

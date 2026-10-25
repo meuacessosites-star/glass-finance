@@ -1,3 +1,4 @@
+import { ConfirmAction } from "@/components/app/PlanningUI";
 import { useState } from "react";
 import {
   Check,
@@ -61,6 +62,8 @@ export default function ProfilesPage() {
     verifyPin,
   } = useAppStore();
 
+  const [removing,setRemoving]=useState<AppProfile|null>(null);
+  const [query,setQuery]=useState('');
   // Avatar/name editor (create or edit)
   const [editor, setEditor] = useState<EditorState>(null);
 
@@ -98,6 +101,7 @@ export default function ProfilesPage() {
     name: string;
     avatar: ProfileAvatarType;
   }) => {
+    if (!data.name.trim()||profiles.some(p=>p.id!==(editor?.mode==='edit'?editor.profile.id:'')&&p.name.trim().toLocaleLowerCase('pt-BR')===data.name.trim().toLocaleLowerCase('pt-BR'))) {toast.error('Use um nome diferente para cada perfil.');return;}
     if (editor?.mode === "edit") {
       updateProfile(editor.profile.id, data);
       toast("Perfil atualizado", { description: "Nome e avatar salvos." });
@@ -202,9 +206,11 @@ export default function ProfilesPage() {
         </p>
       </div>
 
+      <p className="px-2 text-[12px] leading-relaxed text-glass-sub">Transações, reservas, metas e financiamentos são organizados por perfil. O PIN é um bloqueio local de conveniência; não criptografa o backup nem define quem pode acessar o site.</p>
+      <input className="planning-search" aria-label="Buscar perfil" placeholder="Buscar perfil…" value={query} onChange={e=>setQuery(e.target.value)}/>
       {/* Profile list */}
       <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
-        {profiles.map((profile) => {
+        {profiles.filter(p=>p.name.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR'))).map((profile) => {
           const active = profile.id === activeProfileId;
           const protectedProfile = !!profile.data.pin;
           return (
@@ -254,7 +260,7 @@ export default function ProfilesPage() {
               <button
                 type="button"
                 aria-label={`Editar ${profile.name}`}
-                onClick={() => setEditor({ mode: "edit", profile })}
+                onClick={() => {if(protectedProfile&&!active){toast("Abra o perfil com o PIN antes de editar.");return;}setEditor({ mode: "edit", profile })}}
                 className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-primary/10 hover:text-primary active:scale-90"
               >
                 <Pencil className="size-4" />
@@ -262,7 +268,7 @@ export default function ProfilesPage() {
               <button
                 type="button"
                 aria-label={`Excluir ${profile.name}`}
-                onClick={() => handleDeleteProfile(profile.id, profile.name)}
+                onClick={() => {if(profiles.length===1){toast("Mantenha pelo menos um perfil.");return;}if(protectedProfile&&!active){toast("Abra o perfil com o PIN antes de excluir.");return;}setRemoving(profile)}}
                 className="flex size-11 shrink-0 items-center justify-center rounded-full text-glass-sub transition-colors hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] active:scale-90"
               >
                 <Trash2 className="size-4" />
@@ -272,6 +278,8 @@ export default function ProfilesPage() {
         })}
       </div>
 
+      {activeProfile&&<section className="planning-card"><h2 className="font-bold text-glass-ink">Neste perfil: {activeProfile.name}</h2><p className="text-sm text-glass-sub mt-2">{activeProfile.data.transactions.length} transações · {activeProfile.data.cards.length} cartões · {activeProfile.data.loanReceivables.length} recebimentos</p><p className="text-sm text-glass-sub">{activeProfile.data.reserves.length} reservas · {activeProfile.data.goals.length} metas · {activeProfile.data.financings.length} financiamentos</p></section>}
+      {removing&&<ConfirmAction title={`Excluir o perfil “${removing.name}”?`} description="Todas as transações, cartões, reservas, metas, financiamentos e configurações deste perfil serão removidos deste dispositivo. Esta ação não pode ser desfeita. Exporte um backup na aba Conta antes, se precisar guardar os dados." action="Excluir perfil e seus dados" onCancel={()=>setRemoving(null)} onConfirm={()=>{handleDeleteProfile(removing.id,removing.name);setRemoving(null)}}/>}
       {/* Add profile — opens the same editor used for editing */}
       <button
         type="button"

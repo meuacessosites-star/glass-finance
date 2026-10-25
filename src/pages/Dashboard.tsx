@@ -1,5 +1,6 @@
+import { preloadRoute } from '@/lib/route-preload';
 import { BalancePrivacyProvider } from "@/components/app/BalancePrivacy";
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { AppBackground } from "@/components/app/AppBackground";
 import { BottomNav } from "@/components/app/BottomNav";
@@ -32,6 +33,13 @@ function DashboardShell() {
   const isTransactionsPage = pathname === "/dashboard/transacoes";
   const { activeProfile, pinUsage } = useAppStore();
 
+  useEffect(() => {
+    const connection = (navigator as Navigator & {connection?:{saveData?:boolean;effectiveType?:string}}).connection;
+    if(connection?.saveData || connection?.effectiveType==='2g') return;
+    const timer=window.setTimeout(()=>['/dashboard/transacoes','/dashboard/emprestimos','/dashboard/relatorios'].forEach(preloadRoute),1200);
+    return ()=>window.clearTimeout(timer);
+  }, []);
+  useEffect(()=>{document.getElementById('app-content-scroll')?.scrollTo({top:0});},[pathname]);
   // Lock on app open only when the active profile has a PIN AND the "Uso do
   // PIN" setting asks for it on entry ("open"). Switching profiles has its own
   // PIN gate (in the menu and on the Perfis screen), so it must NOT re-trigger
@@ -66,7 +74,7 @@ function DashboardShell() {
                     : "min-h-full min-w-0 px-5 pb-24 lg:pb-36"
               }
             >
-              <Outlet />
+              <Suspense key={`${activeProfile?.id}:${pathname}`} fallback={<div role="status" className="glass mt-5 rounded-3xl p-5 text-glass-sub">Abrindo aba…</div>}><Outlet /></Suspense>
             </div>
           </main>
 

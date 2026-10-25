@@ -1,503 +1,64 @@
-import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
-import { useMemo, useState } from "react";
-import { CalendarDays, Landmark, Pencil, Plus, Trash2, X } from "lucide-react";
-import { toast } from "sonner";
-import { SettingsHeader } from "@/components/app/SettingsHeader";
-import { Switch } from "@/components/ui/switch";
-import { useAppStore } from "@/lib/app-store";
-import { formatCurrency } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import {FINANCING_PAYMENT_METHODS,financingPaymentMethodLabel,type FinancingPaymentMethod} from '@/lib/financing-payment-method';
+import {FinancingMoneyInput} from '@/components/app/FinancingMoneyInput';
+import {moneyFieldValue,parseMoneyField,installmentCounts,reconcileFinancingHistory} from '@/lib/financing-form';
+import {FinancingTimeline} from '@/components/app/FinancingTimeline';
+import {useState} from 'react';
+import {Plus,Search,Pencil,Trash2,Landmark} from 'lucide-react';
+import {toast} from 'sonner';
+import {useAppStore,type AppFinancing} from '@/lib/app-store';
+import {usePrivateCurrency} from '@/components/app/BalancePrivacy';
+import {SettingsHeader} from '@/components/app/SettingsHeader';
+import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import {InlineColorPicker} from '@/components/app/CategoryColorPicker';
+import {ConfirmAction,PlanningMetric} from '@/components/app/PlanningUI';
+import {setFinancingForecast,financingSummary,recordFinancingPayment,reopenFinancingPayment} from '@/lib/financing-plan';
+import {sanitizeDueDate} from '@/lib/transaction-status';
+import {localDateKey} from '@/lib/card-billing';
+import {useLocalDate} from '@/hooks/use-local-date';
+const dateLabel=(d:string)=>d.split('-').reverse().join('/');
+const blank=()=>({variableInstallments:false,name:'',totalAmount:'',installments:'12',paidInstallments:'0',installmentValue:'',dueDay:new Date().getDate(),startDate:localDateKey(),categoryId:'moradia',color:'#2F6BFF',institution:'',contractNote:''});
+type Draft=ReturnType<typeof blank>&{id?:string};
+export default function FinancingsPage(){
+ const {financings,financingsInFlow,setFinancingsInFlow,addFinancing,updateFinancing,deleteFinancing,categories}=useAppStore();
+ const currency=usePrivateCurrency(),today=useLocalDate();
+ const [query,setQuery]=useState(''),[filter,setFilter]=useState('active'),[draft,setDraft]=useState<Draft|null>(null),[removing,setRemoving]=useState<AppFinancing|null>(null),[reopening,setReopening]=useState<AppFinancing|null>(null);
+ const [pay,setPay]=useState<{id:string;date:string;amount:string;paymentMethod:FinancingPaymentMethod|''}|null>(null),[quote,setQuote]=useState<Record<string,string>>({});
+ const [forecast,setForecast]=useState<{id:string;installment:number;amount:string}|null>(null);
+ const counts=draft?installmentCounts(draft.installments,draft.paidInstallments):null;
+ const [pendingSave,setPendingSave]=useState<{commit:()=>void;draft:Draft;paidCount:number;pendingCount:number}|null>(null);
+ const models=financings.map(f=>({f,s:financingSummary(f,today)}));
+ const visible=models.filter(({f,s})=>`${f.name} ${f.institution??''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(filter==='all'||(filter==='done'?!s.next:filter==='overdue'?s.overdue>0:!!s.next))).sort((a,b)=>(a.s.next?.date??'9999').localeCompare(b.s.next?.date??'9999'));
+ function save(){
+  if(!draft)return;
+  const totalAmount=parseMoneyField(draft.totalAmount),installmentValue=parseMoneyField(draft.installmentValue);
+  if(!counts){toast.error('Informe de 1 a 480 parcelas. As parcelas já pagas devem estar entre 0 e o total.');return;}
+  if(!draft.name.trim()||!sanitizeDueDate(draft.startDate)||!Number.isFinite(totalAmount)||totalAmount<=0||totalAmount>1e9||!Number.isFinite(installmentValue)||installmentValue<=0||installmentValue>1e7||!/^#[0-9a-f]{6}$/i.test(draft.color)){toast.error('Confira nome, valores, cor e data.');return;}
+  const {paidInstallments:_,...fields}=draft;
+  const existing=financings.find(f=>f.id===draft.id);
+  const data={...fields,name:draft.name.trim(),dueDay:Number(draft.startDate.slice(8)),totalAmount,installmentValue,installments:counts.installments,currentInstallment:counts.currentInstallment,...(existing?reconcileFinancingHistory(existing,counts.installments,counts.paidCount):{})};
+  const commit=()=>{if(draft.id)updateFinancing(draft.id,data);else addFinancing(data);setDraft(null);setPendingSave(null);toast.success('Financiamento salvo',{duration:1800});};
+  if(existing&&existing.currentInstallment!==counts.currentInstallment){setDraft(null);setPendingSave({commit,draft,paidCount:counts.paidCount,pendingCount:counts.pendingCount});return;}
+  commit();
+ }
 
-const PALETTE = [
-  "#2F6BFF",
-  "#5856D6",
-  "#AF52DE",
-  "#FF2D55",
-  "#FF9500",
-  "#1FBF4F",
-  "#00C7BE",
-  "#0A84FF",
-];
-
-const inputClass =
-  "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
-
-function formatBRL(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
-function formatDate(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "—";
-  const [year, month, day] = date.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-/** Data da i-ésima parcela (1-based) a partir da data da primeira. */
-function dueDateFor(startDate: string, index: number): string {
-  const [year, month, day] = startDate.split("-").map(Number);
-  if (!year || !month || !day) return startDate;
-  const absolute = month - 1 + (index - 1);
-  const y = year + Math.floor(absolute / 12);
-  const m = ((absolute % 12) + 12) % 12;
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(
-    Math.min(day, lastDay),
-  ).padStart(2, "0")}`;
-}
-
-export default function FinancingsPage() {
-  const formatCurrency = usePrivateCurrency();
-  const {
-    financings,
-    financingsInFlow,
-    setFinancingsInFlow,
-    activeProfile,
-    categories,
-    addFinancing,
-    updateFinancing,
-    deleteFinancing,
-  } = useAppStore();
-
-  const [name, setName] = useState("");
-  const [totalCents, setTotalCents] = useState(0);
-  const [installments, setInstallments] = useState(12);
-  const [currentInstallment, setCurrentInstallment] = useState(1);
-  const [installmentCents, setInstallmentCents] = useState(0);
-  const [dueDay, setDueDay] = useState(5);
-  const [startDate, setStartDate] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
-  const [categoryId, setCategoryId] = useState("moradia");
-  const [color, setColor] = useState(PALETTE[0]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  const totalLabel = useMemo(() => formatBRL(totalCents), [totalCents]);
-  const installmentLabel = useMemo(
-    () => formatBRL(installmentCents),
-    [installmentCents],
-  );
-
-  const totalFinanced = financings.reduce((s, f) => s + f.totalAmount, 0);
-  const monthlyTotal = financings
-    .filter((f) => f.currentInstallment <= f.installments)
-    .reduce((s, f) => s + f.installmentValue, 0);
-  const remainingTotal = financings.reduce(
-    (s, f) => s + Math.max(0, f.installments - f.currentInstallment + 1) * f.installmentValue,
-    0,
-  );
-
-  const handleTotal = (value: string) => {
-    const digits = value.replace(/\D/g, "");
-    setTotalCents(digits ? Number(digits) : 0);
-    if (installments > 0) setInstallmentCents(Math.floor(Number(digits || 0) / installments));
-  };
-  const handleInstallments = (value: string) => {
-    const next = Number(value.replace(/\D/g, ""));
-    const clamped = Number.isFinite(next) ? Math.min(480, Math.max(1, next)) : 1;
-    setInstallments(clamped);
-    if (totalCents > 0) setInstallmentCents(Math.floor(totalCents / clamped));
-  };
-
-  const startEdit = (id: string) => {
-    const f = financings.find((x) => x.id === id);
-    if (!f) return;
-    setEditingId(id);
-    setName(f.name);
-    setTotalCents(Math.round(f.totalAmount * 100));
-    setInstallments(f.installments);
-    setCurrentInstallment(f.currentInstallment);
-    setInstallmentCents(Math.round(f.installmentValue * 100));
-    setDueDay(f.dueDay);
-    setStartDate(f.startDate);
-    setCategoryId(f.categoryId ?? "moradia");
-    setColor(f.color);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setName("");
-    setTotalCents(0);
-    setInstallments(12);
-    setCurrentInstallment(1);
-    setInstallmentCents(0);
-    setDueDay(5);
-    setStartDate(new Date().toISOString().slice(0, 10));
-    setCategoryId("moradia");
-    setColor(PALETTE[0]);
-  };
-
-  const handleSave = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast("Dê um nome ao financiamento");
-      return;
-    }
-    if (totalCents <= 0 || installmentCents <= 0) {
-      toast("Informe o valor total e o valor da parcela");
-      return;
-    }
-    const data = {
-      name: trimmed,
-      totalAmount: totalCents / 100,
-      installments,
-      currentInstallment: Math.min(currentInstallment, installments),
-      installmentValue: installmentCents / 100,
-      dueDay,
-      startDate,
-      categoryId: categoryId || undefined,
-      color,
-    };
-    if (editingId) {
-      updateFinancing(editingId, data);
-      toast("Financiamento atualizado");
-    } else {
-      addFinancing(data);
-      toast("Financiamento adicionado");
-    }
-    cancelEdit();
-  };
-
-  return (
-    <div className="space-y-4">
-      <SettingsHeader title="Financiamentos" />
-      <p className="px-1 text-[12px] font-medium text-glass-faint">
-        Parcelas fixas de{" "}
-        <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        carro, casa, faculdade e outros.
-      </p>
-
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="glass rounded-2xl p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-glass-sub">
-            Financiado
-          </p>
-          <p className="amount-tabular mt-1 text-[15px] font-bold text-glass-ink">
-            {formatCurrency(totalFinanced)}
-          </p>
-        </div>
-        <div className="glass rounded-2xl p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-glass-sub">
-            Parcelas/mês
-          </p>
-          <p className="amount-tabular mt-1 text-[15px] font-bold text-[#FF3B30]">
-            {formatCurrency(monthlyTotal)}
-          </p>
-        </div>
-        <div className="glass rounded-2xl p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-glass-sub">
-            Restante
-          </p>
-          <p className="amount-tabular mt-1 text-[15px] font-bold text-[#FF9500]">
-            {formatCurrency(remainingTotal)}
-          </p>
-        </div>
-      </div>
-
-      {/* Toggle: show installments in the flow */}
-      <div className="glass rounded-3xl p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-glass-ink">
-              Mostrar parcelas junto com as transações
-            </p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
-              {financingsInFlow
-                ? "As parcelas aparecem na tela inicial, em Transações e nos Relatórios."
-                : "As parcelas ficam visíveis apenas nesta aba."}
-            </p>
-          </div>
-          <Switch
-            checked={financingsInFlow}
-            onCheckedChange={(v) => {
-              setFinancingsInFlow(v);
-              toast(
-                v
-                  ? "Parcelas integradas ao fluxo"
-                  : "Parcelas só nesta aba",
-              );
-            }}
-            aria-label="Mostrar parcelas junto com as transações"
-          />
-        </div>
-      </div>
-
-      {/* List */}
-      {financings.length === 0 ? (
-        <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-[#2F6BFF]/15">
-            <Landmark className="size-6 text-[#2F6BFF]" />
-          </div>
-          <div>
-            <p className="text-[15px] font-semibold text-glass-ink">
-              Nenhum financiamento ainda
-            </p>
-            <p className="mt-1 text-[13px] text-glass-sub">
-              Adicione seu financiamento para acompanhar parcelas e saldo devedor.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {financings.map((f) => {
-            const done = f.currentInstallment > f.installments;
-            const pct = Math.min(
-              100,
-              Math.round((f.currentInstallment / f.installments) * 100),
-            );
-            const nextDue = dueDateFor(f.startDate, f.currentInstallment + 1);
-            return (
-              <div key={f.id} className="glass rounded-3xl p-4">
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className="flex size-11 shrink-0 items-center justify-center rounded-2xl text-white"
-                    style={{ backgroundColor: f.color }}
-                  >
-                    <Landmark className="size-5" strokeWidth={2.2} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold text-glass-ink">
-                      {f.name}
-                    </p>
-                    <p className="mt-0.5 text-[12.5px] text-glass-sub">
-                      Parcela {Math.min(f.currentInstallment, f.installments)} de{" "}
-                      {f.installments} · {formatCurrency(f.installmentValue)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      aria-label={`Editar ${f.name}`}
-                      onClick={() => startEdit(f.id)}
-                      className="glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-sub transition-transform active:scale-90"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Excluir ${f.name}`}
-                      onClick={() => {
-                        deleteFinancing(f.id);
-                        if (editingId === f.id) cancelEdit();
-                        toast("Financiamento removido");
-                      }}
-                      className="flex size-11 items-center justify-center rounded-full bg-[#FF3B30]/10 text-[#FF3B30] transition-transform active:scale-90"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-black/25">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.max(3, done ? 100 : pct)}%`, backgroundColor: f.color }}
-                  />
-                </div>
-                <div className="mt-1.5 flex items-center justify-between text-[11.5px] text-glass-faint">
-                  <span>{done ? "Quitado 🎉" : `${pct}% pago`}</span>
-                  {!done && (
-                    <span className="flex items-center gap-1">
-                      <CalendarDays className="size-3" />
-                      Próxima em {formatDate(nextDue)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Add / edit form */}
-      <div className="glass rounded-3xl p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-[15px] font-bold text-glass-ink">
-            {editingId ? "Editar financiamento" : "Novo financiamento"}
-          </p>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
-            >
-              <X className="size-3.5" />
-              Cancelar
-            </button>
-          )}
-        </div>
-
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome (ex.: Carro · VW Polo)"
-          maxLength={40}
-          className={cn(inputClass, "mt-3")}
-        />
-
-        <div className="mt-3 text-center">
-          <input
-            inputMode="numeric"
-            value={totalLabel}
-            onChange={(e) => handleTotal(e.target.value)}
-            placeholder="R$ 0,00"
-            aria-label="Valor total financiado"
-            className="w-full bg-transparent text-center text-[32px] font-bold tracking-tight text-[#2F6BFF] outline-none"
-          />
-          <div className="mx-auto mt-1 h-0.5 w-14 rounded-full bg-primary/40" />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-              Parcelas
-            </p>
-            <input
-              inputMode="numeric"
-              value={installments}
-              onChange={(e) => handleInstallments(e.target.value)}
-              className={cn(inputClass, "mt-2")}
-            />
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-              Parcela atual
-            </p>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={installments}
-              value={currentInstallment}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setCurrentInstallment(
-                  Number.isFinite(next)
-                    ? Math.min(installments, Math.max(1, next))
-                    : 1,
-                );
-              }}
-              className={cn(inputClass, "mt-2")}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 text-center">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-            Valor da parcela
-          </p>
-          <input
-            inputMode="numeric"
-            value={installmentLabel}
-            onChange={(e) => {
-              const digits = e.target.value.replace(/\D/g, "");
-              setInstallmentCents(digits ? Number(digits) : 0);
-            }}
-            aria-label="Valor da parcela"
-            className="w-full bg-transparent text-center text-[26px] font-bold tracking-tight text-glass-ink outline-none"
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-              Dia do vencimento
-            </p>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={31}
-              value={dueDay}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setDueDay(
-                  Number.isFinite(next)
-                    ? Math.min(31, Math.max(1, next))
-                    : 1,
-                );
-              }}
-              className={cn(inputClass, "mt-2")}
-            />
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-              Primeira parcela
-            </p>
-            <label className="glass glass-soft mt-2 flex items-center gap-2 rounded-2xl px-3.5 py-3">
-              <CalendarDays className="size-4 shrink-0 text-glass-sub" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
-              />
-            </label>
-          </div>
-        </div>
-
-        <p className="mt-4 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-          Categoria
-        </p>
-        <div className="no-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5">
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCategoryId(c.id)}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                categoryId === c.id
-                  ? "bg-primary/10 text-primary ring-2 ring-primary/40"
-                  : "glass text-glass-sub",
-              )}
-            >
-              <span
-                className="size-2 rounded-full"
-                style={{ backgroundColor: c.color }}
-              />
-              {c.label}
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-4 text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
-          Cor
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2.5">
-          {PALETTE.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={`Cor ${c}`}
-              onClick={() => setColor(c)}
-              className={cn(
-                "size-8 rounded-full transition-transform active:scale-90",
-                color === c &&
-                  "ring-2 ring-glass-ink ring-offset-2 ring-offset-white/60 dark:ring-offset-[#111c3c]",
-              )}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSave}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14.5px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
-        >
-          <Plus className="size-4" />
-          {editingId ? "Salvar alterações" : "Adicionar financiamento"}
-        </button>
-      </div>
-
-      <p className="px-2 text-[12px] leading-relaxed text-glass-faint">
-        O valor da parcela é preenchido automaticamente (total ÷ parcelas), mas
-        pode ser ajustado — financiamentos têm juros, então a parcela final
-        costuma ser maior.
-      </p>
-    </div>
-  );
+ return <div className="planning-page"><SettingsHeader title="Financiamentos"/><p className="planning-muted">Acompanhe contratos, vencimentos e pagamentos. As parcelas futuras usam o valor previsto do contrato.</p>
+ <div className="planning-grid"><PlanningMetric label="Parcelas ainda a pagar" value={currency(models.reduce((n,{s})=>n+s.remaining,0))} tone="red"/><PlanningMetric label="Previsto no mês atual" value={currency(models.reduce((n,{s})=>n+s.rows.filter(p=>p.date.startsWith(today.slice(0,7))).reduce((v,p)=>v+p.amount,0),0))} tone="purple"/><PlanningMetric label="Parcelas vencidas" value={models.reduce((n,{s})=>n+s.overdue,0)} tone="amber"/></div>
+ <div className="planning-notice">“Ainda a pagar” é a soma nominal das parcelas pendentes, incluindo juros previstos. Não é o saldo para quitação antecipada informado pelo banco.</div>
+ <div className="planning-actions"><button className="planning-primary" onClick={()=>setDraft(blank())}><Plus size={17}/>Novo financiamento</button></div>
+ <label className="planning-card flex items-center justify-between gap-3"><span><strong>Integrar às transações</strong><p className="planning-muted">Mostra parcelas até o mês atual, com o mesmo status registrado aqui. Não cadastre a mesma parcela novamente.</p></span><input aria-label="Integrar financiamentos às transações" type="checkbox" checked={financingsInFlow} onChange={e=>setFinancingsInFlow(e.target.checked)}/></label>
+ <label className="flex items-center gap-2"><Search size={18}/><input aria-label="Buscar contrato ou instituição" className="planning-search" placeholder="Buscar contrato ou instituição" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="planning-filters planning-actions">{[['active','Em andamento'],['overdue','Vencidos'],['done','Quitados'],['all','Todos']].map(([v,l])=><button key={v} aria-pressed={filter===v} onClick={()=>setFilter(v)}>{l}</button>)}</div>
+ {!visible.length&&<div className="planning-card planning-muted">Nenhum financiamento neste filtro. Cadastre um contrato ou escolha “Todos”.</div>}
+ {visible.map(({f,s})=><article className="planning-card" key={f.id}><div className="planning-row"><div><h2><Landmark className="inline mr-2" size={20} style={{color:f.color}}/>{f.name}</h2><p className="planning-muted">{f.institution||'Instituição não informada'}</p></div><span className={`planning-badge ${!s.next?'planning-green':s.overdue?'planning-red':'planning-purple'}`}>{!s.next?'Quitado':s.overdue?'Há parcelas vencidas':'Em andamento'}</span></div>
+ <div className="planning-meter"><span style={{width:`${s.percent}%`,background:f.color}}/></div><p className="planning-muted">{s.paidCount} de {f.installments} parcelas pagas · {s.percent}%</p>
+ <FinancingTimeline financing={f} today={today} onAdjust={(installment,amount)=>setForecast({id:f.id,installment,amount:moneyFieldValue(amount)})}/><div className="planning-grid mt-3"><PlanningMetric label="Pago / informado" value={currency(s.paidAmount)} tone="green"/><PlanningMetric label="Ainda a pagar" value={currency(s.remaining)} tone="red"/></div>
+ {s.next&&<p className="mt-3">Parcela {s.next.index}: <strong>{currency(s.next.amount)}</strong> · {s.next.date<today?'Venceu em':'Vence em'} {dateLabel(s.next.date)}</p>}
+ <div className="planning-actions mt-3">{s.next&&<button className="planning-primary" onClick={()=>setPay({id:f.id,date:today,amount:moneyFieldValue(s.next!.amount),paymentMethod:''})}>Registrar pagamento</button>}<div className="flex shrink-0 flex-nowrap items-center gap-2"><button aria-label={`Editar ${f.name}`} onClick={()=>setDraft({...blank(),...f,totalAmount:moneyFieldValue(f.totalAmount),installmentValue:moneyFieldValue(f.installmentValue),installments:String(f.installments),paidInstallments:String(f.currentInstallment-1),variableInstallments:!!f.variableInstallments,institution:f.institution??'',contractNote:f.contractNote??''})}><Pencil size={16}/>Editar</button><button aria-label={`Excluir ${f.name}`} onClick={()=>setRemoving(f)} className="planning-danger"><Trash2 size={16}/></button></div></div>
+ <details><summary>Contrato e cronograma</summary><p className="planning-muted">Valor financiado: {currency(f.totalAmount)} · Total previsto das parcelas: {currency(s.contractTotal)}. Diferença: {currency(s.contractTotal-f.totalAmount)} (pode incluir juros, seguros e tarifas; não é o CET).</p>{f.contractNote&&<p className="planning-notice">{f.contractNote}</p>}<p className="planning-muted">Parcelas pagas sem data de pagamento foram informadas no cadastro. Os registros feitos aqui mostram a data e o valor efetivamente pagos.</p><div className="max-h-72 overflow-auto">{s.rows.map(p=><div className="planning-row" key={p.index}><span>Parcela {p.index}<small className="block">{dateLabel(p.date)}{p.paymentDate?` · Pago em ${dateLabel(p.paymentDate)}`:''}</small>{p.paid&&<small className="block planning-muted">Forma de pagamento: {financingPaymentMethodLabel(p.paymentMethod)}</small>}</span><strong>{currency(p.amount)}</strong><span className={`planning-badge ${p.paid?'planning-green':p.date<today?'planning-red':'planning-purple'}`}>{p.paid?'Paga':p.date<today?'Vencida':'Pendente'}</span></div>)}</div>{s.paidCount>0&&<button className="planning-button mt-3" onClick={()=>setReopening(f)}>Reabrir última parcela paga</button>}</details>
+ <details><summary>Comparar proposta de quitação</summary><p className="planning-muted">Peça ao banco uma proposta atualizada, com validade e todos os encargos. Compare o CET em caso de renegociação. Este cálculo apenas compara os valores informados.</p><label className="planning-form mt-2">Valor da proposta do banco (R$)<FinancingMoneyInput value={quote[f.id]??''} onValueChange={value=>setQuote({...quote,[f.id]:value})}/></label>{quote[f.id]&&parseMoneyField(quote[f.id])>0&&<p className="planning-notice mt-2">Diferença nominal: {currency(s.remaining-parseMoneyField(quote[f.id]))}. {parseMoneyField(quote[f.id])>s.remaining?'A proposta supera as parcelas pendentes. Confira os valores.':'Avalie também a liquidez necessária para suas contas e imprevistos.'} Comparar não quita o contrato.</p>}<a className="planning-link" href="https://www.bcb.gov.br/meubc/faqs/s/liquidacao-antecipada" target="_blank" rel="noreferrer">Orientações do Banco Central</a></details></article>)}
+ <Dialog open={!!draft} onOpenChange={o=>{if(!o)setDraft(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>{draft?.id?'Editar':'Novo'} financiamento</DialogTitle><DialogDescription>Informe os dados do contrato. Escolha parcelas fixas ou variáveis. Ajuste cada mês no cronograma quando receber o boleto; confirme o valor real ao registrar o pagamento.</DialogDescription></DialogHeader>{draft&&<form className="planning-form" onSubmit={e=>{e.preventDefault();save()}}><label>Nome<input required maxLength={60} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label><label>Tipo de parcela<select value={draft.variableInstallments?'variable':'fixed'} onChange={e=>setDraft({...draft,variableInstallments:e.target.value==='variable'})}><option value="fixed">Fixa — mesmo valor previsto</option><option value="variable">Variável — atualizo conforme o banco</option></select></label>{draft.variableInstallments&&<p className="planning-notice">Informe uma parcela-base para os meses ainda desconhecidos. Depois ajuste cada parcela no cronograma. Os valores são estimativas; índices, seguros e juros do contrato não são recalculados automaticamente.</p>}<label>Banco ou instituição<input maxLength={70} value={draft.institution} onChange={e=>setDraft({...draft,institution:e.target.value})}/></label><div className="planning-pair"><label>Valor financiado (R$)<FinancingMoneyInput required value={draft.totalAmount} onValueChange={totalAmount=>setDraft({...draft,totalAmount})}/></label><label>Parcela prevista (R$)<FinancingMoneyInput required value={draft.installmentValue} onValueChange={installmentValue=>setDraft({...draft,installmentValue})}/></label><label>Total de parcelas<input required type="text" inputMode="numeric" pattern="[0-9]+" maxLength={3} placeholder="Ex.: 360" value={draft.installments} onChange={e=>setDraft({...draft,installments:e.target.value.replace(/\D/g,'').replace(/^0+(?=\d)/,'')})}/></label><label>Parcelas já pagas<input required type="text" inputMode="numeric" pattern="[0-9]+" maxLength={3} placeholder="0" value={draft.paidInstallments} onChange={e=>setDraft({...draft,paidInstallments:e.target.value.replace(/\D/g,'').replace(/^0+(?=\d)/,'')})}/><small>Quantidade que você já pagou, começando pela primeira. Deixe 0 se ainda não pagou nenhuma.</small></label></div><p className="planning-notice" role="status">{counts? `Pagas: ${counts.paidCount} · A pagar: ${counts.pendingCount}${counts.pendingCount?` · Próxima: parcela ${counts.currentInstallment}`:' · Contrato quitado'}. As parcelas não são marcadas como pagas apenas porque a data passou.`:'Preencha o total de parcelas e quantas já foram pagas para conferir o resumo.'}</p><label>Vencimento da primeira parcela do contrato<input required type="date" value={draft.startDate} onChange={e=>setDraft({...draft,startDate:e.target.value})}/><small>O dia se repete mensalmente, limitado ao último dia de cada mês.</small></label><label>Categoria<select value={draft.categoryId} onChange={e=>setDraft({...draft,categoryId:e.target.value})}>{categories.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></label><label>Anotações do contrato<textarea maxLength={500} value={draft.contractNote} placeholder="Ex.: número do contrato, CET informado, seguros, índice de correção…" onChange={e=>setDraft({...draft,contractNote:e.target.value})}/></label><InlineColorPicker value={draft.color} onChange={color=>setDraft({...draft,color})}/><button className="planning-button planning-primary" type="submit">Salvar financiamento</button></form>}</DialogContent></Dialog>
+ <Dialog open={!!forecast} onOpenChange={o=>{if(!o)setForecast(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Ajustar parcela {forecast?.installment}</DialogTitle><DialogDescription>Atualiza somente a previsão deste mês, inclusive na análise e nas transações integradas. Não registra pagamento nem altera parcelas já pagas.</DialogDescription></DialogHeader>{forecast&&<form className="planning-form" onSubmit={e=>{e.preventDefault();const f=financings.find(x=>x.id===forecast.id);if(!f)return;const next=setFinancingForecast(f,forecast.installment,parseMoneyField(forecast.amount));if(next===f){toast.error('Informe um valor válido entre R$ 0,01 e R$ 1.000.000.000,00.');return;}updateFinancing(f.id,next);setForecast(null);toast.success('Valor da parcela atualizado',{duration:1800})}}><label>Valor previsto desta parcela (R$)<FinancingMoneyInput required value={forecast.amount} onValueChange={amount=>setForecast({...forecast,amount})}/></label><div className="planning-actions"><button type="button" onClick={()=>{const f=financings.find(x=>x.id===forecast.id);if(f)updateFinancing(f.id,setFinancingForecast(f,forecast.installment,null));setForecast(null)}}>Voltar ao valor-base</button><button type="submit" className="planning-primary">Salvar valor</button></div></form>}</DialogContent></Dialog>
+ <Dialog open={!!pay} onOpenChange={o=>{if(!o)setPay(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Confirmar pagamento da parcela</DialogTitle><DialogDescription>Este registro organiza seu controle. Nenhum pagamento é enviado ao banco.</DialogDescription></DialogHeader>{pay&&<form className="planning-form" onSubmit={e=>{e.preventDefault();const f=financings.find(f=>f.id===pay.id);if(!f||pay.date>today||!sanitizeDueDate(pay.date)||parseMoneyField(pay.amount)<=0)return;const next=recordFinancingPayment(f,pay.date,parseMoneyField(pay.amount),pay.paymentMethod);if(next===f){toast.error('Confira o valor do pagamento.');return;}updateFinancing(f.id,next);setPay(null);toast.success('Parcela registrada',{duration:1800})}}><label>Valor pago (R$)<FinancingMoneyInput required value={pay.amount} onValueChange={amount=>setPay({...pay,amount})}/></label><label>Data do pagamento<input required type="date" max={today} value={pay.date} onChange={e=>setPay({...pay,date:e.target.value})}/></label><label>Forma de pagamento (opcional)<select value={pay.paymentMethod} onChange={e=>setPay({...pay,paymentMethod:e.target.value as FinancingPaymentMethod|''})}><option value="">Não informar</option>{FINANCING_PAYMENT_METHODS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select><small>Fica salva no histórico desta parcela. Você pode confirmar sem preencher.</small></label>{(pay.paymentMethod==='credito'||pay.paymentMethod==='debito')&&<p className="planning-muted">Aqui a forma de pagamento serve apenas para identificar como você pagou. Não cria uma compra nem altera a fatura de um cartão.</p>}<button type="submit" className="planning-button planning-primary">Confirmar registro</button></form>}</DialogContent></Dialog>
+ {pendingSave&&<ConfirmAction title="Alterar parcelas já pagas?" description={`O contrato ficará com ${pendingSave.paidCount} parcelas pagas e ${pendingSave.pendingCount} a pagar. Reduzir essa quantidade reabre as parcelas seguintes e remove seus registros de pagamento, inclusive do fluxo integrado. Isso não movimenta dinheiro no banco.`} action="Confirmar correção" onCancel={()=>{setDraft(pendingSave.draft);setPendingSave(null)}} onConfirm={pendingSave.commit}/>}
+ {removing&&<ConfirmAction title="Excluir financiamento?" description={`Remove ${removing.name}, seu cronograma e suas parcelas integradas. Os lançamentos manuais permanecem. Esta ação não cancela o contrato no banco.`} action="Excluir" onCancel={()=>setRemoving(null)} onConfirm={()=>{deleteFinancing(removing.id);setRemoving(null)}}/>}
+ {reopening&&<ConfirmAction title="Reabrir última parcela?" description="A parcela mais recente voltará a ficar pendente neste controle e no fluxo integrado." action="Reabrir" onCancel={()=>setReopening(null)} onConfirm={()=>{updateFinancing(reopening.id,reopenFinancingPayment(reopening));setReopening(null)}}/>}</div>
 }

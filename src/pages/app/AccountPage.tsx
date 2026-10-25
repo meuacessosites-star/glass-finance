@@ -1,8 +1,13 @@
+import { localDateKey } from "@/lib/card-billing";
+import { inspectBackup } from "@/lib/backup-validation";
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
+import "@/components/app/planning.css";
 import { useRef, useState } from "react";
 import {
   Copy,
   Download,
   FileJson,
+  FileText,
   Link2,
   RefreshCw,
   Share2,
@@ -35,9 +40,12 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[14px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
 
 export default function AccountPage() {
-  const { activeProfile, exportState, importState } = useAppStore();
+  const { activeProfile, profiles, exportState, importState } = useAppStore();
+  const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
+  const [pendingImport,setPendingImport]=useState<{raw:string;profiles:number;transactions:number;names:string}|null>(null);
+  const [lastBackup,setLastBackup]=useState(()=>{try{return localStorage.getItem('granascan:last-backup')??''}catch{return ''}});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleDownload = () => {
@@ -48,12 +56,20 @@ export default function AccountPage() {
     anchor.href = url;
     anchor.download = `granascan-backup-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
-    URL.revokeObjectURL(url);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const stamp=new Date().toLocaleString('pt-BR');setLastBackup(stamp);try{localStorage.setItem('granascan:last-backup',stamp)}catch{}
     toast("Backup exportado", {
-      description: "O arquivo .json foi baixado com todos os seus dados.",
+      description: "Download solicitado. Confira se o arquivo foi salvo no dispositivo.",
     });
   };
 
+  const handlePdf=async()=>{
+    if(!activeProfile||pdfBusy)return;
+    setPdfBusy(true);
+    try{const {downloadAccountPdf}=await import('@/lib/account-pdf');await downloadAccountPdf(activeProfile,localDateKey());toast.success('PDF gerado. Confira o download no dispositivo.',{duration:2400});}
+    catch{toast.error('Não foi possível gerar o PDF. Tente novamente.');}
+    finally{setPdfBusy(false);}
+  };
   const handleGenerateCode = () => {
     const encoded = encodeB64(exportState());
     if (!encoded) {
@@ -80,12 +96,16 @@ export default function AccountPage() {
     if (code.startsWith(CODE_PREFIX)) {
       code = decodeB64(code.slice(CODE_PREFIX.length));
     }
-    const result = importState(code);
+    try {setPendingImport({raw:code,...inspectBackup(code)});} catch(error){toast.error(error instanceof Error?error.message:'Arquivo inválido.');}
+  };
+  const confirmImport=()=>{
+    if(!pendingImport)return;
+    const result = importState(pendingImport.raw);
     if (result.ok) {
       toast("Conta importada com sucesso 🎉", {
         description: "Recarregando seus dados…",
       });
-      setTimeout(() => window.location.reload(), 700);
+      setPendingImport(null);setTimeout(() => window.location.reload(), 700);
     } else {
       toast("Não foi possível importar", {
         description: result.error ?? "Verifique o código ou arquivo.",
@@ -95,7 +115,9 @@ export default function AccountPage() {
 
   const handleFile = (file: File | undefined) => {
     if (!file) return;
+    if(file.size>20_000_000){toast.error("O limite de leitura é 20 MB.");return;}
     const reader = new FileReader();
+    reader.onerror=()=>toast.error("Não foi possível ler o arquivo. Tente novamente.");
     reader.onload = () => doImport(String(reader.result ?? ""));
     reader.readAsText(file);
   };
@@ -106,7 +128,7 @@ export default function AccountPage() {
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Dados de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        exporte, compartilhe e restaure sua conta quando quiser.
+        gerencie os dados salvos neste navegador. O backup inclui os {profiles.length} perfis deste dispositivo.
       </p>
 
       {/* Export */}
@@ -120,8 +142,9 @@ export default function AccountPage() {
               Exportar dados
             </p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-glass-sub">
-              Baixe um arquivo .json com tudo: perfis, transações, pessoas,
-              cartões, reservas, metas, financiamentos e notificações.
+              Baixe os dados locais: perfis, transações, cartões, reservas, metas,
+              financiamentos, empréstimos e notificações. Contatos armazenados apenas
+              no serviço conectado e anexos externos não são copiados por este arquivo.
             </p>
           </div>
         </div>
@@ -133,8 +156,11 @@ export default function AccountPage() {
           <FileJson className="size-4" />
           Baixar backup (.json)
         </button>
+        <button type="button" disabled={pdfBusy||!activeProfile} onClick={()=>void handlePdf()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#7b45b5] py-3 text-[14px] font-semibold text-white disabled:opacity-50"><FileText className="size-4"/>{pdfBusy?'Gerando relatório…':'Baixar relatório (.pdf)'}</button>
+        <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">PDF de {activeProfile?.name}: resumo do mês, transações de todos os períodos, cartões, empréstimos, reservas, metas e cronogramas. Inclui valores completos mesmo com o olhinho fechado, sem PINs ou fotos. É para consulta; somente o JSON permite restaurar os dados.</p>
       </div>
 
+      <p className="planning-notice text-glass-sub">{lastBackup?`Último download solicitado: ${lastBackup}.`:'Você ainda não solicitou um backup neste navegador.'} Guarde o arquivo em um lugar seguro: ele contém informações financeiras e PINs sem criptografia. Limpar os dados do navegador pode apagar seus registros locais.</p>
       {/* Share */}
       <div className="glass rounded-3xl p-4">
         <div className="flex items-center gap-3">
@@ -143,12 +169,12 @@ export default function AccountPage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-semibold text-glass-ink">
-              Compartilhar conta
+              Transferir uma cópia
             </p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-glass-sub">
-              Gere um código com um retrato completo da sua conta. A outra
-              pessoa importa na aba Conta → Importar e passa a usar os mesmos
-              dados.
+              Gere um código com os dados locais de todos os perfis. É uma cópia
+              daquele momento: não mantém dispositivos sincronizados e não concede
+              acesso ao site. O código não é criptografado; compartilhe somente com quem pode ver esses dados.
             </p>
           </div>
         </div>
@@ -179,7 +205,7 @@ export default function AccountPage() {
             >
               <Copy className="size-4" />
               Copiar código
-            </button>
+            </button><button className="planning-button mt-2" onClick={()=>setShareCode('')}>Ocultar código</button>
           </>
         )}
       </div>
@@ -233,7 +259,7 @@ export default function AccountPage() {
           type="file"
           accept="application/json,.json"
           className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])}
+          onChange={(e) => {handleFile(e.target.files?.[0]);e.target.value=""}}
         />
         <button
           type="button"
@@ -249,6 +275,7 @@ export default function AccountPage() {
         A importação substitui os dados deste dispositivo pelos do arquivo ou
         código. Faça um backup antes se quiser manter o que está aqui.
       </p>
+      <Dialog open={!!pendingImport} onOpenChange={o=>{if(!o)setPendingImport(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Revisar importação</DialogTitle><DialogDescription>Isso substitui todos os perfis locais, não apenas o perfil aberto. Não altera permissões de acesso ao site.</DialogDescription></DialogHeader>{pendingImport&&<><p>{pendingImport.profiles} perfil(is) · {pendingImport.transactions} transações</p><p className="break-words">{pendingImport.names}</p><p>Faça um backup dos dados atuais antes de continuar. Essa substituição não pode ser desfeita sem um backup.</p><div className="planning-actions"><button onClick={handleDownload}>Baixar backup atual</button><button onClick={()=>setPendingImport(null)}>Cancelar</button><button className="planning-primary" onClick={confirmImport}>Substituir dados e importar</button></div></>}</DialogContent></Dialog>
     </div>
   );
 }

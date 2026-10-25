@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
@@ -53,6 +54,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   boleto: "Boleto",
   transferencia: "Transferência",
   saldo: "Saldo",
+  debito_automatico: "Débito automático",
+  outro: "Outro",
 };
 
 function getPaymentPresentation(
@@ -137,6 +140,8 @@ export function TransactionRow({
   displayAmount?: number;
   displayInstallment?: number;
 }) {
+  const navigate = useNavigate();
+  const isFinancing = transaction.id.startsWith("fin-");
   const formatCurrency = usePrivateCurrency();
   const { categoryById, cards, loanReceivables, deleteTransaction, undoTransactionDeletion, showCategoryNameOnCard } = useAppStore();
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
@@ -199,6 +204,7 @@ export function TransactionRow({
   // Use o clique da linha: onTap pode executar após o botão de status e
   // deixar os detalhes abertos atrás da confirmação, apesar de stopPropagation.
   const handleRowActivate = () => {
+    if(isFinancing){navigate("/dashboard/financiamentos");return;}
     // Ignore o clique residual após arrastar para preservar o estado do swipe.
     if (Date.now() - lastDragAt.current < 350) return;
     if (searchQuery?.trim()) scrollToSearchResult(searchResultId ?? transaction.id);
@@ -214,6 +220,7 @@ export function TransactionRow({
   };
 
   const handlePaymentAction = () => {
+    if(isFinancing){navigate("/dashboard/financiamentos");return;}
     if (!onPaymentAction) return;
     onPaymentAction();
     closeSwipe();
@@ -222,6 +229,7 @@ export function TransactionRow({
 
   const handleStatusBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if(isFinancing){navigate("/dashboard/financiamentos");return;}
     if (!hasPaymentAction) return;
     setOpen(false);
     setStatusDialogOpen(true);
@@ -234,6 +242,7 @@ export function TransactionRow({
   };
 
   const handleDelete = () => {
+    if(isFinancing){navigate("/dashboard/financiamentos");return;}
     if (isSyntheticLoan) {
       toast.info("Movimentações de empréstimos são gerenciadas em Empréstimos.");
       closeSwipe();
@@ -267,8 +276,8 @@ export function TransactionRow({
     handleDelete();
   };
 
-  const primaryActionLabel = paymentActionLabel ?? "Alterar status";
-  const secondaryActionLabel = isSyntheticLoan ? "Empréstimos" : "Excluir";
+  const primaryActionLabel = isFinancing ? "Ver financiamento" : paymentActionLabel ?? "Alterar status";
+  const secondaryActionLabel = isFinancing ? "Financiamentos" : isSyntheticLoan ? "Empréstimos" : "Excluir";
   const primaryActionClass =
     paymentStatus === "paid"
       ? "bg-[#FF9F0A] text-[#4A2A00]"

@@ -1,3 +1,4 @@
+import { InlineColorPicker } from "@/components/app/CategoryColorPicker";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
@@ -44,7 +45,7 @@ const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
 /** Reads a file, downscales it to max 512px and returns a compact JPEG data URL. */
-function fileToAvatarDataUrl(file: File): Promise<string> {
+export function fileToAvatarDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("read-failed"));
@@ -338,25 +339,7 @@ export function AvatarEditor({
                     style={{ backgroundColor: c }}
                   />
                 ))}
-                <label
-                  title="Cor personalizada"
-                  className="relative size-7 cursor-pointer overflow-hidden rounded-full"
-                  style={{
-                    background:
-                      "conic-gradient(#FF3B30, #FFCC00, #34C759, #00C7BE, #2F6BFF, #AF52DE, #FF3B30)",
-                  }}
-                >
-                  <span className="absolute inset-0 flex items-center justify-center text-[13px] font-bold text-white drop-shadow">
-                    +
-                  </span>
-                  <input
-                    type="color"
-                    value={bg}
-                    onChange={(e) => setBg(e.target.value)}
-                    aria-label="Seletor de cores"
-                    className="absolute inset-0 size-full cursor-pointer opacity-0"
-                  />
-                </label>
+                <InlineColorPicker value={bg} onChange={setBg}/>
               </div>
             </div>
           </div>

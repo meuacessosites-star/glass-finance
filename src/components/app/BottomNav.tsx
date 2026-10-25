@@ -1,3 +1,4 @@
+import { preloadRoute } from '@/lib/route-preload';
 import { useMemo } from "react";
 import {
   ArrowLeftRight,
@@ -106,6 +107,7 @@ function TabButton({
   return (
     <NavLink
       to={tab.to}
+      onPointerEnter={()=>preloadRoute(tab.to)} onFocus={()=>preloadRoute(tab.to)} onTouchStart={()=>preloadRoute(tab.to)}
       aria-label={pendingCount > 0 ? `${tab.label}: ${pendingCount} pendência(s)` : tab.label}
       className={cn(
         "relative flex min-h-11 w-14 flex-col items-center gap-0.5 rounded-2xl py-2 transition-colors duration-200 sm:w-16 sm:gap-1 sm:py-2",
