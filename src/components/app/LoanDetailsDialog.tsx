@@ -8,6 +8,7 @@ import { AttachmentImageViewer } from "./AttachmentImageViewer";
 import { LoanInstallmentHistory } from "./LoanInstallmentHistory";
 import { getLoanHistoryGroup } from "@/lib/loan-history";
 import {
+  MessageCircle,
   CalendarDays,
   CreditCard,
   Download,
@@ -62,6 +63,7 @@ export function LoanDetailsDialog({
   onClose,
   onEdit,
   onReopen,
+  onReminder,
   showActions = true,
 }: {
   item: LoanReceivable;
@@ -73,6 +75,7 @@ export function LoanDetailsDialog({
   onClose: () => void;
   onEdit: () => void;
   onReopen: () => void;
+  onReminder?: () => void;
   showActions?: boolean;
 }) {
   const formatCurrency = usePrivateCurrency();
@@ -121,14 +124,14 @@ export function LoanDetailsDialog({
           </DialogHeader>
           <div className="flex shrink-0 items-center gap-1">
             {showActions && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="flex min-h-10 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[12px] font-semibold text-primary"
-            >
-              <Pencil className="size-3.5" />
-              Editar
-            </button>
+              <button
+                type="button"
+                onClick={onEdit}
+                className="flex min-h-10 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[12px] font-semibold text-primary"
+              >
+                <Pencil className="size-3.5" />
+                Editar
+              </button>
             )}
             <DialogClose asChild>
               <button
@@ -142,6 +145,16 @@ export function LoanDetailsDialog({
           </div>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+          {showActions && onReminder && getLoanOutstandingAmount(item) > 0 && (
+            <button
+              type="button"
+              onClick={onReminder}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600/10 px-3 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+            >
+              <MessageCircle className="size-4" />
+              Preparar lembrete de pagamento
+            </button>
+          )}
           <div>
             <h3 className="break-words text-[17px] font-bold">
               {item.contact}

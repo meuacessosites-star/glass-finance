@@ -1,3 +1,4 @@
+import { LoanReminderDialog } from "@/components/app/LoanReminderDialog";
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { formatCurrency as rawCurrency } from "@/lib/mock-data";
 import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
@@ -15,6 +16,7 @@ import { needsCardLoanInvoice } from "@/lib/card-loans";
 import { CardLoanInvoiceDialog } from "@/components/app/CardLoanInvoiceDialog";
 import { useEffect, useState } from "react";
 import {
+  MessageCircle,
   Banknote,
   CalendarDays,
   Check,
@@ -138,6 +140,7 @@ function LoanRow({
   searchQuery,
   cardName,
   onConfigureCard,
+  onReminder,
   onDetails,
   onReopen,
 }: {
@@ -150,6 +153,7 @@ function LoanRow({
   searchQuery: string;
   cardName?: string;
   onConfigureCard: () => void;
+  onReminder: () => void;
   onDetails: () => void;
   onReopen: () => void;
 }) {
@@ -178,7 +182,7 @@ function LoanRow({
       data-search-result-id={item.id}
       data-search-match-result={searchQuery.trim() ? "true" : undefined}
       className={cn(
-        "relative isolate flex gap-3 rounded-3xl border p-4 shadow-[0_10px_26px_-22px_rgba(20,50,75,0.45)]",
+        "relative isolate grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-3 rounded-3xl border p-4 shadow-[0_10px_26px_-22px_rgba(20,50,75,0.45)]",
         cardThemeFor(item.contact),
       )}
     >
@@ -351,52 +355,61 @@ function LoanRow({
               </p>
             </div>
           )}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/5 pt-3 dark:border-white/10">
+      </div>
+      <div className="loan-row-actions relative z-10 col-span-2 mt-3 flex flex-nowrap items-center justify-between gap-1 border-t border-black/5 pt-3 dark:border-white/10">
+        <button
+          type="button"
+          onClick={paid ? onReopen : needsInvoice ? onConfigureCard : onReceive}
+          aria-label={
+            paid
+              ? `Reabrir registro de ${item.contact}`
+              : needsInvoice
+                ? "Definir cartão e fatura"
+                : `Marcar recebido de ${item.contact}`
+          }
+          className={cn(
+            "pointer-events-auto min-h-11 shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-bold max-[360px]:px-1.5 max-[360px]:text-[10px]",
+            paid
+              ? "bg-[#148d48] text-white"
+              : status === "overdue"
+                ? "bg-[#be252c] text-white"
+                : free
+                  ? "bg-[#247c80]/10 text-[#246b70] dark:text-[#8bd6d9]"
+                  : "bg-[#ffa000] text-[#422c08]",
+          )}
+        >
+          {label}
+        </button>
+        {paid && (
           <button
             type="button"
-            onClick={
-              paid ? onReopen : needsInvoice ? onConfigureCard : onReceive
-            }
-            aria-label={
-              paid
-                ? `Reabrir registro de ${item.contact}`
-                : needsInvoice
-                  ? "Definir cartão e fatura"
-                  : `Marcar recebido de ${item.contact}`
-            }
-            className={cn(
-              "pointer-events-auto min-h-9 rounded-full px-2.5 py-1 text-[11px] font-bold",
-              paid
-                ? "bg-[#148d48] text-white"
-                : status === "overdue"
-                  ? "bg-[#be252c] text-white"
-                  : free
-                    ? "bg-[#247c80]/10 text-[#246b70] dark:text-[#8bd6d9]"
-                    : "bg-[#ffa000] text-[#422c08]",
-            )}
+            onClick={onReopen}
+            className="pointer-events-auto flex min-h-11 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-primary/10 px-2 text-[11px] font-semibold max-[360px]:gap-0.5 max-[360px]:px-1 max-[360px]:text-[10px] sm:px-3 sm:text-[12px] text-primary"
           >
-            {label}
+            <RotateCcw className="size-3.5 shrink-0 max-[360px]:size-3" />
+            Reabrir
           </button>
-          {paid && (
-            <button
-              type="button"
-              onClick={onReopen}
-              className="pointer-events-auto flex min-h-10 items-center gap-1.5 rounded-xl bg-primary/10 px-3 text-[12px] font-semibold text-primary"
-            >
-              <RotateCcw className="size-3.5" />
-              Reabrir
-            </button>
-          )}
-          {!paid && !needsInvoice && (
-            <button
-              type="button"
-              onClick={onReceive}
-              className="pointer-events-auto flex min-h-10 items-center gap-1.5 rounded-xl bg-primary/10 px-3 text-[12px] font-semibold text-primary"
-            >
-              <Check className="size-3.5" /> Marcar recebido
-            </button>
-          )}
-        </div>
+        )}
+        {!paid && remaining > 0 && item.direction === "receber" && (
+          <button
+            type="button"
+            onClick={onReminder}
+            className="pointer-events-auto flex min-h-11 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-emerald-600/10 px-2 text-[11px] font-semibold max-[360px]:gap-0.5 max-[360px]:px-1 max-[360px]:text-[10px] sm:px-3 sm:text-[12px] text-emerald-800 dark:text-emerald-300"
+          >
+            <MessageCircle className="size-3.5 shrink-0 max-[360px]:size-3" />{" "}
+            Lembrete
+          </button>
+        )}
+        {!paid && !needsInvoice && (
+          <button
+            type="button"
+            onClick={onReceive}
+            className="pointer-events-auto flex min-h-11 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-primary/10 px-2 text-[11px] font-semibold max-[360px]:gap-0.5 max-[360px]:px-1 max-[360px]:text-[10px] sm:px-3 sm:text-[12px] text-primary"
+          >
+            <Check className="size-3.5 shrink-0 max-[360px]:size-3" /> Marcar
+            recebido
+          </button>
+        )}
       </div>
     </article>
   );
@@ -420,6 +433,7 @@ export default function LoansPage() {
   const [configuringCard, setConfiguringCard] = useState<LoanReceivable | null>(
     null,
   );
+  const [reminderId, setReminderId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
@@ -457,12 +471,19 @@ export default function LoansPage() {
     receiveFreeLoanPayment,
   } = useAppStore();
   useEffect(() => {
-    const id = (location.state as { receivableId?: string } | null)?.receivableId;
+    const id = (location.state as { receivableId?: string } | null)
+      ?.receivableId;
     if (!id) return;
     const item = loanReceivables.find((row) => row.id === id);
-    if (!item) { toast("O empréstimo não está mais disponível neste perfil"); return; }
+    if (!item) {
+      toast("O empréstimo não está mais disponível neste perfil");
+      return;
+    }
     setTab(item.operationType === "card" ? "cartao" : "dinheiro");
-    setSearch(""); setFilter("all"); setModeFilter("all"); setScope("all");
+    setSearch("");
+    setFilter("all");
+    setModeFilter("all");
+    setScope("all");
     setDetailsId(id);
   }, [location.key]);
   const stored: Row[] = loanReceivables.map((item) => {
@@ -491,6 +512,9 @@ export default function LoansPage() {
     };
   });
   const allRows = stored;
+  const reminderItem = allRows.find(
+    (item) => item.id === reminderId && getLoanOutstandingAmount(item) > 0,
+  );
   const detailsItem = allRows.find((item) => item.id === detailsId);
   const editingItem = allRows.find((item) => item.id === editingId);
   const reopeningItem = allRows.find((item) => item.id === reopeningId);
@@ -610,7 +634,10 @@ export default function LoansPage() {
           >
             <Settings2 className="size-[18px]" />
           </button>
-          <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <BalancePrivacyToggle />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <LoanValueSettings
@@ -905,6 +932,7 @@ export default function LoansPage() {
                   }
                   searchQuery={search}
                   cardName={cards.find((card) => card.id === item.cardId)?.name}
+                  onReminder={() => setReminderId(item.id)}
                   onDetails={() => setDetailsId(item.id)}
                   onReopen={() => setReopeningId(item.id)}
                   onConfigureCard={() => setConfiguringCard(item)}
@@ -935,6 +963,14 @@ export default function LoansPage() {
             )}
         </div>
       )}
+      {reminderItem && (
+        <LoanReminderDialog
+          key={reminderItem.id}
+          item={reminderItem}
+          installments={allRows}
+          onClose={() => setReminderId(null)}
+        />
+      )}
       {detailsItem && (
         <LoanDetailsDialog
           key={detailsItem.id}
@@ -958,6 +994,10 @@ export default function LoansPage() {
           onReopen={() => {
             setDetailsId(null);
             setReopeningId(detailsItem.id);
+          }}
+          onReminder={() => {
+            setDetailsId(null);
+            setReminderId(detailsItem.id);
           }}
           onClose={() => setDetailsId(null)}
         />
@@ -1118,9 +1158,7 @@ export default function LoansPage() {
                     inputMode="decimal"
                     aria-label="Valor recebido do empréstimo"
                     placeholder="R$ 0,00"
-                    value={
-                      receiptCents ? rawCurrency(receiptCents / 100) : ""
-                    }
+                    value={receiptCents ? rawCurrency(receiptCents / 100) : ""}
                     onChange={(event) =>
                       setReceiptCents(
                         Number(event.target.value.replace(/\D/g, "")) || 0,

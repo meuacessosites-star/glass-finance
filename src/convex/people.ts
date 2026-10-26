@@ -24,6 +24,7 @@ export const list = query({
 export const create = mutation({
   args: {
     name: v.string(),
+    nickname: v.optional(v.string()),
     phone: v.optional(v.string()),
     avatarType: v.optional(
       v.union(v.literal("letters"), v.literal("emoji"), v.literal("foto")),
@@ -43,6 +44,7 @@ export const create = mutation({
     return await ctx.db.insert("people", {
       userSubject,
       name,
+      nickname: args.nickname?.trim().slice(0,40) || undefined,
       phone,
       avatarType: args.avatarType,
       avatarValue: args.avatarValue,
@@ -56,6 +58,7 @@ export const update = mutation({
   args: {
     id: v.id("people"),
     name: v.string(),
+    nickname: v.optional(v.string()),
     avatarType: v.optional(v.union(v.literal("letters"),v.literal("emoji"),v.literal("foto"))),
     avatarValue: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
@@ -78,6 +81,7 @@ export const update = mutation({
       ...(args.avatarValue!==undefined?{avatarValue:args.avatarValue}:{}),
       ...(args.avatarColor!==undefined?{avatarColor:args.avatarColor}:{}),
       name,
+      ...(args.nickname!==undefined?{nickname:args.nickname.trim().slice(0,40)||undefined}:{}),
       phone: args.phone?.replace(/\D/g, "") || undefined,
     });
   },

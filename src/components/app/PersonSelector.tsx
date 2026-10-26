@@ -19,6 +19,7 @@ import {
 type PersonRecord = {
   _id: string;
   name: string;
+  nickname?: string;
   phone?: string;
   avatarType?: "letters" | "emoji" | "foto";
   avatarValue?: string;
@@ -54,7 +55,7 @@ export function PersonSelector({
     const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
     if (!normalizedSearch) return people ?? [];
     return (people ?? []).filter((person) =>
-      person.name.toLocaleLowerCase().includes(normalizedSearch),
+      (person.name+' '+(person.nickname??'')).toLocaleLowerCase().includes(normalizedSearch),
     );
   }, [people, searchTerm]);
   const handleOpenChange = (nextOpen: boolean) => {
@@ -186,6 +187,7 @@ export function PersonSelector({
                     />
                     <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-glass-ink">
                       <SearchHighlight query={searchTerm}>{person.name}</SearchHighlight>
+                      {person.nickname&&<small className="block text-xs text-glass-sub"><SearchHighlight query={searchTerm}>{person.nickname}</SearchHighlight></small>}
                     </span>
                     {person._id === value && (
                       <Check className="size-4 shrink-0 text-primary" />

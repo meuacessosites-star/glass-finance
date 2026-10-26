@@ -1,3 +1,4 @@
+import { avatarInk, personAvatarLetters } from "@/lib/person-avatar";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -13,15 +14,6 @@ type PersonAvatarProps = PersonAvatarData & {
   className?: string;
 };
 
-function initials(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "?";
-}
-
 export function PersonAvatar({
   name,
   avatarType = "letters",
@@ -36,7 +28,7 @@ export function PersonAvatar({
     lg: "size-16 text-xl",
   }[size];
 
-  let content: ReactNode = initials(name);
+  let content: ReactNode = personAvatarLetters(name, avatarType === "letters" ? avatarValue : undefined);
   if (avatarType === "emoji") content = avatarValue || "🙂";
   if (avatarType === "foto" && avatarValue) {
     content = (
@@ -55,7 +47,7 @@ export function PersonAvatar({
         sizeClass,
         className,
       )}
-      style={{ backgroundColor }}
+      style={{ backgroundColor, color: avatarInk(backgroundColor) }}
       aria-hidden="true"
     >
       {content}

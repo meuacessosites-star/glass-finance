@@ -1,6 +1,8 @@
-import { InlineColorPicker } from "@/components/app/CategoryColorPicker";
+import { PersonAppearanceEditor } from "@/components/app/PersonAppearanceEditor";
+import { PersonAvatar } from "@/components/app/PersonAvatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { fileToAvatarDataUrl } from "@/components/app/AvatarEditor";
-import { avatarInk } from "@/lib/person-avatar";
+import { customAvatarLetters, firstAvatarEmoji } from "@/lib/person-avatar";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -10,7 +12,6 @@ import {
   Plus,
   Trash2,
   UserRound,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -24,10 +25,8 @@ import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { ConfirmAction,PlanningMetric } from "@/components/app/PlanningUI";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
-import { initials } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
 
-type PersonRecord = {_id:Id<"people">;name:string;phone?:string;avatarType?:"letters"|"emoji"|"foto";avatarValue?:string;avatarColor?:string};
+type PersonRecord = {_id:Id<"people">;name:string;nickname?:string;phone?:string;avatarType?:"letters"|"emoji"|"foto";avatarValue?:string;avatarColor?:string};
 
 const tintFor = (name: string) => {
   const palette = ["#2F6BFF", "#AF52DE", "#1FBF4F", "#FF9500", "#FF2D55", "#00C7BE"];
@@ -59,17 +58,23 @@ export default function PeoplePage() {
   const updatePerson = useMutation(api.people.update);
   const removePerson = useMutation(api.people.remove);
   const [name, setName] = useState("");
+  const [nickname,setNickname]=useState("");
+  const [formOpen,setFormOpen]=useState(false);
   const [phone, setPhone] = useState("");
   const [avatarType,setAvatarType]=useState<"letters"|"emoji"|"foto">("letters");
   const [avatarColor,setAvatarColor]=useState("#2F6BFF");
-  const [avatarValue,setAvatarValue]=useState("");
+  const [letters,setLetters]=useState("");
+  const [emoji,setEmoji]=useState("🙂");
+  const [photo,setPhoto]=useState("");
+  const [hex,setHex]=useState("#2F6BFF");
+  const selectColor=(color:string)=>{setAvatarColor(color);setHex(color.toUpperCase())};
   const [photoBusy,setPhotoBusy]=useState(false);
-  const avatarOptions={avatarType,avatarColor,avatarValue:avatarType==='letters'?'':avatarValue};
+  const avatarOptions={avatarType,avatarColor,avatarValue:avatarType==='letters'?customAvatarLetters(letters):avatarType==='emoji'?firstAvatarEmoji(emoji):photo};
   async function uploadPhoto(file?:File){
     if(!file)return;
     if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>10_000_000){toast.error('Escolha uma foto JPG, PNG ou WebP de até 10 MB.');return;}
     setPhotoBusy(true);
-    try{setAvatarValue(await fileToAvatarDataUrl(file));setAvatarType('foto');}catch{toast.error('Não foi possível abrir a foto. Tente outra imagem.');}finally{setPhotoBusy(false);}
+    try{setPhoto(await fileToAvatarDataUrl(file));setAvatarType('foto');}catch{toast.error('Não foi possível abrir a foto. Tente outra imagem.');}finally{setPhotoBusy(false);}
   }
   const [editingId, setEditingId] = useState<Id<"people"> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,16 +84,16 @@ export default function PeoplePage() {
     const person = people?.find((p) => p._id === id);
     if (!person) return;
     setEditingId(id);
-    setName(person.name);
+    setName(person.name);setNickname(person.nickname??'');
     setPhone(person.phone ?? "");
-    setAvatarType(person.avatarType??'letters');setAvatarColor(person.avatarColor??tintFor(person.name));setAvatarValue(person.avatarValue??'');
-    document.getElementById('person-form')?.scrollIntoView({behavior:'smooth',block:'start'});
+    setAvatarType(person.avatarType??'letters');selectColor(person.avatarColor??tintFor(person.name));
+    setLetters(person.avatarType==='letters'||!person.avatarType?person.avatarValue??'':'');setEmoji(person.avatarType==='emoji'?person.avatarValue||'🙂':'🙂');setPhoto(person.avatarType==='foto'?person.avatarValue??'':'');setFormOpen(true);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setName("");
-    setPhone("");setAvatarType("letters");setAvatarColor("#2F6BFF");setAvatarValue("");
+    setPhone("");setNickname("");setAvatarType("letters");selectColor("#2F6BFF");setLetters("");setEmoji("🙂");setPhoto("");setFormOpen(false);
   };
 
   const handleSave = async () => {
@@ -99,21 +104,24 @@ export default function PeoplePage() {
     }
     if (people?.some(p=>p._id!==editingId && contactKey(p.name)===contactKey(trimmed))) {toast.error("Já existe um contato com esse nome. Use um nome distinto para identificar a pessoa.");return;}
     if (isSaving||photoBusy) return;
-    if(avatarType==='foto'&&!avatarValue){toast.error('Escolha uma foto ou use as iniciais.');return;}
+    if(avatarType==='foto'&&!photo){toast.error('Escolha uma foto ou use as iniciais.');return;}
 
+    if(avatarType==='emoji'&&!firstAvatarEmoji(emoji)){toast.error('Escolha um emoji para o avatar.');return;}
+    if(avatarType!=='foto'&&!/^#[0-9a-f]{6}$/i.test(hex)){toast.error('Complete o código HEX da cor antes de salvar.');return;}
     const digits = phone.replace(/\D/g, "").slice(0, 15);
     setIsSaving(true);
     try {
       if (editingId) {
         await updatePerson({
           ...avatarOptions,
+          nickname:nickname.trim(),
           id: editingId,
           name: trimmed,
           phone: digits || undefined,
         });
         toast("Pessoa atualizada");
       } else {
-        await createPerson({ name: trimmed, phone: digits || undefined, ...avatarOptions });
+        await createPerson({ name: trimmed, nickname:nickname.trim(), phone: digits || undefined, ...avatarOptions });
         toast("Pessoa adicionada");
       }
       cancelEdit();
@@ -164,9 +172,10 @@ export default function PeoplePage() {
       </p>
 
       <div className="planning-grid"><PlanningMetric label="A receber de pessoas" value={money(loanReceivables.reduce((s,r)=>s+getLoanOutstandingAmount(r),0))} tone="amber"/><PlanningMetric label="Recebimentos vencidos" value={loanReceivables.filter(r=>r.dueDate&&r.dueDate<today&&getLoanOutstandingAmount(r)>0).length} tone="red"/></div>
-      <input className="planning-search" aria-label="Buscar pessoa ou telefone" placeholder="Buscar pessoa ou telefone…" value={query} onChange={e=>setQuery(e.target.value)}/>
+      <input className="planning-search" aria-label="Buscar nome, apelido ou telefone" placeholder="Buscar nome, apelido ou telefone…" value={query} onChange={e=>setQuery(e.target.value)}/>
       <div className="planning-actions planning-filters">{[['all','Todas'],['pending','Com valores a receber'],['overdue','Em atraso']].map(([v,label])=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{label}</button>)}</div>
       <p className="planning-muted">Os empréstimos abaixo pertencem ao perfil ativo. A associação usa o nome completo, sem diferenciar maiúsculas; nomes iguais são agrupados. Use nomes distintos para pessoas diferentes. Editar um contato não renomeia empréstimos antigos.</p>
+      <div className="planning-actions"><button className="planning-primary" onClick={()=>{cancelEdit();setFormOpen(true)}}><Plus size={17}/>Adicionar pessoa</button></div>
       {/* List */}
       {people === undefined ? (
         <div className="glass flex flex-col items-center gap-3 rounded-3xl px-6 py-10 text-center">
@@ -193,22 +202,18 @@ export default function PeoplePage() {
         <div className="glass divide-y divide-black/5 rounded-3xl px-4 py-1.5">
           {people.filter(person=>{
             const info=contactLoans(person.name,loanReceivables,today);
-            return (person.name+' '+(person.phone??'')).toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')) && (view==='all'||view==='pending'&&info.outstanding>0||view==='overdue'&&info.overdue>0);
+            return (person.name+' '+(person.nickname??'')+' '+(person.phone??'')).toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')) && (view==='all'||view==='pending'&&info.outstanding>0||view==='overdue'&&info.overdue>0);
           }).map((person) => {
             const info=contactLoans(person.name,loanReceivables,today);
             const wa = waHref(person);
             return (
               <article key={person._id} className="py-3"><div className="flex flex-wrap items-center gap-3">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
-                  style={{ backgroundColor: person.avatarColor??tintFor(person.name),color:avatarInk(person.avatarColor??tintFor(person.name)),overflow:"hidden" }}
-                >
-                  {person.avatarType==='foto'&&person.avatarValue?<img src={person.avatarValue} alt={`Foto de ${person.name}`} className="size-full object-cover"/>:person.avatarType==='emoji'&&person.avatarValue?person.avatarValue:initials(person.name)}
-                </div>
+                <PersonAvatar name={person.name} avatarType={person.avatarType} avatarValue={person.avatarValue} backgroundColor={person.avatarColor??tintFor(person.name)} className="size-11"/>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-semibold text-glass-ink">
                     {person.name}
                   </p>
+                  {person.nickname&&<p className="text-xs text-glass-sub">{person.nickname}</p>}
                   <p className="mt-0.5 flex items-center gap-1 text-[12.5px] text-glass-sub">
                     {person.phone ? (
                       <>
@@ -259,58 +264,29 @@ export default function PeoplePage() {
         </div>
       )}
 
-      {people&&loanReceivables.some(r=>!people.some(p=>contactKey(p.name)===contactKey(r.contact)))&&<section className="planning-card"><h2>Pessoas dos empréstimos sem contato</h2><p className="planning-muted">Os valores já estão incluídos no resumo acima. Cadastre o contato ou abra os empréstimos.</p>{[...new Map(loanReceivables.filter(r=>!people.some(p=>contactKey(p.name)===contactKey(r.contact))).map(r=>[contactKey(r.contact),r.contact])).values()].filter(n=>n.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR'))).map(n=>{const info=contactLoans(n,loanReceivables,today);if(view==='pending'&&info.outstanding===0||view==='overdue'&&!info.overdue)return null;return <div key={n} className="planning-row flex-wrap"><div><strong>{n}</strong><p>A receber: {money(info.outstanding)}</p></div><div className="planning-actions"><button onClick={()=>{cancelEdit();setName(n);document.getElementById('person-form')?.scrollIntoView({behavior:'smooth',block:'center'})}}>Cadastrar contato</button><button onClick={()=>navigate('/dashboard/emprestimos',{state:{receivableId:info.rows[0].id}})}>Ver empréstimo</button></div></div>})}</section>}
-      {/* Add / edit form */}
-      <div id="person-form" className="glass rounded-3xl p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-[15px] font-bold text-glass-ink">
-            {editingId ? "Editar pessoa" : "Adicionar pessoa"}
-          </p>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="flex min-h-11 items-center gap-1 rounded-full bg-black/5 px-3 py-2 text-[12px] font-semibold text-glass-sub transition-colors active:scale-95"
-            >
-              <X className="size-3.5" />
-              Cancelar
-            </button>
-          )}
-        </div>
-
-        <input
-          aria-label="Nome da pessoa"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome (ex.: Ana Paula)"
-          maxLength={40}
-          className={cn(inputClass, "mt-3")}
-        />
-        <input
-          aria-label="Telefone da pessoa"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="WhatsApp ou telefone (ex.: 11 99999-9999)"
-          inputMode="tel"
-          maxLength={20}
-          className={cn(inputClass, "mt-2.5")}
-        />
-
-        <section className="mt-4 space-y-3" aria-label="Aparência da pessoa">
-          <p className="text-sm font-semibold text-glass-ink">Foto ou iniciais</p>
-          <div className="flex items-center gap-3"><div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-xl font-bold" style={{backgroundColor:avatarColor,color:avatarInk(avatarColor)}}>{avatarType==='foto'&&avatarValue?<img src={avatarValue} alt="Prévia da foto" className="size-full object-cover"/>:avatarType==='emoji'?avatarValue:initials(name)||'AB'}</div><div className="planning-actions planning-filters"><button type="button" aria-pressed={avatarType==='letters'} onClick={()=>setAvatarType('letters')}>Iniciais do nome</button><button type="button" aria-pressed={avatarType==='foto'} onClick={()=>{if(avatarType==='emoji')setAvatarValue('');setAvatarType('foto')}}>Foto</button></div></div>
-          {avatarType==='foto'?<><label className="planning-button inline-flex cursor-pointer">{photoBusy?'Preparando foto…':avatarValue?'Trocar foto':'Escolher foto'}<input aria-label="Escolher foto da pessoa" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={photoBusy||isSaving} onChange={e=>{void uploadPhoto(e.target.files?.[0]);e.target.value=''}}/></label><p className="planning-muted">JPG, PNG ou WebP até 10 MB. A imagem é reduzida e exibida em um círculo.</p></>:<><p className="planning-muted">As letras acompanham o nome. Escolha a cor de fundo; a cor das letras se ajusta para facilitar a leitura.</p><InlineColorPicker value={avatarColor} onChange={setAvatarColor}/></>}
-        </section>
-        <button
-          type="button"
-          disabled={isSaving||photoBusy}
-          onClick={() => void handleSave()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14.5px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
-        >
-          <Plus className="size-4" />
-          {editingId ? "Salvar alterações" : "Adicionar pessoa"}
-        </button>
-      </div>
+      {people&&loanReceivables.some(r=>!people.some(p=>contactKey(p.name)===contactKey(r.contact)))&&<section className="planning-card"><h2>Pessoas dos empréstimos sem contato</h2><p className="planning-muted">Os valores já estão incluídos no resumo acima. Cadastre o contato ou abra os empréstimos.</p>{[...new Map(loanReceivables.filter(r=>!people.some(p=>contactKey(p.name)===contactKey(r.contact))).map(r=>[contactKey(r.contact),r.contact])).values()].filter(n=>n.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR'))).map(n=>{const info=contactLoans(n,loanReceivables,today);if(view==='pending'&&info.outstanding===0||view==='overdue'&&!info.overdue)return null;return <div key={n} className="planning-row flex-wrap"><div><strong>{n}</strong><p>A receber: {money(info.outstanding)}</p></div><div className="planning-actions"><button onClick={()=>{cancelEdit();setName(n);setFormOpen(true)}}>Cadastrar contato</button><button onClick={()=>navigate('/dashboard/emprestimos',{state:{receivableId:info.rows[0].id}})}>Ver empréstimo</button></div></div>})}</section>}
+      <Dialog open={formOpen} onOpenChange={open=>{if(!isSaving&&!photoBusy){if(!open)cancelEdit();else setFormOpen(true)}}}>
+        <DialogContent className="planning-dialog flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 text-glass-ink">
+          <DialogHeader className="shrink-0 border-b border-glass-ink/10 px-5 py-4 pr-12">
+            <DialogTitle>{editingId?'Editar pessoa':'Cadastrar nova pessoa'}</DialogTitle>
+            <DialogDescription>Personalize o avatar e os dados do contato. As mudanças só são salvas ao confirmar.</DialogDescription>
+          </DialogHeader>
+          <form id="person-form" className="min-h-0 overflow-y-auto px-5 py-4" onSubmit={e=>{e.preventDefault();void handleSave()}}>
+            <PersonAppearanceEditor name={name} type={avatarType} onType={setAvatarType} letters={letters} onLetters={setLetters} emoji={emoji} onEmoji={setEmoji} photo={photo} color={avatarColor} onColor={selectColor} hex={hex} onHex={v=>{setHex(v);if(/^#[0-9a-f]{6}$/i.test(v))setAvatarColor(v.toUpperCase())}} photoBusy={photoBusy} onPhoto={file=>{void uploadPhoto(file)}}/>
+            <fieldset className="mt-5 space-y-3 border-t border-glass-ink/10 pt-4">
+              <legend className="px-1 text-sm font-semibold">Informações pessoais</legend>
+              <label className="grid gap-1.5 text-sm font-semibold">Nome completo *<input required aria-label="Nome da pessoa" value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Ana Paula" maxLength={40} className={inputClass}/></label>
+              <label className="grid gap-1.5 text-sm font-semibold">Apelido (opcional)<input aria-label="Apelido da pessoa" value={nickname} onChange={e=>setNickname(e.target.value)} maxLength={40} placeholder="Como você chama essa pessoa" className={inputClass}/></label>
+              <label className="grid gap-1.5 text-sm font-semibold">Telefone (opcional)<input aria-label="Telefone da pessoa" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(11) 99999-9999" inputMode="tel" maxLength={20} className={inputClass}/></label>
+              <p className="text-xs text-glass-sub">O nome completo continua identificando os empréstimos. O apelido serve para exibição e busca.</p>
+            </fieldset>
+          </form>
+          <div className="flex shrink-0 gap-3 border-t border-glass-ink/10 px-5 py-4">
+            <button type="button" disabled={isSaving||photoBusy} onClick={cancelEdit} className="min-h-11 flex-1 rounded-xl border border-glass-ink/20 px-3 font-semibold">Cancelar</button>
+            <button type="submit" form="person-form" disabled={isSaving||photoBusy||!name.trim()} className="min-h-11 flex-1 rounded-xl bg-primary px-3 font-semibold text-white disabled:opacity-50">{isSaving?'Salvando…':'Salvar'}</button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <p className="px-2 text-[12px] leading-relaxed text-glass-faint">
         O ícone verde abre o WhatsApp com uma mensagem de cobrança pronta. Se o

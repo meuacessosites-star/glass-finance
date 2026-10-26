@@ -24,3 +24,10 @@
 
 .planning-page .financing-month:disabled{opacity:1;cursor:default}
 @media(max-width:480px){.financing-months{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Keep all financing actions in one row, with an unframed delete icon. */
+.planning-actions.financing-actions{display:flex;flex-wrap:nowrap;gap:6px}
+.financing-actions>button{padding:9px 10px;gap:5px;white-space:nowrap;flex-shrink:0}
+.financing-actions>.planning-primary{flex:0 1 auto;min-width:0}
+.planning-actions.financing-actions>.financing-delete{width:36px;min-width:36px;min-height:44px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+@media(max-width:380px){.financing-actions>button{font-size:12px;padding-inline:8px}.financing-actions{gap:4px}.financing-actions>.financing-delete{width:32px;min-width:32px}}

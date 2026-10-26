@@ -35,6 +35,7 @@ const schema = defineSchema(
     people: defineTable({
       userSubject: v.string(),
       name: v.string(),
+      nickname: v.optional(v.string()),
       phone: v.optional(v.string()),
       avatarType: v.optional(
         v.union(v.literal("letters"), v.literal("emoji"), v.literal("foto")),

@@ -153,3 +153,43 @@ test('every offered financing method has a label and malformed imported values a
  for(const invalid of [null,{},123,'','PIX','unknown'])assert.equal(sanitizeFinancingPaymentMethod(invalid),undefined);
  assert.equal(financingPaymentMethodLabel(),'Não informada');
 });
+
+test('person avatars preserve custom letters and fall back to name initials for old records',async()=>{
+ const {customAvatarLetters,personAvatarLetters}=await import('../src/lib/person-avatar');
+ assert.equal(customAvatarLetters(' j.s 123'),'JS1');assert.equal(customAvatarLetters('a\u0301l!'),'ÁL');
+ assert.equal(personAvatarLetters('Ana Paula'),'AP');assert.equal(personAvatarLetters('Ana Paula','JS'),'JS');assert.equal(personAvatarLetters('',''),'NP');
+});
+test('person emoji selection preserves joined sequences and skin tones',async()=>{
+ const {firstAvatarEmoji}=await import('../src/lib/person-avatar');
+ for(const e of ['👩🏽‍💼','👨‍👩‍👧‍👦','🇧🇷','💙'])assert.equal(firstAvatarEmoji(e+'🌸'),e);
+ assert.equal(firstAvatarEmoji('  '),'');
+});
+
+import {buildLoanReminder,reminderContacts,reminderPhone,reminderWhatsAppUrl} from '../src/lib/loan-reminder';
+const cleanMessage=(text:string)=>text.replace(/\u00a0/g,' ');
+test('loan reminder uses selected installment outstanding and only this operation total',()=>{
+ const part={...loan,id:'part2',loanId:'series',installment:2,installments:4,amount:100,description:'Compra & serviço',receipts:[{id:'r',amount:25,date:'2026-10-01',transactionId:'tx'}]};
+ const rows=[part,{...part,id:'part1',installment:1,status:'paid' as const},{...part,id:'part3',installment:3,receipts:[]},{...part,id:'part4',installment:4,receipts:[]},{...part,id:'other',loanId:'unrelated',amount:999},{...part,id:'card',operationType:'card' as const,amount:999}];
+ const text=cleanMessage(buildLoanReminder(part,rows));
+ assert.match(text,/parcela 2\/4: Compra & serviço/);assert.match(text,/nesta parcela: R\$ 75,00/);assert.match(text,/Vencimento: 10\/10\/2026/);assert.match(text,/deste empréstimo: R\$ 275,00/);assert.equal(text.includes('999'),false);
+ assert.equal(buildLoanReminder({...part,status:'paid'},rows),'');
+});
+test('free reminder uses suggested receipt without inventing installments or dates',()=>{
+ const free={...loan,collectionMode:'open' as const,freePaymentMode:'installments' as const,suggestedPaymentAmount:30,amount:100};
+ const text=cleanMessage(buildLoanReminder(free,[free]));assert.match(text,/este pagamento: R\$ 30,00/);assert.match(text,/Vencimento: a combinar/);assert.match(text,/empréstimo: R\$ 100,00/);assert.equal(text.includes('parcela'),false);
+});
+test('borrowed card reminder sums same purchase with cent precision and no duplicated rows',()=>{
+ const item={...loan,operationType:'card' as const,amount:0.1,dueDate:undefined,createdAt:'2026-10-01'};
+ const text=cleanMessage(buildLoanReminder(item,[item,item,{...item,id:'next',amount:0.2}]));assert.match(text,/desta compra: R\$ 0,30/);assert.match(text,/Vencimento: a combinar/);
+});
+test('reminder recipient matching uses full normalized name, never nickname or substring',()=>{
+ const people=[{name:'  ANA   PAULA ',phone:'1'},{name:'Ana',nickname:'Ana Paula'},{name:'Ana Paula Silva'},{name:'Ana Paula',phone:'2'}];
+ assert.deepEqual(reminderContacts('Ana Paula',people),[people[0],people[3]]);assert.deepEqual(reminderContacts('',people),[]);
+});
+test('WhatsApp reminder validates DDD and preserves international country prefix',()=>{
+ assert.equal(reminderPhone('(11) 99999-8888'),'5511999998888');assert.equal(reminderPhone('+55 11 99999-8888'),'5511999998888');assert.equal(reminderPhone('5511999998888'),'5511999998888');assert.equal(reminderPhone('+1 415 555 2671'),'14155552671');
+ for(const invalid of [undefined,'','99999-8888','WhatsApp 11999998888','0000000000','+55 11 9','javascript:alert(1)'])assert.equal(reminderPhone(invalid),null);
+});
+test('WhatsApp URL carries the edited message exactly and empty messages cannot open it',()=>{
+ const message='Olá, Ana!\nR$ 75,00 & parcela 2/4? #lembrete';const url=reminderWhatsAppUrl('(11) 99999-8888',message);assert.ok(url);assert.equal(new URL(url).origin,'https://wa.me');assert.equal(new URL(url).searchParams.get('text'),message);assert.equal(reminderWhatsAppUrl('',message),null);assert.equal(reminderWhatsAppUrl('11999998888','  '),null);
+});
