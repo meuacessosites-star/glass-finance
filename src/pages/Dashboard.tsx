@@ -16,6 +16,7 @@ import { HomeIndicator } from "@/components/app/StatusBar";
 import { ScrollControls } from "@/components/app/ScrollControls";
 import { DueTodayAlerts } from "@/components/app/DueTodayAlerts";
 import { AppStoreProvider, useAppStore } from "@/lib/app-store";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 /**
@@ -137,8 +138,9 @@ function DashboardShell() {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   return (
-    <AppStoreProvider>
+    <AppStoreProvider key={user?._id ?? "loading"}>
       <BalancePrivacyProvider>
       <NavigationPendingProvider>
       <SidebarProvider>

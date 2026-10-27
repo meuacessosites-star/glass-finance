@@ -34,13 +34,18 @@ Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, an
 
 You must follow these conventions when using authentication.
 
-## Auth is already set up.
+## Authentication and account data
 
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
+Convex Auth supports Google OAuth, email/password (including email verification
+and password reset), and the existing email OTP provider. New signup data starts
+empty; financial snapshots are stored per authenticated user in Convex, not in a
+shared browser store. `src/convex/auth/emailOtp.ts` reads email credentials from
+the backend environment; never add secrets to the repository.
 
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
-
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
+Production configuration and deployment steps are documented in
+[`docs/PRODUCTION_AUTH_AND_SYNC.md`](docs/PRODUCTION_AUTH_AND_SYNC.md). This
+repository change alone does not activate OAuth: the Google OAuth Client ID and
+secret, email-service key, and Convex deployment must be configured and deployed.
 
 ## Using Convex Auth on the backend
 
@@ -270,4 +275,3 @@ When using convex, make sure:
 - This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
 - Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
 - NEVER have return type validators.
-

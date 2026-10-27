@@ -45,6 +45,21 @@ const schema = defineSchema(
       createdAt: v.number(),
     }).index("by_user_subject", ["userSubject"]),
 
+    financeStates: defineTable({
+      userSubject: v.string(),
+      revision: v.number(),
+      chunkCount: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user_subject", ["userSubject"]),
+
+    financeStateChunks: defineTable({
+      userSubject: v.string(),
+      revision: v.number(),
+      chunkIndex: v.number(),
+      payload: v.string(),
+    }).index("by_user_subject", ["userSubject"])
+      .index("by_user_subject_revision", ["userSubject", "revision"]),
+
     // tableName: defineTable({
     //   ...
     //   // table fields

@@ -25,18 +25,22 @@ import { selectTransactionLedgers } from "./transaction-ledgers";
 import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
 import {
   categories as seedCategories,
   currentMonthKey,
-  seedNotifications,
-  transactions as seedTransactions,
   type BankNotification,
   type DraftDisplayMode,
   type LoanOperationType,
@@ -44,9 +48,7 @@ import {
 } from "./mock-data";
 
 // ---------------------------------------------------------------------------
-// GranaScan client store — personalization data (categories, cards, profiles,
-// PIN) persisted to localStorage. The finance numbers themselves remain mock
-// data; this store powers the sidebar management screens.
+// Glass Finance store — account data is synced to Convex after authentication.
 //
 // Isolation: every profile owns its own `data` (categories, cards and PIN).
 // Switching profiles swaps the active data — nothing saved in one profile is
@@ -265,19 +267,12 @@ export type AppStoreState = {
   pinUsage: PinUsage;
 };
 
-const STORAGE_KEY = "granascan.app.v1";
-
-const DEFAULT_CARDS: AppCard[] = [
-  { id: "card-1", name: "Nubank", last4: "4821", color: "#AF52DE" },
-  { id: "card-2", name: "Inter", last4: "9173", color: "#2F6BFF" },
-];
-
 function defaultData(): ProfileData {
   return {
     categories: seedCategories.map((c) => ({ ...c })),
     categoryCatalogVersion: CATEGORY_CATALOG_VERSION,
-    cards: DEFAULT_CARDS.map((c) => ({ ...c })),
-    transactions: seedTransactions.map((t) => ({ ...t })),
+    cards: [],
+    transactions: [],
     loanReceivables: [],
     people: [],
     reserves: [],
@@ -288,7 +283,7 @@ function defaultData(): ProfileData {
     includeBorrowedCardInvoices: false,
     loanValueMode: "uniform",
     categoryLimits: {},
-    notifications: seedNotifications.map((n) => ({ ...n })),
+    notifications: [],
     ignoredNotificationCount: 0,
     ignoredNotificationDate: localDateKey(),
     notificationRetentionDays: 7,
@@ -494,10 +489,9 @@ function sanitizePeople(v: unknown): AppPerson[] {
     .filter((p) => p.name !== "Pessoa" || p.phone.length > 0);
 }
 
-/** Notificações de banco. Quando o campo não existe no storage (migração),
- * semente com as fictícias para o usuário ver o fluxo de aprovação. */
+/** Sanitiza notificações de banco persistidas; nenhum exemplo é criado por padrão. */
 function sanitizeNotifications(v: unknown): AppNotification[] {
-  if (!Array.isArray(v)) return seedNotifications.map((n) => ({ ...n }));
+  if (!Array.isArray(v)) return [];
   return v
     .filter((n): n is Record<string, unknown> => !!n && typeof n === "object" && (n as Record<string, unknown>).status !== "ignored")
     .map((n) => ({
@@ -646,7 +640,7 @@ export function sanitizeLoanReceivables(v: unknown): LoanReceivable[] {
 }
 
 export function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transaction[] {
-  if (!Array.isArray(v)) return seedTransactions.map((t) => ({ ...t }));
+  if (!Array.isArray(v)) return [];
   const list = v
     .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
     .map((t): Transaction => {
@@ -796,13 +790,13 @@ export function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transac
       };
     })
     .filter((t) => t.amount !== 0);
-  return list.length > 0 ? list : seedTransactions.map((t) => ({ ...t }));
+  return list;
 }
 
 /**
  * Builds the profile list from persisted data, migrating the legacy flat shape
  * (top-level categories/cards/pin shared by all profiles) into per-profile
- * `data`. Fresh installs get the default Marina profile with clean defaults.
+ * `data`. Fresh accounts get an empty main profile and no demo transactions.
  */
 function buildProfiles(raw: unknown): AppProfile[] {
   const parsed = (raw ?? {}) as Record<string, unknown>;
@@ -814,7 +808,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
     return [
       {
         id: "profile-1",
-        name: "Marina",
+        name: "Meu perfil",
         avatar: {
           kind: "emoji",
           emoji: "🌿",
@@ -892,12 +886,12 @@ function buildProfiles(raw: unknown): AppProfile[] {
       data: {
         ...expandCategoryCatalog(sharedCategories.map((c) => ({ ...c })), undefined),
         cards: sharedCards.map((c) => ({ ...c })),
-        transactions: seedTransactions.map((t) => ({ ...t })),
+        transactions: [],
         loanReceivables: [],
         people: [],
         reserves: [],
         reservesInBalance: true,
-        notifications: seedNotifications.map((n) => ({ ...n })),
+        notifications: [],
         financings: [],
         financingsInFlow: false,
         showCategoryNameOnCard: true,
@@ -911,10 +905,8 @@ function buildProfiles(raw: unknown): AppProfile[] {
   });
 }
 
-function loadState(): AppStoreState {
+function stateFromSnapshot(parsed: unknown): AppStoreState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
     const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
     const activeProfileId =
       typeof (parsed as Record<string, unknown>)?.activeProfileId === "string" &&
@@ -931,29 +923,28 @@ function loadState(): AppStoreState {
           : "open",
     };
   } catch {
-    return {
-      profiles: [
-        {
-          id: "profile-1",
-          name: "Marina",
-          avatar: {
-            kind: "emoji",
-            emoji: "🌿",
-            image: null,
-            bg: DEFAULT_AVATAR_BG,
-            crop: { scale: 1, panX: 0, panY: 0 },
-          },
-          data: defaultData(),
-        },
-      ],
-      activeProfileId: "profile-1",
-      pinUsage: "open",
-    };
+    return createInitialState();
   }
+}
+
+function createInitialState(): AppStoreState {
+  const profiles = buildProfiles(null).map((profile) => ({
+    ...profile,
+    data: maintainNotificationHistory(profile.data),
+  }));
+  return {
+    profiles,
+    activeProfileId: profiles[0].id,
+    exampleDataVersion: 0,
+    pinUsage: "open",
+  };
 }
 
 type AppStoreValue = {
   profiles: AppProfile[];
+  cloudSyncStatus: "loading" | "synced" | "saving" | "error" | "conflict";
+  retryCloudSync: () => void;
+  deleteCloudData: () => Promise<void>;
   activeProfileId: string;
   pinUsage: PinUsage;
   activeProfile: AppProfile | undefined;
@@ -1172,7 +1163,162 @@ type AppStoreValue = {
 const AppStoreContext = createContext<AppStoreValue | null>(null);
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(loadState()));
+  const { isLoading: authLoading, isAuthenticated, user } = useAuth();
+  const userId = user?._id ? String(user._id) : null;
+  const cloudSnapshot = useQuery(
+    api.financeState.getMine,
+    !authLoading && isAuthenticated ? {} : "skip",
+  );
+  const saveMine = useMutation(api.financeState.saveMine);
+  const deleteMine = useMutation(api.financeState.deleteMine);
+  const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(createInitialState()));
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>("loading");
+  const hydratedUserRef = useRef<string | null>(null);
+  const revisionRef = useRef(0);
+  const lastSyncedPayloadRef = useRef("");
+  const latestStateRef = useRef(state);
+  const pendingPayloadRef = useRef<string | null>(null);
+  const inFlightPayloadRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef(false);
+  const localDirtyRef = useRef(false);
+  const conflictRef = useRef(false);
+
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !userId || cloudSnapshot === undefined) return;
+    if (hydratedUserRef.current === userId) return;
+    hydratedUserRef.current = userId;
+    revisionRef.current = cloudSnapshot?.revision ?? 0;
+    lastSyncedPayloadRef.current = cloudSnapshot?.payload ?? "";
+    localDirtyRef.current = false;
+    conflictRef.current = false;
+    const nextState = cloudSnapshot?.payload
+      ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
+      : createInitialState();
+    // Hydration is an intentional one-time replacement after the user-scoped
+    // Convex query resolves; no local browser data is imported into the account.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState(startPaymentNoticeSession(nextState));
+    setCloudSyncStatus("synced");
+    setCloudReady(true);
+  }, [authLoading, isAuthenticated, userId, cloudSnapshot]);
+
+  useEffect(() => {
+    if (!cloudReady || !cloudSnapshot || cloudSnapshot.revision <= revisionRef.current) return;
+    if (cloudSnapshot.payload === lastSyncedPayloadRef.current) {
+      revisionRef.current = cloudSnapshot.revision;
+      return;
+    }
+    if (cloudSnapshot.payload === inFlightPayloadRef.current) {
+      revisionRef.current = cloudSnapshot.revision;
+      lastSyncedPayloadRef.current = cloudSnapshot.payload;
+      return;
+    }
+    if (localDirtyRef.current || saveInFlightRef.current) {
+      conflictRef.current = true;
+      pendingPayloadRef.current = null;
+      setCloudSyncStatus("conflict");
+      toast.error("Os dados mudaram em outro dispositivo. Esta sessão não sobrescreveu a versão remota; exporte um backup antes de recarregar.");
+      return;
+    }
+    revisionRef.current = cloudSnapshot.revision;
+    lastSyncedPayloadRef.current = cloudSnapshot.payload;
+    // A atualização remota só substitui o estado quando esta sessão não tem
+    // nenhuma alteração local pendente.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState(startPaymentNoticeSession(stateFromSnapshot(JSON.parse(cloudSnapshot.payload))));
+    setCloudSyncStatus("synced");
+  }, [cloudReady, cloudSnapshot]);
+
+  const drainSaveQueue = useCallback(async () => {
+    if (saveInFlightRef.current || conflictRef.current) return;
+    saveInFlightRef.current = true;
+    try {
+      while (pendingPayloadRef.current && !conflictRef.current) {
+        const payload = pendingPayloadRef.current;
+        pendingPayloadRef.current = null;
+        inFlightPayloadRef.current = payload;
+        setCloudSyncStatus("saving");
+        try {
+          const result = await saveMine({ payload, expectedRevision: revisionRef.current });
+          if (!result.ok) {
+            conflictRef.current = true;
+            localDirtyRef.current = true;
+            setCloudSyncStatus("conflict");
+            toast.error("Outra sessão salvou dados mais recentes. Nenhum dado remoto foi sobrescrito; exporte um backup antes de atualizar esta página.");
+            break;
+          }
+          revisionRef.current = result.revision;
+          lastSyncedPayloadRef.current = payload;
+          const latestPayload = JSON.stringify(latestStateRef.current);
+          localDirtyRef.current = latestPayload !== payload;
+          if (localDirtyRef.current) pendingPayloadRef.current = latestPayload;
+          else setCloudSyncStatus("synced");
+        } catch {
+          pendingPayloadRef.current = payload;
+          localDirtyRef.current = true;
+          setCloudSyncStatus("error");
+          toast.error("A sincronização não foi confirmada. Seus dados continuam nesta sessão; use ‘Tentar sincronizar’ antes de sair.");
+          break;
+        } finally {
+          inFlightPayloadRef.current = null;
+        }
+      }
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  }, [saveMine]);
+
+  useEffect(() => {
+    if (!cloudReady || !userId || conflictRef.current) return;
+    const payload = JSON.stringify(state);
+    if (payload === lastSyncedPayloadRef.current) {
+      localDirtyRef.current = false;
+      setCloudSyncStatus("synced");
+      return;
+    }
+    localDirtyRef.current = true;
+    pendingPayloadRef.current = payload;
+    const timer = window.setTimeout(() => void drainSaveQueue(), 350);
+    return () => window.clearTimeout(timer);
+  }, [state, cloudReady, userId, drainSaveQueue]);
+
+  const retryCloudSync = useCallback(() => {
+    if (conflictRef.current) {
+      toast.error("Há uma alteração concorrente. Exporte seus dados e recarregue antes de continuar.");
+      return;
+    }
+    if (!pendingPayloadRef.current) pendingPayloadRef.current = JSON.stringify(latestStateRef.current);
+    void drainSaveQueue();
+  }, [drainSaveQueue]);
+
+  const deleteCloudData = useCallback(async () => {
+    conflictRef.current = true;
+    pendingPayloadRef.current = null;
+    while (saveInFlightRef.current) {
+      await new Promise((resolve) => window.setTimeout(resolve, 25));
+    }
+    try {
+      await deleteMine({});
+    } catch (error) {
+      conflictRef.current = false;
+      pendingPayloadRef.current = JSON.stringify(latestStateRef.current);
+      localDirtyRef.current = true;
+      setCloudSyncStatus("error");
+      throw error;
+    }
+    revisionRef.current = 0;
+    lastSyncedPayloadRef.current = "";
+    pendingPayloadRef.current = null;
+    localDirtyRef.current = false;
+    conflictRef.current = false;
+    setState(startPaymentNoticeSession(createInitialState()));
+    setCloudSyncStatus("synced");
+  }, [deleteMine]);
 
   useEffect(() => {
     const reopen = (event: PageTransitionEvent) => { if (event.persisted) setState((current) => startPaymentNoticeSession(current)); };
@@ -1188,15 +1334,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     document.addEventListener("visibilitychange", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, []);
-
-  // Persist on every change (try/catch so blocked localStorage never crashes).
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // storage unavailable — keep in-memory state only
-    }
-  }, [state]);
 
   const value = useMemo<AppStoreValue>(() => {
     const active =
@@ -1248,6 +1385,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     return {
       profiles: state.profiles,
+      cloudSyncStatus,
+      retryCloudSync,
+      deleteCloudData,
       activeProfileId: state.activeProfileId,
       pinUsage: state.pinUsage,
       activeProfile: active,
@@ -1467,11 +1607,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 : profiles[0].id,
             pinUsage: p.pinUsage === "switch" ? "switch" : "open",
           };
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-          } catch {
-            return {ok:false,error:"Não há espaço ou permissão para salvar neste navegador. Seus dados atuais foram mantidos. Exporte um backup antes de liberar espaço."};
-          }
           setState(next);
           return { ok: true };
         } catch {
@@ -1589,7 +1724,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
-  }, [state]);
+  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData]);
+
+  if (!cloudReady) {
+    return (
+      <div role="status" className="flex min-h-[100dvh] items-center justify-center bg-[#e8eefb] px-6 text-center text-sm font-semibold text-slate-700 dark:bg-[#0a1122] dark:text-slate-200">
+        Conectando à sua conta e carregando dados sincronizados…
+      </div>
+    );
+  }
 
   return (
     <AppStoreContext.Provider value={value}>
