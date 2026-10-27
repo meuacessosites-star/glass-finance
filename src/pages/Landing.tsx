@@ -75,53 +75,25 @@ function MiniPhone() {
         {/* greeting */}
         <div className="mt-2 flex items-center justify-between">
           <div>
-            <p className="text-[9px] text-slate-600">Bem-vinda de volta</p>
-            <p className="text-[13px] font-bold text-slate-900">Olá, Marina 👋</p>
+            <p className="text-[9px] text-slate-600">Sua conta começa limpa</p>
+            <p className="text-[13px] font-bold text-slate-900">Olá, você 👋</p>
           </div>
           <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-[10px] font-bold text-white">
-            MC
+            GF
           </div>
         </div>
 
         {/* balance card */}
         <div className="glass glass-strong relative mt-3 overflow-hidden rounded-[1.6rem] p-4">
           <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#5b9dff]/25 blur-2xl" />
-          <p className="text-[10px] font-medium text-slate-600">Saldo atual</p>
-          <p className="amount-tabular mt-1 text-[26px] font-bold text-slate-900">
-            {formatCurrency(13120.35)}
-          </p>
-          <div className="mt-3 flex gap-5 border-t border-white/40 pt-2.5">
-            <span className="flex items-center gap-1 text-[10px] font-bold text-[#1FBF4F]">
-              <TrendingUp className="size-3" /> +{formatCurrency(8000)}
-            </span>
-            <span className="flex items-center gap-1 text-[10px] font-bold text-[#FF3B30]">
-              <TrendingDown className="size-3" /> −{formatCurrency(3279.65)}
-            </span>
-          </div>
+          <p className="text-[10px] font-medium text-slate-600">Saldo da sua conta</p>
+          <p className="mt-1 text-[16px] font-semibold text-slate-500">Calculado com seus lançamentos</p>
+          <p className="mt-3 border-t border-white/40 pt-2.5 text-[10px] leading-relaxed text-slate-600">Nenhum valor de exemplo será adicionado à sua conta.</p>
         </div>
 
         {/* transactions */}
         <p className="mb-1 mt-4 text-[11px] font-bold text-slate-900">Transações recentes</p>
-        <div className="glass divide-y divide-black/5 rounded-[1.4rem] px-3 py-1">
-          {[
-            { t: "iFood · Burguer", c: "#FF9F0A", v: "−R$ 67,80", g: false },
-            { t: "Salário", c: "#34C759", v: "+R$ 6.800,00", g: true },
-            { t: "Uber · Centro", c: "#0A84FF", v: "−R$ 24,50", g: false },
-          ].map((row) => (
-            <div key={row.t} className="flex items-center gap-2.5 py-2.5">
-              <div
-                className="flex size-8 shrink-0 items-center justify-center rounded-xl"
-                style={{ backgroundColor: `${row.c}1f` }}
-              >
-                <span className="size-3 rounded-full" style={{ backgroundColor: row.c }} />
-              </div>
-              <p className="flex-1 truncate text-[11px] font-semibold text-slate-900">{row.t}</p>
-              <p className={cn("amount-tabular text-[11px] font-bold", row.g ? "text-[#1FBF4F]" : "text-slate-900")}>
-                {row.v}
-              </p>
-            </div>
-          ))}
-        </div>
+        <div className="glass rounded-[1.4rem] px-3 py-5 text-center text-[11px] text-slate-600">Seus lançamentos reais aparecerão aqui.</div>
       </div>
 
       {/* mini bottom nav */}
@@ -206,15 +178,16 @@ const showcaseRows = [
 function ShowcaseScreen({ tab }: { tab: ShowcaseTab }) {
   return (
     <div className="no-scrollbar h-[390px] overflow-hidden overflow-y-auto px-5 py-6 sm:h-[440px]">
+      <p className="mb-3 rounded-lg bg-slate-900/5 px-3 py-2 text-center text-[9px] font-medium leading-relaxed text-slate-600">Prévia visual ilustrativa. Exemplos e valores não são salvos na sua conta.</p>
       {tab === "inicio" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-slate-600">Bem-vinda de volta</p>
-              <p className="text-[16px] font-bold text-slate-900">Olá, Marina 👋</p>
+              <p className="text-[10px] text-slate-600">Sua conta</p>
+              <p className="text-[16px] font-bold text-slate-900">Olá, você 👋</p>
             </div>
             <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-[11px] font-bold text-white">
-              MC
+              GF
             </div>
           </div>
           <div className="glass glass-strong relative overflow-hidden rounded-[1.8rem] p-4">

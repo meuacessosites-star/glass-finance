@@ -40,7 +40,7 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[14px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
 
 export default function AccountPage() {
-  const { activeProfile, profiles, exportState, importState } = useAppStore();
+  const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
@@ -57,11 +57,33 @@ export default function AccountPage() {
     anchor.download = `granascan-backup-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
-    const stamp=new Date().toLocaleString('pt-BR');setLastBackup(stamp);try{localStorage.setItem('granascan:last-backup',stamp)}catch{}
+    const stamp = new Date().toLocaleString("pt-BR");
+    setLastBackup(stamp);
     toast("Backup exportado", {
       description: "Download solicitado. Confira se o arquivo foi salvo no dispositivo.",
     });
   };
+
+  const handleDeleteCloudData = async () => {
+    const confirmed = window.confirm(
+      "Apagar permanentemente da nuvem todos os perfis, transações, cartões, empréstimos, anexos e demais dados financeiros desta conta? Essa ação não apaga a conta de login e não pode ser desfeita sem um backup.",
+    );
+    if (!confirmed) return;
+    try {
+      await deleteCloudData();
+      toast.success("Dados financeiros apagados da nuvem.");
+    } catch {
+      toast.error("Não foi possível apagar os dados remotos. Tente novamente.");
+    }
+  };
+
+  const syncMessage = {
+    loading: "Conectando à nuvem…",
+    synced: "Dados sincronizados com sua conta.",
+    saving: "Salvando alterações na nuvem…",
+    error: "Há alterações ainda não confirmadas na nuvem.",
+    conflict: "Detectamos outra sessão com alterações. Esta versão não foi sobrescrita.",
+  }[cloudSyncStatus];
 
   const handlePdf=async()=>{
     if(!activeProfile||pdfBusy)return;
@@ -128,8 +150,12 @@ export default function AccountPage() {
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Dados de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
-        gerencie os dados salvos neste navegador. O backup inclui os {profiles.length} perfis deste dispositivo.
+        o backup inclui os {profiles.length} perfis desta conta.
       </p>
+      <div role="status" className="glass rounded-2xl p-4">
+        <p className="text-sm font-semibold text-glass-ink">{syncMessage}</p>
+        {(cloudSyncStatus === "error" || cloudSyncStatus === "conflict") && <button type="button" onClick={retryCloudSync} className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white">Tentar sincronizar</button>}
+      </div>
 
       {/* Export */}
       <div className="glass rounded-3xl p-4">
@@ -142,7 +168,7 @@ export default function AccountPage() {
               Exportar dados
             </p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-glass-sub">
-              Baixe os dados locais: perfis, transações, cartões, reservas, metas,
+              Baixe os dados desta conta: perfis, transações, cartões, reservas, metas,
               financiamentos, empréstimos e notificações. Contatos armazenados apenas
               no serviço conectado e anexos externos não são copiados por este arquivo.
             </p>
@@ -160,7 +186,7 @@ export default function AccountPage() {
         <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">PDF de {activeProfile?.name}: resumo do mês, transações de todos os períodos, cartões, empréstimos, reservas, metas e cronogramas. Inclui valores completos mesmo com o olhinho fechado, sem PINs ou fotos. É para consulta; somente o JSON permite restaurar os dados.</p>
       </div>
 
-      <p className="planning-notice text-glass-sub">{lastBackup?`Último download solicitado: ${lastBackup}.`:'Você ainda não solicitou um backup neste navegador.'} Guarde o arquivo em um lugar seguro: ele contém informações financeiras e PINs sem criptografia. Limpar os dados do navegador pode apagar seus registros locais.</p>
+      <p className="planning-notice text-glass-sub">{lastBackup?`Último download solicitado: ${lastBackup}.`:'Você ainda não solicitou um backup neste navegador.'} Guarde o arquivo em um lugar seguro: ele contém informações financeiras e PINs sem criptografia. O backup exportado é uma cópia adicional dos dados sincronizados na nuvem.</p>
       {/* Share */}
       <div className="glass rounded-3xl p-4">
         <div className="flex items-center gap-3">
@@ -222,7 +248,7 @@ export default function AccountPage() {
             </p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-glass-sub">
               Cole um código de compartilhamento ou envie um backup .json. Os
-              dados locais serão substituídos pelos importados.
+              dados desta conta serão substituídos pelos importados.
             </p>
           </div>
         </div>
@@ -272,10 +298,15 @@ export default function AccountPage() {
       </div>
 
       <p className="px-2 text-[12px] leading-relaxed text-glass-faint">
-        A importação substitui os dados deste dispositivo pelos do arquivo ou
-        código. Faça um backup antes se quiser manter o que está aqui.
+        A importação substitui os dados desta conta pelos do arquivo ou código.
+        Faça um backup antes se quiser preservar o que está salvo.
       </p>
-      <Dialog open={!!pendingImport} onOpenChange={o=>{if(!o)setPendingImport(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Revisar importação</DialogTitle><DialogDescription>Isso substitui todos os perfis locais, não apenas o perfil aberto. Não altera permissões de acesso ao site.</DialogDescription></DialogHeader>{pendingImport&&<><p>{pendingImport.profiles} perfil(is) · {pendingImport.transactions} transações</p><p className="break-words">{pendingImport.names}</p><p>Faça um backup dos dados atuais antes de continuar. Essa substituição não pode ser desfeita sem um backup.</p><div className="planning-actions"><button onClick={handleDownload}>Baixar backup atual</button><button onClick={()=>setPendingImport(null)}>Cancelar</button><button className="planning-primary" onClick={confirmImport}>Substituir dados e importar</button></div></>}</DialogContent></Dialog>
+      <div className="glass rounded-3xl border border-red-500/20 p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Excluir dados financeiros da nuvem</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">Apaga perfis, lançamentos, cartões, anexos e contatos financeiros vinculados a esta conta. A conta de login não é excluída.</p>
+        <button type="button" onClick={() => void handleDeleteCloudData()} className="mt-3 w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-500/10 dark:text-red-300">Apagar todos os dados da nuvem</button>
+      </div>
+      <Dialog open={!!pendingImport} onOpenChange={o=>{if(!o)setPendingImport(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Revisar importação</DialogTitle><DialogDescription>Isso substitui todos os perfis sincronizados da conta, não apenas o perfil aberto. Não altera permissões de acesso ao site.</DialogDescription></DialogHeader>{pendingImport&&<><p>{pendingImport.profiles} perfil(is) · {pendingImport.transactions} transações</p><p className="break-words">{pendingImport.names}</p><p>Faça um backup dos dados atuais antes de continuar. Essa substituição não pode ser desfeita sem um backup.</p><div className="planning-actions"><button onClick={handleDownload}>Baixar backup atual</button><button onClick={()=>setPendingImport(null)}>Cancelar</button><button className="planning-primary" onClick={confirmImport}>Substituir dados e importar</button></div></>}</DialogContent></Dialog>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { localDateKey } from "./card-billing";
 import { additionalCategories } from "./category-catalog";
+import { fromCents, sumCents, toCents } from "./money";
 // ---------------------------------------------------------------------------
-// Fictional finance data used to illustrate the UI. No real database yet.
+// Fictional examples for illustrations/tests; not loaded into new user accounts.
 // ---------------------------------------------------------------------------
 
 export type Category = {
@@ -248,12 +249,18 @@ export const openingBalance = 8400; // saldo no início de agosto
 // Helpers
 // ---------------------------------------------------------------------------
 export function formatCurrency(value: number, withSign = false): string {
+  let cents: number;
+  try {
+    cents = toCents(value);
+  } catch {
+    return "—";
+  }
   const formatted = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Math.abs(value));
+  }).format(fromCents(Math.abs(cents)));
   if (!withSign) return formatted;
-  return value < 0 ? `- ${formatted}` : `+ ${formatted}`;
+  return cents < 0 ? `- ${formatted}` : `+ ${formatted}`;
 }
 
 const MONTHS = [
@@ -317,12 +324,12 @@ export function initials(name: string): string {
 
 export function monthTotals(list: Transaction[], key: string) {
   const filtered = list.filter((t) => monthKey(t.date) === key);
-  const income = filtered
-    .filter((t) => t.amount > 0)
-    .reduce((sum, t) => sum + t.amount, 0);
-  const expense = filtered
-    .filter((t) => t.amount < 0)
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const income = fromCents(
+    sumCents(filtered.filter((t) => t.amount > 0).map((t) => t.amount)),
+  );
+  const expense = fromCents(
+    sumCents(filtered.filter((t) => t.amount < 0).map((t) => Math.abs(t.amount))),
+  );
   return { income, expense, list: filtered };
 }
 

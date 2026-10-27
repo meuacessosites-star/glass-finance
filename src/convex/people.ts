@@ -41,15 +41,16 @@ export const create = mutation({
     const userSubject = await getUserSubject(ctx);
     const phone = args.phone?.replace(/\D/g, "") || undefined;
 
+    const nickname = args.nickname?.trim().slice(0, 40);
     return await ctx.db.insert("people", {
       userSubject,
       name,
-      nickname: args.nickname?.trim().slice(0,40) || undefined,
-      phone,
-      avatarType: args.avatarType,
-      avatarValue: args.avatarValue,
-      avatarColor: args.avatarColor,
       createdAt: Date.now(),
+      ...(nickname ? { nickname } : {}),
+      ...(phone ? { phone } : {}),
+      ...(args.avatarType ? { avatarType: args.avatarType } : {}),
+      ...(args.avatarValue ? { avatarValue: args.avatarValue } : {}),
+      ...(args.avatarColor ? { avatarColor: args.avatarColor } : {}),
     });
   },
 });
