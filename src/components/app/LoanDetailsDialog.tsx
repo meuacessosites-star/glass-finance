@@ -27,7 +27,6 @@ import {
   getLoanRepaymentStatus,
   isFreeLoan,
 } from "@/lib/loan-repayments";
-import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import {
   Dialog,

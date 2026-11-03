@@ -88,8 +88,9 @@ const profile = (patch: Partial<ProfileData> = {}): ProfileData => ({
 let counter = 0;
 const uid = (prefix: string) => `${prefix}-${++counter}`;
 const input = (patch: Partial<Transaction> = {}): Omit<Transaction, "id"> => {
-  const { id, ...row } = tx("draft", -60, patch);
-  return row;
+  const row = tx("draft", -60, patch);
+  delete (row as Partial<Transaction>).id;
+  return row as Omit<Transaction, "id">;
 };
 const loanInput = (
   patch: Partial<LoanCreationInput> = {},

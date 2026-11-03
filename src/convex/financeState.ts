@@ -1,16 +1,15 @@
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { getAuthenticatedUserSubject } from "./auth/identity";
 
 // Chunk each string well below Convex's per-document size limit while permitting
 // compressed receipt images and the rest of the account's JSON state.
 const CHUNK_CHARACTERS = 150_000;
 const MAX_PAYLOAD_BYTES = 12_000_000;
 
-async function getUserSubject(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Autenticação necessária para acessar os dados financeiros");
-  return identity.subject;
+async function getUserSubject(ctx: Parameters<typeof getAuthenticatedUserSubject>[0]) {
+  return getAuthenticatedUserSubject(ctx);
 }
 
 export const getMine = query({

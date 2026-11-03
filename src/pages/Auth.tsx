@@ -1,8 +1,10 @@
 import { AppBackground } from "@/components/app/AppBackground";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { appAuthMode, firebaseAuthEnabledByDefault } from "@/auth/auth-mode";
+import { firebaseClientConfigured } from "@/lib/firebase";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2, LockKeyhole, Mail, Wallet } from "lucide-react";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 type AuthMode = "signIn" | "signUp";
@@ -253,11 +255,20 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           )}
         </div>
         <p className="mx-auto mt-5 max-w-[390px] text-center text-xs leading-5 text-glass-sub">Sua conta protege o acesso aos dados. O salvamento e a sincronização dependem da conexão segura com o serviço de dados.</p>
+        {(firebaseAuthEnabledByDefault || firebaseClientConfigured) && appAuthMode === "convex" && (
+          <a href="/auth?auth=firebase" className="mt-4 block text-center text-xs font-medium text-glass-sub underline hover:text-glass-ink">Usar a nova autenticação Firebase</a>
+        )}
       </section>
     </main>
   );
 }
 
+const FirebaseAuthPage = lazy(() => import("./auth/FirebaseAuthPage"));
+
 export default function AuthPage(props: AuthProps) {
-  return <Suspense><Auth {...props}/></Suspense>;
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando autenticação…</div>}>
+      {appAuthMode === "firebase" ? <FirebaseAuthPage {...props} /> : <Auth {...props} />}
+    </Suspense>
+  );
 }

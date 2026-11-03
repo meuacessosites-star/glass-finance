@@ -66,7 +66,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAppStore, type LoanReceivable } from "@/lib/app-store";
-import { formatCurrency, initials, shortDate } from "@/lib/mock-data";
+import { initials, shortDate } from "@/lib/mock-data";
 import {
   getLoanRepaymentStatus,
   getLoanOutstandingAmount,

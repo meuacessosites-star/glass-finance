@@ -1,6 +1,6 @@
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { CalendarDays, CreditCard } from "lucide-react";
-import { formatCurrency, monthShortLabel } from "@/lib/mock-data";
+import { monthShortLabel } from "@/lib/mock-data";
 import type { getInvoiceSummary, InvoiceStatusFilter } from "@/lib/card-invoice-summary";
 import { cn } from "@/lib/utils";
 

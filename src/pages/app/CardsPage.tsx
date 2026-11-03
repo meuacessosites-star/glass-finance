@@ -25,7 +25,6 @@ import { CategoryColorPicker } from "@/components/app/CategoryColorPicker";
 import { SearchHighlight } from "@/components/app/SearchHighlight";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore, type AppCard } from "@/lib/app-store";
-import { formatCurrency } from "@/lib/mock-data";
 import { normalizeSearchText } from "@/lib/transaction-view";
 import {
   CARD_BRAND_LABELS,

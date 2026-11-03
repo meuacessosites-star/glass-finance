@@ -3,7 +3,6 @@ import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
-import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 type CategoryExpense = {

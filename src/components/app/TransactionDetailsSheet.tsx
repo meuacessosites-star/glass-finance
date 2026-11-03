@@ -32,7 +32,6 @@ import { downloadAttachment } from "@/lib/attachment-utils";
 import { useAppStore } from "@/lib/app-store";
 import {
   dayLabel,
-  formatCurrency,
   recurrenceLabel,
   shortDate,
   type Transaction,

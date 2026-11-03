@@ -6,7 +6,7 @@ import {
   CircleAlert,
   Clock3,
 } from "lucide-react";
-import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { shortDate } from "@/lib/mock-data";
 import type { HomeAlert } from "@/lib/home-alerts";
 import "./home-notifications-carousel.css";
 

@@ -10,7 +10,7 @@ import { approveNotificationData, approveLoanNotificationData, ignoreNotificatio
 import { createLoanRecordData } from "./loan-creation";
 import { adjustCardInvoice, removeUnusedCard, reorderActiveCards, updateCardPreservingHistory } from "./card-operations";
 import { reopenLoanReceivable, updateLoanRecord, type LoanRecordEdit } from "./loan-record-actions";
-import { getCardLoanSchedule, linkCardLoanInvoice } from "./card-loans";
+import { linkCardLoanInvoice } from "./card-loans";
 import { recordFreeLoanReceipt, sanitizeLoanReceipts, settleLoanReceivables } from "./loan-repayments";
 import { sanitizeHomeBalanceMode, type HomeBalanceMode } from "./home-balance";
 import { sanitizeInvoiceCardDisplayMode, setInvoiceCardDisplayPreference, type InvoiceCardDisplayMode } from "./invoice-card-display";
@@ -303,17 +303,6 @@ function uid(prefix: string): string {
 }
 
 /** Data da i-ésima parcela (1-based) a partir da data da primeira. */
-function financingDueDate(startDate: string, index: number): string {
-  const [year, month, day] = startDate.split("-").map(Number);
-  if (!year || !month || !day) return startDate;
-  const absolute = month - 1 + (index - 1);
-  const y = year + Math.floor(absolute / 12);
-  const m = ((absolute % 12) + 12) % 12;
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(
-    Math.min(day, lastDay),
-  ).padStart(2, "0")}`;
-}
 
 const str = (v: unknown, fallback: string) =>
   typeof v === "string" && v.trim() ? v : fallback;

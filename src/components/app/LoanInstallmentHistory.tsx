@@ -12,7 +12,7 @@ import type { AppCard, LoanReceivable } from "@/lib/app-store";
 import { getLoanInstallmentHistory } from "@/lib/loan-history";
 import { getLoanOutstandingAmount, isFreeLoan } from "@/lib/loan-repayments";
 import { cardPaymentStyle, cardPaymentTone } from "@/lib/payment-method-theme";
-import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { shortDate } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const presentation = {

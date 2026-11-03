@@ -1,4 +1,3 @@
-import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { formatCurrency as rawCurrency } from "@/lib/mock-data";
 import { useRef, useState, type FormEvent } from "react";
 import { Paperclip, X } from "lucide-react";
@@ -11,7 +10,6 @@ import {
   validateLoanRecordEdit,
   type LoanRecordEdit,
 } from "@/lib/loan-record-actions";
-import { formatCurrency } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -36,7 +34,6 @@ export function LoanEditDialog({
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const formatCurrency = usePrivateCurrency();
   const { loanReceivables, updateLoanRecord } = useAppStore();
   const [contact, setContact] = useState(item.contact);
   const [description, setDescription] = useState(item.description ?? "");

@@ -1,40 +1,39 @@
-# Configuração necessária para autenticação e sincronização
+# Configuração de autenticação e sincronização
 
-O frontend e as funções Convex estão preparados para Google OAuth, email/senha, recuperação de senha e sincronização por conta. **O login e o banco só ficam operacionais após o deploy do Convex e a configuração dos segredos no deployment real.** Não coloque valores de segredo em `.env` enviado ao Git, no código, em mensagens do chat ou em variáveis públicas `VITE_*`.
+O projeto mantém o Convex como armazenamento dos dados financeiros. O modo atual, Convex Auth/Freebuff, continua como padrão. O modo escolhido no build do frontend vem de `VITE_AUTH_PROVIDER` (`firebase` ou `convex`); quando a configuração pública Firebase está pronta, a tela também permite alternar temporariamente entre os dois modos. Não coloque senhas, chaves privadas ou segredos em arquivos versionados, no chat ou em variáveis públicas `VITE_*`.
 
-## 1. Email e senha
+## Configurar Firebase Auth para Web
 
-A confirmação de cadastro por email, login legado por código e redefinição de senha usam o serviço de email OTP já integrado pelo backend. Cadastre uma nova chave de API no ambiente Convex de produção, usando o dashboard Convex ou a CLI autenticada:
+No Firebase Console, mantenha ativos os provedores **E-mail/senha** e **Google** e autorize o domínio publicado do site em Authentication → Configurações → Domínios autorizados. Em Configurações do projeto → Seus apps → app Web, copie as propriedades da configuração do SDK para as variáveis de frontend: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID` e `VITE_FIREBASE_APP_ID`.
 
-```sh
-npx convex env set AUTH_EMAIL_API_KEY <SEGREDO_NOVO_DO_SERVICO_DE_EMAIL>
-npx convex env set VLY_APP_NAME "Glass Finance"
-```
+Esses quatro valores são a configuração pública do app Web Firebase; eles não são a chave de conta de serviço. Nunca copie uma chave JSON privada de conta de serviço para o navegador, para uma variável `VITE_*` ou para o repositório. No painel Vercel, cadastre as quatro variáveis para o ambiente Preview primeiro. Para definir o formulário Firebase como padrão no Preview, configure `VITE_AUTH_PROVIDER` como `firebase`. Se não estiver configurado, Convex Auth/Freebuff continua como padrão.
 
-A chave anterior estava embutida em código versionado. **Revogue-a/rotacione-a no serviço de email e use somente a nova chave como segredo do deployment.** A chave não deve ser adicionada a este repositório.
+O login por e-mail e senha envia links de confirmação e recuperação usando o próprio Firebase. O login Google usa a janela oficial do Google. O app exige e-mail confirmado antes de permitir consultas e gravações financeiras.
 
-## 2. Login com Google
+## Configurar Convex para aceitar tokens Firebase — somente em ambiente de teste
 
-No Google Cloud Console, crie/configure um OAuth Client ID do tipo Web. Adicione como URI de redirecionamento autorizado a URL do host de autenticação Convex com o caminho `/api/auth/callback/google` (por exemplo, `https://<DEPLOYMENT>.convex.site/api/auth/callback/google`). Adicione também o domínio publicado do app às origens JavaScript autorizadas quando solicitado pelo Google.
+O arquivo `src/convex/auth.config.ts` lê `FIREBASE_PROJECT_ID` quando as funções Convex são publicadas. O script atual da Vercel **não publica funções Convex em Preview**: ele apenas compila o frontend. Por isso, o primeiro teste precisa de um deployment Convex não produtivo preparado separadamente, com `FIREBASE_PROJECT_ID` disponível ao comando Convex que publicar esse backend, e o `VITE_CONVEX_URL` do Preview apontando para esse mesmo deployment de teste.
 
-Configure os dois valores no deployment Convex **de produção**:
+Não configure `FIREBASE_PROJECT_ID` nem `VITE_AUTH_PROVIDER=firebase` no ambiente Production nesta etapa. A publicação Production da Vercel executa `npx convex deploy`; qualquer alteração nesses valores poderá mudar o provedor aceito pelo backend público. Mantenha `CONVEX_SITE_URL`, `CONVEX_DEPLOY_KEY`, os segredos Google legados e a configuração Freebuff atuais enquanto houver contas usando o fluxo anterior.
 
-```sh
-npx convex env set AUTH_GOOGLE_ID <CLIENT_ID>
-npx convex env set AUTH_GOOGLE_SECRET <CLIENT_SECRET>
-```
+A API key Firebase Web pode ser pública; `AUTH_GOOGLE_SECRET`, credenciais de serviço e chaves privadas não podem ser expostas no frontend. Não use credenciais do deployment Production em um build de teste sem autorização explícita.
 
-O `CLIENT_SECRET` é segredo exclusivo do backend. Confira que o URI de callback do Google e o `CONVEX_SITE_URL` daquele deployment correspondem exatamente ao endereço usado em produção.
-Se o deployment usa um domínio customizado de autenticação, configure também `CUSTOM_AUTH_SITE_URL` no Convex e use esse domínio no URI de callback do Google, sem barra final.
+## Contas e dados existentes: atenção antes de ativar em Production
 
-## 3. Deploy e validação
+O Convex separa os snapshots financeiros por `identity.subject`. A conta antiga e uma conta Firebase têm identificadores diferentes. Portanto, uma conta Firebase recém-criada não encontrará automaticamente os snapshots salvos pela autenticação antiga; isso não significa que os dados foram apagados.
 
-Após configurar os segredos no projeto/deployment correto, aplique o schema e as funções de autenticação e sincronização com a CLI Convex autenticada; em um deployment de produção vinculado, use `npx convex deploy`. Em seguida publique uma nova compilação do frontend que aponta para esse mesmo deployment (`VITE_CONVEX_URL`). No ambiente atual desta tarefa não há sessão CLI Convex nem arquivos de configuração do deployment, por isso o backend não foi publicado e nenhum fluxo OAuth real foi exercitado.
+Durante a transição, o formulário Firebase inclui o link **“Acessar temporariamente minha conta antiga”**. Use-o para continuar entrando com o método anterior e acessar o snapshot antigo. O projeto não migra nem associa dados automaticamente por e-mail, não copia snapshots entre identidades e não deve ser ativado em Production até existir uma migração autenticada, reversível e testada. Use um deployment Convex não produtivo para o primeiro teste; não grave dados de teste no deployment que contém seus dados reais.
 
-Validação manual obrigatória no site publicado: criar uma conta com email/senha, confirmar código, sair e entrar; redefinir senha; entrar com Google; criar um lançamento, aguardar o status “Dados sincronizados com sua conta”, entrar na mesma conta em outro dispositivo e confirmar que o registro aparece; editar nos dois dispositivos para verificar o tratamento de concorrência; exportar um backup e testar a exclusão somente depois de uma cópia segura.
+## Autenticação e acesso ao Convex
 
-## 4. Sincronização e conflitos
+O modo Firebase envia ao Convex o token de identidade do Firebase. O backend valida assinatura, emissor, público e exige o claim de e-mail verificado para operações financeiras e registros de pessoas. O modo Convex legado mantém as regras atuais. Cada conta Firebase usa seu próprio UID como chave da partição financeira.
 
-Os snapshots são isolados pela identidade Convex autenticada e divididos em blocos. Revisões otimizadas por compare-and-swap impedem que uma sessão sobrescreva em silêncio uma revisão mais nova de outro dispositivo. Se houver conflito, o app bloqueia a gravação da sessão conflitante e informa que é necessário exportar o estado e recarregar. A rotina não faz merge campo a campo.
+## Sincronização e conflitos
+
+Os snapshots são isolados pela identidade autenticada e divididos em blocos. Revisões otimizadas por compare-and-swap impedem que uma sessão sobrescreva em silêncio uma revisão mais nova de outro dispositivo. Se houver conflito, o app bloqueia a gravação da sessão conflitante e informa que é necessário exportar o estado e recarregar. A rotina não faz merge campo a campo.
 
 Um snapshot tem limite de 12 MB por conta. O backend confirma as gravações ou retorna erro; o status no painel Conta exibe falha/conflito e oferece uma tentativa manual. Não declare sucesso de sincronização sem verificar o estado “Dados sincronizados com sua conta”. Use exportação periódica como cópia adicional: a nuvem não substitui backup independente.
+
+## Deploy e validação
+
+Não ative o Firebase no deployment Production como parte desta etapa. Primeiro configure e valide o Preview com um deployment Convex não produtivo. Verifique cadastro por e-mail, confirmação de endereço, redefinição de senha, login Google e login e-mail/senha. Confirme também que contas Firebase não leem nem alteram snapshots legados, que o link de acesso antigo continua funcionando e que gravação, conflito, sincronização e exclusão continuam restritos ao `subject` autenticado.

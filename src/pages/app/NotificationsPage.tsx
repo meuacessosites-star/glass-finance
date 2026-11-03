@@ -49,7 +49,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAppStore, type AppNotification } from "@/lib/app-store";
-import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { shortDate } from "@/lib/mock-data";
 import {
   getCurrentInvoiceMonth,
   isCreditCardExpense,

@@ -10,7 +10,6 @@ import { PeriodPicker, MonthMultiPicker, formatDateLabel, type PeriodMode } from
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router";
 import {
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -44,7 +43,6 @@ import {
 import { useAppStore } from "@/lib/app-store";
 import {
   dayLabel,
-  formatCurrency,
   monthKey,
   monthShortLabel,
   type Transaction,

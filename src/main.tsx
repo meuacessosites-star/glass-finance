@@ -4,6 +4,9 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import { FirebaseAuthRuntime, LegacyAuthActionsBridge } from "./auth/auth-runtime";
+import { appAuthMode } from "./auth/auth-mode";
+import { firebaseClientConfigured } from "./lib/firebase";
 import { ThemeProvider } from "next-themes";
 import React, { useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -146,16 +149,51 @@ function RouteSyncer() {
   return null;
 }
 
+function MissingFirebaseConfigScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-6 text-foreground">
+      <div className="max-w-lg text-center">
+        <p className="text-sm font-semibold">Configuração Firebase pendente</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          O modo Firebase foi selecionado, mas faltam os valores públicos do app Web Firebase neste ambiente.
+        </p>
+        <a className="mt-4 inline-block text-sm underline" href="/auth?auth=legacy">
+          Voltar temporariamente ao login antigo
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function AuthRuntimeProvider({
+  client,
+  children,
+}: {
+  client: ConvexReactClient;
+  children: React.ReactNode;
+}) {
+  if (appAuthMode === "firebase") {
+    return <FirebaseAuthRuntime client={client}>{children}</FirebaseAuthRuntime>;
+  }
+  return (
+    <ConvexAuthProvider client={client}>
+      <LegacyAuthActionsBridge>{children}</LegacyAuthActionsBridge>
+    </ConvexAuthProvider>
+  );
+}
+
 
 if (!convex) {
   createRoot(document.getElementById("root")!).render(<MissingConvexScreen />);
+} else if (appAuthMode === "firebase" && !firebaseClientConfigured) {
+  createRoot(document.getElementById("root")!).render(<MissingFirebaseConfigScreen />);
 } else {
   createRoot(document.getElementById("root")!).render(
     <RootErrorBoundary>
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
+      <AuthRuntimeProvider client={convex}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <BrowserRouter>
             <RouteSyncer />
@@ -201,7 +239,7 @@ if (!convex) {
           </BrowserRouter>
           <Toaster />
         </ThemeProvider>
-      </ConvexAuthProvider>
+      </AuthRuntimeProvider>
     </RootErrorBoundary>,
   );
 }

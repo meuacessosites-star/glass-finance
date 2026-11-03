@@ -1,7 +1,7 @@
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { ChevronDown, ReceiptText, X } from "lucide-react";
 import type { getInvoiceSummary } from "@/lib/card-invoice-summary";
-import { formatCurrency, monthShortLabel } from "@/lib/mock-data";
+import { monthShortLabel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export function CardStatementSummary({

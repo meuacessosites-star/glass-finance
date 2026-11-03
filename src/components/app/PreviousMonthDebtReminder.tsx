@@ -3,7 +3,7 @@ import { useId, useMemo, useState } from "react";
 import { BellRing, ChevronDown, CreditCard } from "lucide-react";
 import { Link } from "react-router";
 import { useAppStore } from "@/lib/app-store";
-import { formatCurrency, monthLabel, type Transaction } from "@/lib/mock-data";
+import { monthLabel, type Transaction } from "@/lib/mock-data";
 import { getPreviousMonthDebts } from "@/lib/previous-month-debts";
 import { TransactionRow } from "./TransactionRow";
 

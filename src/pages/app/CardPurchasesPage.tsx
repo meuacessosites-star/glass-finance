@@ -73,7 +73,6 @@ import {
 } from "@/components/app/SearchHighlight";
 import { useAppStore, type AppCard } from "@/lib/app-store";
 import {
-  formatCurrency,
   monthKey,
   monthShortLabel,
   type Transaction,

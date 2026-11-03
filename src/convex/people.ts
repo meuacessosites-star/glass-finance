@@ -1,12 +1,9 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthenticatedUserSubject } from "./auth/identity";
 
 async function getUserSubject(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Autenticação necessária para acessar pessoas");
-  }
-  return identity.subject;
+  return getAuthenticatedUserSubject(ctx);
 }
 
 export const list = query({

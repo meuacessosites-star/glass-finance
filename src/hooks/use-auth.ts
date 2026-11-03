@@ -1,20 +1,39 @@
+import { AuthAdapterContext } from "@/auth/auth-runtime";
 import { api } from "@/convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useContext } from "react";
 
 export function useAuth() {
-  const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.users.currentUser);
-  const { signIn, signOut } = useAuthActions();
+  const adapter = useContext(AuthAdapterContext);
+  if (!adapter) throw new Error("Um adaptador de autenticação precisa envolver o aplicativo.");
+  const { isLoading: convexAuthLoading, isAuthenticated: convexAuthenticated } = useConvexAuth();
+  const convexUser = useQuery(
+    api.users.currentUser,
+    adapter.mode === "convex" ? {} : "skip",
+  );
 
-  // Derive isLoading directly from the dependencies instead of managing separate state
-  const isLoading = isAuthLoading || user === undefined;
+  const user = adapter.mode === "firebase"
+    ? adapter.firebaseUser
+      ? {
+          _id: adapter.firebaseUser.uid,
+          name: adapter.firebaseUser.displayName ?? undefined,
+          email: adapter.firebaseUser.email ?? undefined,
+          image: adapter.firebaseUser.photoURL ?? undefined,
+        }
+      : null
+    : convexUser;
+  const isAuthenticated = adapter.mode === "firebase"
+    ? Boolean(adapter.firebaseUser?.emailVerified) && convexAuthenticated
+    : convexAuthenticated;
+  const isLoading = adapter.mode === "firebase"
+    ? adapter.firebaseLoading || convexAuthLoading
+    : convexAuthLoading || convexUser === undefined;
 
   return {
     isLoading,
     isAuthenticated,
     user,
-    signIn,
-    signOut,
+    signIn: adapter.signIn,
+    signOut: adapter.signOut,
   };
 }

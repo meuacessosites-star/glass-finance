@@ -38,7 +38,7 @@ import {
   type getReportCategoryDetails,
 } from "@/lib/report-view";
 import type { getCategoryHistoryReference } from "@/lib/report-budgets";
-import { formatCurrency, monthLabel, recurrenceLabel } from "@/lib/mock-data";
+import { monthLabel, recurrenceLabel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const dateLabel = (date: string) => date.split("-").reverse().join("/");

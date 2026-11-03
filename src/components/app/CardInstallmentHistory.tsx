@@ -1,7 +1,7 @@
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { AlertTriangle, Check, Clock, Layers } from "lucide-react";
 import type { CardInstallment } from "@/lib/card-installments";
-import { formatCurrency, shortDate } from "@/lib/mock-data";
+import { shortDate } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const presentation = {

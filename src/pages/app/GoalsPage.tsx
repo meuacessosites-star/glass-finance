@@ -4,7 +4,6 @@ import { ConfirmAction } from '@/components/app/PlanningUI';
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ui/dialog';
 import { goalPlan } from '@/lib/financing-plan';
 import { localDateKey } from '@/lib/card-billing';
-import { getTransactionPaymentStatus } from '@/lib/transaction-status';
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useMemo, useState } from "react";
 import { CalendarClock, Pencil, Plus, Target, Trash2, TrendingUp, X } from "lucide-react";
@@ -12,9 +11,7 @@ import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import {
-  formatCurrency,
   monthKey,
-  monthTotals,
 } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -39,17 +36,11 @@ function formatBRL(cents: number) {
   });
 }
 
-function monthsBetween(fromIso: string, toIso: string): number {
-  const [fy, fm] = fromIso.split("-").map(Number);
-  const [ty, tm] = toIso.split("-").map(Number);
-  if (!fy || !fm || !ty || !tm) return Infinity;
-  return Math.max(0, (ty - fy) * 12 + (tm - fm));
-}
 
 export default function GoalsPage() {
   const formatCurrency = usePrivateCurrency();
   const {
-    goals, cards, loanReceivables,
+    goals,
     activeProfile,
     visibleTransactions,
     addGoal,

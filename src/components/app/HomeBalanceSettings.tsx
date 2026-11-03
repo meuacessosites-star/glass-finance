@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { getHomeBalance, HomeBalanceMode } from "@/lib/home-balance";
-import { formatCurrency, monthLabel } from "@/lib/mock-data";
+import { monthLabel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 

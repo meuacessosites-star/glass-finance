@@ -33,7 +33,7 @@ export default function FinancingsPage(){
   const totalAmount=parseMoneyField(draft.totalAmount),installmentValue=parseMoneyField(draft.installmentValue);
   if(!counts){toast.error('Informe de 1 a 480 parcelas. As parcelas já pagas devem estar entre 0 e o total.');return;}
   if(!draft.name.trim()||!sanitizeDueDate(draft.startDate)||!Number.isFinite(totalAmount)||totalAmount<=0||totalAmount>1e9||!Number.isFinite(installmentValue)||installmentValue<=0||installmentValue>1e7||!/^#[0-9a-f]{6}$/i.test(draft.color)){toast.error('Confira nome, valores, cor e data.');return;}
-  const {paidInstallments:_,...fields}=draft;
+  const fields = Object.fromEntries(Object.entries(draft).filter(([key]) => key !== "paidInstallments")) as Omit<typeof draft, "paidInstallments">;
   const existing=financings.find(f=>f.id===draft.id);
   const data={...fields,name:draft.name.trim(),dueDay:Number(draft.startDate.slice(8)),totalAmount,installmentValue,installments:counts.installments,currentInstallment:counts.currentInstallment,...(existing?reconcileFinancingHistory(existing,counts.installments,counts.paidCount):{})};
   const commit=()=>{if(draft.id)updateFinancing(draft.id,data);else addFinancing(data);setDraft(null);setPendingSave(null);toast.success('Financiamento salvo',{duration:1800});};

@@ -28,7 +28,7 @@ import {
 import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { useAppStore } from "@/lib/app-store";
-import { budgets, formatCurrency, monthLabel } from "@/lib/mock-data";
+import { budgets, monthLabel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 type GlassTooltipEntry = {

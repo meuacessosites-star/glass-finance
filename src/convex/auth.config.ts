@@ -7,6 +7,7 @@ import type { AuthConfig } from "convex/server";
 // `kid` header, which the customJwt validation path requires.
 const freebuffIssuer =
   process.env.VLY_CONVEX_AUTH_ISSUER ?? "https://freebuff.com";
+const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
 
 export default {
   providers: [
@@ -29,5 +30,16 @@ export default {
       applicationID: "vly-convex",
       algorithm: "RS256",
     },
+    ...(firebaseProjectId
+      ? [
+          {
+            type: "customJwt" as const,
+            issuer: `https://securetoken.google.com/${firebaseProjectId}`,
+            jwks: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
+            applicationID: firebaseProjectId,
+            algorithm: "RS256" as const,
+          },
+        ]
+      : []),
   ],
 } satisfies AuthConfig;
