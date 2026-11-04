@@ -1,37 +1,32 @@
-# Configuração necessária para autenticação e sincronização
+# Acesso e sincronização do Glass Finance
 
-O frontend e as funções Convex estão preparados para Google OAuth, email/senha, recuperação de senha e sincronização por conta. **O login e o banco só ficam operacionais após o deploy do Convex e a configuração dos segredos no deployment real.** Não coloque valores de segredo em `.env` enviado ao Git, no código, em mensagens do chat ou em variáveis públicas `VITE_*`.
+## 1. Conectar o site e o Convex
 
-## 1. Email e senha
+A Vercel publica a aplicação pelo repositório. No projeto **glass-finance**, em **Settings → Environment Variables**, configure `CONVEX_DEPLOY_KEY` para o deployment de produção. O build da branch principal usa essa chave para publicar as funções e injeta `VITE_CONVEX_URL` no frontend. Em previews, defina uma `VITE_CONVEX_URL` de desenvolvimento que já contenha estas funções.
 
-A confirmação de cadastro por email, login legado por código e redefinição de senha usam o serviço de email OTP já integrado pelo backend. Cadastre uma nova chave de API no ambiente Convex de produção, usando o dashboard Convex ou a CLI autenticada:
+Em **Convex Dashboard → Production → Settings → Environment Variables**, defina `SITE_URL` como a origem HTTPS pública do app, sem caminho nem barra final. Confira se `JWT_PRIVATE_KEY` e `JWKS` já existem. Para um deployment novo, a configuração inicial do Convex Auth pode ser feita com `npx @convex-dev/auth --prod`. Preserve as chaves de assinatura existentes. O próprio Convex fornece `CONVEX_SITE_URL` para o host HTTP do backend.
 
-```sh
-npx convex env set AUTH_EMAIL_API_KEY <SEGREDO_NOVO_DO_SERVICO_DE_EMAIL>
-npx convex env set VLY_APP_NAME "Glass Finance"
-```
+## 2. Ativar os provedores
 
-A chave anterior estava embutida em código versionado. **Revogue-a/rotacione-a no serviço de email e use somente a nova chave como segredo do deployment.** A chave não deve ser adicionada a este repositório.
+| Opção | Configuração em produção |
+| --- | --- |
+| Google | Crie um cliente OAuth do tipo **Aplicativo da Web** no Google Cloud. Cadastre a URI exata `https://<deployment>.convex.site/api/auth/callback/google` e a origem pública do app. Salve `AUTH_GOOGLE_ID` e `AUTH_GOOGLE_SECRET` no Convex. Se usa `CUSTOM_AUTH_SITE_URL`, cadastre o callback nesse domínio. Para usuários externos, confira o público e o status de publicação no Google. |
+| E-mail via Freebuff | Configure `AUTH_EMAIL_API_KEY` com uma chave ativa do serviço já integrado. Rotacione qualquer chave antiga que tenha sido versionada. O nome do app pode ser configurado por `VLY_APP_NAME`. |
+| E-mail via Resend | Como alternativa ao Freebuff, verifique um domínio remetente no Resend. No Convex, defina `RESEND_API_KEY` e `AUTH_EMAIL_FROM`, por exemplo `Glass Finance <acesso@seu-dominio.com.br>`. Quando ambos estão configurados, as mensagens são enviadas pelo Resend. |
 
-## 2. Login com Google
+Os segredos de provedor pertencem somente ao backend. A consulta pública `users:authMethods` retorna dois indicadores booleanos, `google` e `emailDelivery`. Eles indicam a presença da configuração. A entrega de um código e o consentimento do Google devem ser testados no domínio final.
 
-No Google Cloud Console, crie/configure um OAuth Client ID do tipo Web. Adicione como URI de redirecionamento autorizado a URL do host de autenticação Convex com o caminho `/api/auth/callback/google` (por exemplo, `https://<DEPLOYMENT>.convex.site/api/auth/callback/google`). Adicione também o domínio publicado do app às origens JavaScript autorizadas quando solicitado pelo Google.
+## 3. Cadastro e teste no domínio publicado
 
-Configure os dois valores no deployment Convex **de produção**:
+1. Abra `/auth?modo=cadastro`, cadastre um e-mail que você controla e uma senha de 8 a 128 caracteres. Confirme o código de seis dígitos que chega por e-mail.
+2. Escolha um nome de usuário com 3 a 24 letras sem acento, números ou sublinhados. Maiúsculas e minúsculas representam o mesmo nome. A reserva ocorre no servidor após a autenticação. Contas existentes e novos acessos com o Google passam por essa etapa uma vez.
+3. Saia e entre com o e-mail e a senha. Repita usando o nome de usuário e a mesma senha. Em **Esqueci minha senha**, solicite outro código e defina uma nova senha. Uma conta criada apenas com Google pode continuar usando o botão Google.
+4. Use **Continuar com Google**, autorize o app em uma conta sua e confira o retorno à rota original. Verifique o nome escolhido na tela **Conta**.
+5. Crie um lançamento de teste e espere a confirmação de sincronização. Entre com a mesma conta em outro navegador e confira o lançamento. Uma segunda conta deve ter seus próprios registros.
 
-```sh
-npx convex env set AUTH_GOOGLE_ID <CLIENT_ID>
-npx convex env set AUTH_GOOGLE_SECRET <CLIENT_SECRET>
-```
+O Glass Finance usa o identificador permanente da conta para novos dados. Na primeira escolha do nome por uma conta antiga, o app seleciona o snapshot mais recentemente salvo por essa conta entre suas sessões anteriores. Históricos independentes de sessões antigas não são combinados. Os contatos salvos pelas sessões da própria conta continuam disponíveis.
 
-O `CLIENT_SECRET` é segredo exclusivo do backend. Confira que o URI de callback do Google e o `CONVEX_SITE_URL` daquele deployment correspondem exatamente ao endereço usado em produção.
-Se o deployment usa um domínio customizado de autenticação, configure também `CUSTOM_AUTH_SITE_URL` no Convex e use esse domínio no URI de callback do Google, sem barra final.
-
-## 3. Deploy e validação
-
-Após configurar os segredos no projeto/deployment correto, aplique o schema e as funções de autenticação e sincronização com a CLI Convex autenticada; em um deployment de produção vinculado, use `npx convex deploy`. Em seguida publique uma nova compilação do frontend que aponta para esse mesmo deployment (`VITE_CONVEX_URL`). No ambiente atual desta tarefa não há sessão CLI Convex nem arquivos de configuração do deployment, por isso o backend não foi publicado e nenhum fluxo OAuth real foi exercitado.
-
-Validação manual obrigatória no site publicado: criar uma conta com email/senha, confirmar código, sair e entrar; redefinir senha; entrar com Google; criar um lançamento, aguardar o status “Dados sincronizados com sua conta”, entrar na mesma conta em outro dispositivo e confirmar que o registro aparece; editar nos dois dispositivos para verificar o tratamento de concorrência; exportar um backup e testar a exclusão somente depois de uma cópia segura.
+Em desenvolvimento, execute `npm run test:auth` para testar os fluxos de autenticação com o transporte de e-mail de teste. Para testar o restante do projeto, use `npm run typecheck`, `npm run test:billing` e `npm run build`.
 
 ## 4. Sincronização e conflitos
 

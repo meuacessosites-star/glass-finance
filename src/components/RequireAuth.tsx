@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -15,8 +15,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
-    const returnTo = `${location.pathname}${location.search}`;
+  if (!isAuthenticated || !user?.username) {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
     return (
       <Navigate
         to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}

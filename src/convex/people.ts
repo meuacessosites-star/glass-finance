@@ -1,23 +1,12 @@
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+import { accountPeople, ownsSubject, requireAccount } from "./accountData";
 import { v } from "convex/values";
-
-async function getUserSubject(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Autenticação necessária para acessar pessoas");
-  }
-  return identity.subject;
-}
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const userSubject = await getUserSubject(ctx);
-    return await ctx.db
-      .query("people")
-      .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
-      .order("desc")
-      .collect();
+    const user = await requireAccount(ctx);
+    return accountPeople(ctx, user._id);
   },
 });
 
@@ -38,7 +27,7 @@ export const create = mutation({
       throw new Error("Informe o nome da pessoa");
     }
 
-    const userSubject = await getUserSubject(ctx);
+    const { _id: userSubject } = await requireAccount(ctx);
     const phone = args.phone?.replace(/\D/g, "") || undefined;
 
     const nickname = args.nickname?.trim().slice(0, 40);
@@ -66,9 +55,9 @@ export const update = mutation({
     phone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userSubject = await getUserSubject(ctx);
+    const { _id: userId } = await requireAccount(ctx);
     const person = await ctx.db.get(args.id);
-    if (!person || person.userSubject !== userSubject) {
+    if (!person || !ownsSubject(userId, person.userSubject)) {
       throw new Error("Pessoa não encontrada");
     }
 
@@ -93,9 +82,9 @@ export const remove = mutation({
     id: v.id("people"),
   },
   handler: async (ctx, args) => {
-    const userSubject = await getUserSubject(ctx);
+    const { _id: userId } = await requireAccount(ctx);
     const person = await ctx.db.get(args.id);
-    if (!person || person.userSubject !== userSubject) {
+    if (!person || !ownsSubject(userId, person.userSubject)) {
       throw new Error("Pessoa não encontrada");
     }
 

@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 const CODE_PREFIX = "GRANASCAN1:";
@@ -40,6 +41,7 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[14px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
 
 export default function AccountPage() {
+  const { user } = useAuth();
   const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
@@ -147,6 +149,11 @@ export default function AccountPage() {
   return (
     <div className="space-y-4">
       <SettingsHeader title="Conta" />
+      <div className="glass rounded-2xl p-4">
+        <p className="text-xs font-semibold text-glass-sub">Conta conectada</p>
+        <p className="mt-1 font-bold text-glass-ink">@{user?.username}</p>
+        <p className="break-all text-sm text-glass-sub">{user?.email}</p>
+      </div>
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Dados de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
