@@ -153,7 +153,54 @@ test("older accounts choose one handle and reopen their newest legacy snapshot a
   assert.deepEqual((await me.query(api.people.list)).map(p => p.name).sort(), ["10", "20"]);
   const foreign = t.withIdentity({ issuer: "https://other.example", subject: ids.user + "|tok1" });
   await assert.rejects(foreign.query(api.financeState.getMine));
-  await me.mutation(api.financeState.deleteMine);
-  assert.equal(await me.query(api.financeState.getMine), null);
+  const oldSnapshot = await me.query(api.financeState.getMine);
+  const cleared = await me.mutation(api.financeState.deleteMine);
+  assert.equal(cleared.deleted, true);
+  assert.ok(cleared.revision > oldSnapshot.revision);
+  const tombstone = await me.query(api.financeState.getMine);
+  assert.equal(tombstone.payload, "");
+  assert.equal(tombstone.revision, cleared.revision);
   assert.equal((await other.query(api.financeState.getMine)).payload, "30");
+  const staleWrite = await me.mutation(api.financeState.saveMine, {
+    expectedRevision: oldSnapshot.revision,
+    payload: JSON.stringify({ profiles: [{ name: "Dado antigo" }] }),
+  });
+  assert.equal(staleWrite.ok, false);
+  assert.equal((await me.query(api.financeState.getMine)).payload, "");
+});
+
+test("two sessions see account saves and deletions, with no stale resurrection after logout", async () => {
+  const { t, register, password, session } = fixture();
+  const email = "sync@example.org";
+  const secret = "secure-password-123";
+  const first = await register(email, secret);
+  await first.mutation(api.users.claimUsername, { username: "sync_account" });
+  const user = await first.query(api.users.currentUser);
+  const second = t.withIdentity({ issuer, subject: String(user._id) + "|second-device" });
+  assert.equal(await first.query(api.financeState.getMine), null);
+  assert.equal(await second.query(api.financeState.getMine), null);
+  const one = JSON.stringify({ profiles: [{ name: "Salvo no celular", transactions: [{ amount: 12.45 }] }] });
+  const firstSave = await first.mutation(api.financeState.saveMine, { payload: one, expectedRevision: 0 });
+  assert.equal(firstSave.ok, true);
+  assert.equal((await second.query(api.financeState.getMine)).payload, one);
+  const two = JSON.stringify({ profiles: [{ name: "Editado no computador", transactions: [] }] });
+  const updated = await second.mutation(api.financeState.saveMine, { payload: two, expectedRevision: firstSave.revision });
+  assert.equal(updated.ok, true);
+  assert.equal((await first.query(api.financeState.getMine)).payload, two);
+  const conflict = await first.mutation(api.financeState.saveMine, { payload: one, expectedRevision: firstSave.revision });
+  assert.equal(conflict.ok, false);
+  assert.equal((await first.query(api.financeState.getMine)).payload, two);
+  const deleted = await second.mutation(api.financeState.deleteMine);
+  assert.equal(deleted.deleted, true);
+  const blank = await first.query(api.financeState.getMine);
+  assert.equal(blank.revision, deleted.revision);
+  assert.equal(blank.payload, "");
+  assert.equal((await first.mutation(api.financeState.saveMine, { payload: one, expectedRevision: updated.revision })).ok, false);
+  assert.equal((await second.query(api.financeState.getMine)).payload, "");
+  const savedAgain = await first.mutation(api.financeState.saveMine, { payload: two, expectedRevision: deleted.revision });
+  assert.equal(savedAgain.ok, true);
+  await first.action(api.auth.signOut);
+  const reopened = session(await password(email, "signIn", { password: secret }));
+  assert.equal((await reopened.query(api.financeState.getMine)).payload, two);
+  assert.equal((await reopened.query(api.users.currentUser)).username, "sync_account");
 });

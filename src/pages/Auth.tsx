@@ -230,7 +230,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             </button>
           </form>
           <div className="relative mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-            {(screen === "signIn" || screen === "signUp") && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("resetRequest")}>Esqueci minha senha — receber código por e-mail</button>}
+            {screen === "signIn" && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("resetRequest")}>Esqueci minha senha — receber código por e-mail</button>}
             {screen === "signIn" && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("otpRequest")}>Entrar com código por e-mail</button>}
             {hasCode && <button type="button" disabled={busy || emailUnavailable} className={linkClass} onClick={() =>
               void run(() => requestCode(screen === "verifyEmail" ? "verifyEmail" : screen === "otpVerify" ? "otpRequest" : "resetRequest", address), "Não foi possível reenviar o código.")}>

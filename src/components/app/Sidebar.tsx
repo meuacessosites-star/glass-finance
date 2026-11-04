@@ -179,7 +179,7 @@ export function Sidebar() {
   const { isOpen, close } = useSidebar();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { activeProfile, profiles, activeProfileId, setActiveProfile } =
+  const { activeProfile, profiles, activeProfileId, setActiveProfile, flushCloudSync } =
     useAppStore();
   const { signOut } = useAuth();
 
@@ -209,9 +209,17 @@ export function Sidebar() {
   };
 
   const handleSignOut = async () => {
-    close();
-    await signOut();
-    navigate("/");
+    if (!(await flushCloudSync())) {
+      toast.error("Ainda há alterações não confirmadas na nuvem. Abra Conta, sincronize ou exporte um backup antes de sair.");
+      return;
+    }
+    try {
+      await signOut();
+      close();
+      navigate("/");
+    } catch {
+      toast.error("Não foi possível sair da conta. Tente novamente.");
+    }
   };
 
   return (

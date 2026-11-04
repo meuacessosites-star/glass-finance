@@ -123,14 +123,30 @@ export const deleteMine = mutation({
       .unique();
     const states = await oldFinanceStates(ctx, user._id);
     if (canonical) states.push(canonical);
+    // Keep only a revision-only tombstone (NO personal financial content).
+    // Other online devices receive it through the live query. Stale devices
+    // cannot recreate deleted data with an earlier expectedRevision.
+    const revision = Math.max(0, ...states.map((state) => state.revision)) + 1;
     for (const state of states) {
       const chunks = await ctx.db.query("financeStateChunks")
         .withIndex("by_user_subject", q => q.eq("userSubject", state.userSubject)).collect();
       for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
-      await ctx.db.delete(state._id as Id<"financeStates">);
+      if (state.userSubject !== user._id) await ctx.db.delete(state._id as Id<"financeStates">);
+    }
+    if (canonical) {
+      await ctx.db.patch(canonical._id as Id<"financeStates">, {
+        revision, updatedAt: Date.now(), chunkCount: 0,
+      });
+    } else {
+      await ctx.db.insert("financeStates", {
+        userSubject: user._id, revision, updatedAt: Date.now(), chunkCount: 0,
+      });
+    }
+    if (user.financeSubject !== user._id) {
+      await ctx.db.patch(user._id, { financeSubject: user._id });
     }
     const people = await accountPeople(ctx, user._id);
     for (const person of people) await ctx.db.delete(person._id as Id<"people">);
-    return { deleted: true };
+    return { deleted: true, revision };
   },
 });
