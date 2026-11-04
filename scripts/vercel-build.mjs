@@ -87,17 +87,13 @@ async function checkProductionAuth() {
       process.env.VITE_CONVEX_URL !== "https://" + backendName + ".convex.cloud") {
     throw new Error("Publicação bloqueada: VITE_CONVEX_URL aponta para outro banco Convex. Corrija a variável de produção do glass-finance.");
   }
-  let problems = [];
-  if (fixedTarget || process.env.VITE_CONVEX_URL === "https://" + backendName + ".convex.cloud") {
-    problems = await publicSessionProblems();
-    if (problems.length === 0) return;
-    console.warn("Falha na verificação pública de produção: " + problems.join(", ") + ".");
-  }
+  // This deployment may not have any HTTP functions yet. Checking public
+  // login endpoints here would deadlock the very first Convex production deploy.
+  // Check configuration now and verify public endpoints after pushing functions.
   let names;
   try {
     names = new Set(convexEnv(["list", "--names-only"]).split(/\s+/));
   } catch (error) {
-    if (problems.length) throw new Error(error.message + " Confira esses itens no painel do Convex.");
     throw error;
   }
   const google = names.has("AUTH_GOOGLE_ID") && names.has("AUTH_GOOGLE_SECRET");
@@ -128,14 +124,6 @@ async function checkProductionAuth() {
   if (site.protocol !== "https:" || site.pathname !== "/" || site.search || site.hash || site.username || site.password ||
       (targetSite && site.origin !== siteOrigin)) throw new Error("SITE_URL deve apontar para a origem HTTPS pública do site.");
   if (!validJwks(convexEnv(["get", "JWKS"]))) throw new Error("Confira o conjunto de chaves públicas RSA em JWKS.");
-  if (problems.length) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 2000));
-      problems = await publicSessionProblems();
-      if (!problems.length) break;
-    }
-    if (problems.length) throw new Error("Verificação pública pendente. Confira " + problems.join(", ") + ".");
-  }
   if (!google) console.warn("O login com Google aguarda AUTH_GOOGLE_ID e AUTH_GOOGLE_SECRET no Convex.");
   if (!email) console.warn("O cadastro e a recuperação por e-mail aguardam um remetente configurado no Convex.");
 }
@@ -154,4 +142,20 @@ const result = isProduction
   ? spawnSync(process.execPath, [convexCli, "deploy", "--cmd-url-env-var-name", "VITE_CONVEX_URL", "--cmd", "npm run build"], { stdio: "inherit" })
   : spawnSync("npm", ["run", "build"], { stdio: "inherit" });
 if (result.error) console.error("Falha ao iniciar a compilação.", result.error.message);
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+if (isProduction) {
+  // The very first deployment installs auth HTTP routes. Only after that is
+  // it meaningful to verify the public JWKS and the Google callback redirect.
+  let problems = await publicSessionProblems();
+  for (let attempt = 0; problems.length && attempt < 3; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    problems = await publicSessionProblems();
+  }
+  if (problems.length) {
+    console.error("Convex publicado, mas o login público ainda falhou: " + problems.join(", ") + ".");
+    process.exit(1);
+  }
+  console.log("Validação pública de login concluída para glass-finance.");
+}
+process.exit(0);

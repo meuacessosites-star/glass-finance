@@ -40,3 +40,7 @@ Em desenvolvimento, execute `npm run test:auth` para testar os fluxos de autenti
 Os snapshots são isolados pela identidade Convex autenticada e divididos em blocos. Revisões otimizadas por compare-and-swap impedem que uma sessão sobrescreva em silêncio uma revisão mais nova de outro dispositivo. Se houver conflito, o app bloqueia a gravação da sessão conflitante e informa que é necessário exportar o estado e recarregar. A rotina não faz merge campo a campo.
 
 Um snapshot tem limite de 12 MB por conta. O backend confirma as gravações ou retorna erro; o status no painel Conta exibe falha/conflito e oferece uma tentativa manual. Não declare sucesso de sincronização sem verificar o estado “Dados sincronizados com sua conta”. Use exportação periódica como cópia adicional: a nuvem não substitui backup independente.
+
+## Primeira publicação do banco de produção
+
+A versão Production `blissful-capybara-905` começa sem funções HTTP. A verificação de `/.well-known/jwks.json` e `/api/auth/callback/google` deve acontecer **depois** do primeiro `convex deploy`, nunca antes. A compilação do `glass-finance` agora valida escopo, credenciais, `SITE_URL` e o par `JWKS`/`JWT_PRIVATE_KEY`, publica as funções no Convex correto e só então testa os dois endpoints públicos. A publicação continua bloqueada enquanto faltar pelo menos um provedor de autenticação (credenciais OAuth Google ou serviço de envio de e-mail). Os segredos devem ser cadastrados no painel Convex Production; a chave de publicação permanece apenas na Vercel como Secret.
