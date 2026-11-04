@@ -37,6 +37,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
   const redirect = dashboardReturnTo(params.get("returnTo"), redirectAfterAuth);
   const [step, setStep] = useState<Step>(params.get("modo") === "cadastro" ? "signUp" : "signIn");
   const [address, setAddress] = useState("");
+  const [preferredUsername, setPreferredUsername] = useState("");
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -103,6 +104,16 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
       if (!email && (screen === "signUp" || !username)) {
         setError(screen === "signUp" ? "Informe um e-mail válido." : "Informe seu e-mail ou nome de usuário.");
         return;
+      }
+      if (screen === "signUp") {
+        const requestedUsername = normalizeUsername(value("username"));
+        if (!requestedUsername) {
+          setError(USERNAME_HELP);
+          return;
+        }
+        // Remember the chosen handle during email verification. The server
+        // only reserves it after authentication, when ownership is confirmed.
+        setPreferredUsername(requestedUsername);
       }
       void run(async () => {
         if (!email) {
@@ -187,6 +198,15 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
                 autoCapitalize="none" spellCheck={false} defaultValue={address} required maxLength={254}
                 placeholder={screen === "signIn" ? "Seu e-mail ou usuário" : "voce@exemplo.com"} className={inputClass} />
             </label>}
+            {screen === "signUp" && <label className={labelClass}><span>Nome de usuário</span>
+              <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
+                pattern={USERNAME_PATTERN} minLength={3} maxLength={24} required
+                defaultValue={preferredUsername} placeholder="Ex.: aline_silva"
+                aria-describedby="signup-username-help" className={inputClass} />
+              <span id="signup-username-help" className="block font-normal">
+                {USERNAME_HELP} Confirmaremos a disponibilidade após verificar seu e-mail.
+              </span>
+            </label>}
             {hasCode && <label className={labelClass}><span>Código de 6 dígitos</span>
               <Input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required placeholder="000000" className={inputClass} />
             </label>}
@@ -199,7 +219,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             </label>}
             {screen === "username" && <label className={labelClass}><span>Nome de usuário</span>
               <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} pattern={USERNAME_PATTERN}
-                minLength={3} maxLength={24} required placeholder="Ex.: aline_silva" aria-describedby="username-help" className={inputClass} />
+                minLength={3} maxLength={24} required defaultValue={preferredUsername} placeholder="Ex.: aline_silva" aria-describedby="username-help" className={inputClass} />
               <span id="username-help" className="block font-normal">{USERNAME_HELP}</span>
             </label>}
             {emailUnavailable && <p role="status" className="text-sm text-glass-sub">O envio de códigos por e-mail ainda não foi configurado.</p>}
@@ -210,10 +230,8 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             </button>
           </form>
           <div className="relative mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-            {screen === "signIn" && <>
-              <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("resetRequest")}>Esqueci minha senha</button>
-              <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("otpRequest")}>Entrar com código por e-mail</button>
-            </>}
+            {(screen === "signIn" || screen === "signUp") && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("resetRequest")}>Esqueci minha senha — receber código por e-mail</button>}
+            {screen === "signIn" && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("otpRequest")}>Entrar com código por e-mail</button>}
             {hasCode && <button type="button" disabled={busy || emailUnavailable} className={linkClass} onClick={() =>
               void run(() => requestCode(screen === "verifyEmail" ? "verifyEmail" : screen === "otpVerify" ? "otpRequest" : "resetRequest", address), "Não foi possível reenviar o código.")}>
               Reenviar código</button>}
