@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const convexCli = fileURLToPath(new URL("../node_modules/convex/bin/main.js", import.meta.url));
 const siteOrigin = "https://glass-finance-meuacessos-projects.vercel.app";
-const backendName = "ceaseless-mallard-554";
+const backendName = "blissful-capybara-905";
 
 function cliFailure(result) {
   // Convex or npm errors can contain credentials. Report only recognized categories.
@@ -75,6 +75,18 @@ async function checkProductionAuth() {
   if (!deployKey) throw new Error("CONVEX_DEPLOY_KEY ausente no build de produção.");
   const targetSite = isGlassProject();
   const fixedTarget = deployKey.startsWith("prod:" + backendName + "|");
+  // Fail closed. A former test backend was linked to this frontend. Never
+  // publish auth functions, schema or user data to that backend by accident.
+  if (!targetSite) {
+    throw new Error("Publicação bloqueada: projeto Vercel diferente de glass-finance.");
+  }
+  if (!fixedTarget) {
+    throw new Error("Publicação bloqueada: CONVEX_DEPLOY_KEY não aponta para o Convex Production blissful-capybara-905. Atualize a chave no projeto glass-finance antes de publicar.");
+  }
+  if (process.env.VITE_CONVEX_URL &&
+      process.env.VITE_CONVEX_URL !== "https://" + backendName + ".convex.cloud") {
+    throw new Error("Publicação bloqueada: VITE_CONVEX_URL aponta para outro banco Convex. Corrija a variável de produção do glass-finance.");
+  }
   let problems = [];
   if (fixedTarget || process.env.VITE_CONVEX_URL === "https://" + backendName + ".convex.cloud") {
     problems = await publicSessionProblems();
