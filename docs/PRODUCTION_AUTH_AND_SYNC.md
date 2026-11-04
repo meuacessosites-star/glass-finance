@@ -14,7 +14,7 @@ Em **Convex Dashboard → Production → Settings → Environment Variables**, d
 | E-mail via Freebuff | Configure `AUTH_EMAIL_API_KEY` com uma chave ativa do serviço já integrado. Rotacione qualquer chave antiga que tenha sido versionada. O nome do app pode ser configurado por `VLY_APP_NAME`. |
 | E-mail via Resend | Como alternativa ao Freebuff, verifique um domínio remetente no Resend. No Convex, defina `RESEND_API_KEY` e `AUTH_EMAIL_FROM`, por exemplo `Glass Finance <acesso@seu-dominio.com.br>`. Quando ambos estão configurados, as mensagens são enviadas pelo Resend. |
 
-Os segredos de provedor pertencem somente ao backend. A consulta pública `users:authMethods` retorna dois indicadores booleanos, `google` e `emailDelivery`. Eles indicam a presença da configuração. A entrega de um código e o consentimento do Google devem ser testados no domínio final.
+Os segredos de provedor pertencem somente ao backend. Antes da publicação, o build de produção confere os nomes das variáveis, a origem do site e o formato das chaves públicas. Se a configuração estiver incompleta, a versão publicada continua em atendimento. O build não gera nem substitui chaves. A consulta pública `users:authMethods` retorna dois indicadores booleanos, `google` e `emailDelivery`. Eles indicam a presença da configuração. A entrega de um código e o consentimento do Google devem ser testados no domínio final.
 
 ## 3. Cadastro e teste no domínio publicado
 
