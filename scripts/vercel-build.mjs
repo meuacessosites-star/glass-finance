@@ -3,7 +3,7 @@ import { createPublicKey, generateKeyPairSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const convexCli = fileURLToPath(new URL("../node_modules/convex/bin/main.js", import.meta.url));
-const siteOrigin = "https://glass-finance-teal.vercel.app";
+const siteOrigin = "https://glass-finance-meuacessos-projects.vercel.app";
 const backendName = "ceaseless-mallard-554";
 
 function cliFailure(result) {

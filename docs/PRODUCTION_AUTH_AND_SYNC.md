@@ -1,5 +1,9 @@
 # Acesso e sincronização do Glass Finance
 
+## Escopo de publicação: somente glass-finance
+
+**Projeto correto na Vercel:** `glass-finance` (`prj_4yWAvFx79yXZHGrbipapN22o8mQP`). **Origem pública:** `https://glass-finance-meuacessos-projects.vercel.app`. O projeto `glass-finance-teal` também aponta para o mesmo repositório GitHub; por isso, atualizar a `main` pode publicar nos dois projetos. Evite fazer merge na `main` até separar as configurações de implantação, ou realize uma publicação direcionada apenas ao projeto correto. O callback e a variável `SITE_URL` no Convex devem voltar para **glass-finance**, nunca para `glass-finance-teal`.
+
 ## 1. Conectar o site e o Convex
 
 A Vercel publica a aplicação pelo repositório. No projeto **glass-finance**, em **Settings → Environment Variables**, configure `CONVEX_DEPLOY_KEY` para o deployment de produção. O build de produção usa essa chave para publicar as funções e injeta `VITE_CONVEX_URL` no frontend. Em previews, defina uma `VITE_CONVEX_URL` de desenvolvimento que já contenha estas funções.
