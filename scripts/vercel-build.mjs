@@ -46,18 +46,53 @@ function validJwks(value) {
   }
 }
 
-function checkProductionAuth() {
+function isGlassProject() {
+  const { VERCEL_PROJECT_ID, VERCEL_PROJECT_PRODUCTION_URL } = process.env;
+  return VERCEL_PROJECT_ID === "prj_4yWAvFx79yXZHGrbipapN22o8mQP" ||
+    (!VERCEL_PROJECT_ID && VERCEL_PROJECT_PRODUCTION_URL === new URL(siteOrigin).host);
+}
+
+async function publicSessionProblems() {
+  // These are the same public endpoints used by the browser and token verifier.
+  const issuer = "https://" + backendName + ".convex.site";
+  const options = { redirect: "manual", signal: AbortSignal.timeout(15_000) };
+  const [keys, callback] = await Promise.allSettled([
+    fetch(issuer + "/.well-known/jwks.json", options).then(async response =>
+      response.ok && validJwks(await response.text())),
+    fetch(issuer + "/api/auth/callback/google?error=access_denied", options).then(response => {
+      const location = response.headers.get("location");
+      return response.status === 302 && location && new URL(location).origin === siteOrigin;
+    }),
+  ]);
+  const problems = [];
+  if (keys.status !== "fulfilled" || !keys.value) problems.push("assinatura pública de sessão (JWKS)");
+  if (callback.status !== "fulfilled" || !callback.value) problems.push("retorno do Google (SITE_URL)");
+  return problems;
+}
+
+async function checkProductionAuth() {
   const deployKey = process.env.CONVEX_DEPLOY_KEY;
   if (!deployKey) throw new Error("CONVEX_DEPLOY_KEY ausente no build de produção.");
-  const names = new Set(convexEnv(["list", "--names-only"]).split(/\s+/));
+  const targetSite = isGlassProject();
+  const fixedTarget = deployKey.startsWith("prod:" + backendName + "|");
+  let problems = [];
+  if (fixedTarget || process.env.VITE_CONVEX_URL === "https://" + backendName + ".convex.cloud") {
+    problems = await publicSessionProblems();
+    if (problems.length === 0) return;
+    console.warn("Falha na verificação pública de produção: " + problems.join(", ") + ".");
+  }
+  let names;
+  try {
+    names = new Set(convexEnv(["list", "--names-only"]).split(/\s+/));
+  } catch (error) {
+    if (problems.length) throw new Error(error.message + " Confira esses itens no painel do Convex.");
+    throw error;
+  }
   const google = names.has("AUTH_GOOGLE_ID") && names.has("AUTH_GOOGLE_SECRET");
   const email = names.has("AUTH_EMAIL_API_KEY") || (names.has("RESEND_API_KEY") && names.has("AUTH_EMAIL_FROM"));
   if (!google && !email) throw new Error("Configure o Google ou um serviço de envio de e-mail no Convex.");
 
   // Only this project's confirmed production backend can receive initial settings.
-  const targetSite = process.env.VERCEL_PROJECT_ID === "prj_4yWAvFx79yXZHGrbipapN22o8mQP" ||
-    (!process.env.VERCEL_PROJECT_ID && process.env.VERCEL_PROJECT_PRODUCTION_URL === new URL(siteOrigin).host);
-  const fixedTarget = deployKey.startsWith("prod:" + backendName + "|");
   const additions = [];
   if (!names.has("SITE_URL")) additions.push("SITE_URL=" + siteOrigin);
   if (names.has("JWKS") !== names.has("JWT_PRIVATE_KEY")) {
@@ -81,6 +116,14 @@ function checkProductionAuth() {
   if (site.protocol !== "https:" || site.pathname !== "/" || site.search || site.hash || site.username || site.password ||
       (targetSite && site.origin !== siteOrigin)) throw new Error("SITE_URL deve apontar para a origem HTTPS pública do site.");
   if (!validJwks(convexEnv(["get", "JWKS"]))) throw new Error("Confira o conjunto de chaves públicas RSA em JWKS.");
+  if (problems.length) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+      problems = await publicSessionProblems();
+      if (!problems.length) break;
+    }
+    if (problems.length) throw new Error("Verificação pública pendente. Confira " + problems.join(", ") + ".");
+  }
   if (!google) console.warn("O login com Google aguarda AUTH_GOOGLE_ID e AUTH_GOOGLE_SECRET no Convex.");
   if (!email) console.warn("O cadastro e a recuperação por e-mail aguardam um remetente configurado no Convex.");
 }
@@ -88,7 +131,7 @@ function checkProductionAuth() {
 const isProduction = process.env.VERCEL_ENV === "production";
 if (isProduction) {
   try {
-    checkProductionAuth();
+    await checkProductionAuth();
   } catch (error) {
     console.error("Publicação interrompida antes do deploy.", error.message);
     process.exit(1);
