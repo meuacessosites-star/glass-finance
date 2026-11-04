@@ -3,7 +3,10 @@ import { createPublicKey, generateKeyPairSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const convexCli = fileURLToPath(new URL("../node_modules/convex/bin/main.js", import.meta.url));
-const siteOrigin = "https://glass-finance-meuacessos-projects.vercel.app";
+const siteOrigin = "https://glass-finance-teal.vercel.app";
+// The custom teal.vercel.app URL belongs to the Vercel project named glass-finance,
+// not to the separate Vercel project named glass-finance-teal.
+const projectProductionHost = "glass-finance-meuacessos-projects.vercel.app";
 const backendName = "blissful-capybara-905";
 
 function cliFailure(result) {
@@ -49,7 +52,7 @@ function validJwks(value) {
 function isGlassProject() {
   const { VERCEL_PROJECT_ID, VERCEL_PROJECT_PRODUCTION_URL } = process.env;
   return VERCEL_PROJECT_ID === "prj_4yWAvFx79yXZHGrbipapN22o8mQP" ||
-    (!VERCEL_PROJECT_ID && VERCEL_PROJECT_PRODUCTION_URL === new URL(siteOrigin).host);
+    (!VERCEL_PROJECT_ID && VERCEL_PROJECT_PRODUCTION_URL === projectProductionHost);
 }
 
 async function publicSessionProblems() {
