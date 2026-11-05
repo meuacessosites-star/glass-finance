@@ -244,7 +244,7 @@ test("account password creation for verified Google identity and password change
   const googleSession = t.withIdentity({ issuer, subject: String(userId) + "|google-auth" });
   await googleSession.mutation(api.users.claimUsername, { username: "google_person" });
   const initial = await googleSession.query(api.users.passwordStatus);
-  assert.deepEqual(initial, { hasPassword: false, canCreate: true });
+  assert.deepEqual(initial, { hasPassword: false, canCreate: true, canLinkExisting: false });
   const payload = JSON.stringify({ profiles: [{ name: "Metas importantes" }] });
   await googleSession.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
 
