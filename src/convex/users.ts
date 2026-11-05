@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { createAccount, getAuthUserId, modifyAccountCredentials, retrieveAccount } from "@convex-dev/auth/server";
 import { normalizeUsername, suggestUsername, USERNAME_HELP } from "../lib/auth-fields";
-import { getCurrentUser, oldFinanceStates } from "./accountData";
+import { accountPeople, getCurrentUser, oldFinanceStates } from "./accountData";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { normalizeEmail } from "../lib/auth-fields";
 import { internal } from "./_generated/api";
