@@ -351,3 +351,27 @@ test("confirmed account deletion revokes sessions and allows a fresh empty accou
   assert.equal(await fresh.query(api.financeState.getMine), null);
   assert.notEqual((await fresh.query(api.users.currentUser))._id, user._id);
 });
+
+test("an email one-time code signs into an existing verified Google account, not a duplicate", async () => {
+  const { t, mailbox, session } = fixture();
+  const email = "verified-google-otp@gmail.com";
+  const userId = await t.run(async ctx => {
+    const id = await ctx.db.insert("users", { email, name: "Google Original", emailVerificationTime: Date.now() });
+    await ctx.db.insert("authAccounts", { userId: id, provider: "google", providerAccountId: "google-original-sub" });
+    return id;
+  });
+  const google = t.withIdentity({ issuer, subject: userId + "|google" });
+  await google.mutation(api.users.claimUsername, { username: "original_google" });
+  const originalPayload = JSON.stringify({ profiles: [{ name: "Histórico Google" }] });
+  await google.mutation(api.financeState.saveMine, { payload: originalPayload, expectedRevision: 0 });
+  await t.action(api.auth.signIn, { provider: "email-otp", params: { email } });
+  const code = mailbox.get(email);
+  assert.ok(code && /^\d{6}$/.test(code));
+  const signedIn = session(await t.action(api.auth.signIn, { provider: "email-otp", params: { email, code } }));
+  const viaOtp = await signedIn.query(api.users.currentUser);
+  assert.equal(viaOtp._id, userId);
+  assert.equal(viaOtp.username, "original_google");
+  assert.equal((await signedIn.query(api.financeState.getMine)).payload, originalPayload);
+  const users = await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", email)).collect());
+  assert.equal(users.length, 1);
+});
