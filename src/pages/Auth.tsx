@@ -123,6 +123,9 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
         if (screen === "signUp") {
           try {
             await signIn("password", { flow: screen, email, password });
+            setAddress(email);
+            setStep("verifyEmail");
+            setNotice("Enviamos um código de seis dígitos para confirmar seu e-mail. Ele expira em 15 minutos.");
           } catch (cause) {
             // A verified Google login already owns this Gmail. Send an actual
             // email one-time code; the verified OTP resolves to the same user ID.
@@ -143,6 +146,11 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
           }
         } else {
           await signIn("password", { flow: screen, email, password });
+          // Existing unverified password users must also finish verification.
+          // Authenticated verified users are redirected automatically.
+          setAddress(email);
+          setStep("verifyEmail");
+          setNotice("Se o e-mail ainda não foi confirmado, enviamos um código para ativar a conta.");
         }
       }, screen === "signUp" ? "Não foi possível cadastrar este e-mail. Se já possui uma conta, escolha Entrar ou Continuar com Google. Não crie outra conta." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
       return;
@@ -171,7 +179,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
     (screen === "otpRequest" || screen === "otpVerify" || screen === "resetRequest" || screen === "resetVerify" || screen === "verifyEmail");
   const descriptions = {
     signIn: "Entre para acessar seus dados financeiros.",
-    signUp: "Crie sua conta sem código de e-mail. O código será usado apenas para entrar por e-mail ou recuperar acesso.",
+    signUp: "Crie sua conta com e-mail e senha. Você receberá um código para confirmar seu e-mail antes de acessar os dados financeiros.",
     username: "O nome de usuário é opcional. Deixe em branco para usar uma sugestão criada a partir do seu nome do Google ou e-mail.",
     switchAccount: "Use o Google ou um e-mail confirmado para continuar.",
     otpRequest: "Vamos enviar um código de seis dígitos para o seu e-mail.",

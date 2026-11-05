@@ -59,7 +59,11 @@ function fixture() {
     return t.withIdentity({ issuer, subject: jwt.sub });
   };
   const register = async (email: string, secret: string) => {
-    return session(await password(email, "signUp", { password: secret }));
+    const pending = await password(email, "signUp", { password: secret });
+    assert.ok(!pending.tokens, "Cadastro não deve liberar sessão sem verificar o e-mail.");
+    const code = mailbox.get(email);
+    assert.ok(code, "Cadastro deve enviar o código de confirmação.");
+    return session(await password(email, "email-verification", { code }));
   };
   return { t, mailbox, password, session, register };
 }
@@ -84,8 +88,8 @@ test("signup, verification, recovery, username login and session isolation", asy
   const secret = "valid-pass-1", replacement = "new-valid-pass";
   await assert.rejects(password(alice, "signUp", { password: "short" }));
   await assert.rejects(password("not-an-email", "signUp", { password: secret }));
-  const first = session(await password(alice, "signUp", { password: secret }));
-  assert.ok(!mailbox.has(alice), "Registration must not send an email code");
+  const first = await register(alice, secret);
+  assert.ok(mailbox.has(alice), "Registration must send an email code");
   assert.ok((await password(alice, "signIn", { password: secret })).tokens);
   await assert.rejects(t.mutation(api.users.claimUsername, { username: "alice" }));
   await assert.rejects(first.query(api.financeState.getMine));
@@ -275,8 +279,8 @@ test("account password creation for verified Google identity and password change
   assert.equal(await other.query(api.financeState.getMine), null);
 });
 
-test("unverified password registration never attaches to an existing Google financial account", async () => {
-  const { t, password, session } = fixture();
+test("password registration never attaches to an existing verified Google financial account", async () => {
+  const { t, password } = fixture();
   const email = "existing-google@gmail.com";
   const originalId = await t.run(ctx => ctx.db.insert("users", {
     email, name: "Original Google", emailVerificationTime: Date.now(),
@@ -286,11 +290,11 @@ test("unverified password registration never attaches to an existing Google fina
   await google.mutation(api.financeState.saveMine, {
     payload: JSON.stringify({ profiles: [{ name: "Private records" }] }), expectedRevision: 0,
   });
-  const passwordAccount = session(await password(email, "signUp", { password: "unverified-password" }));
-  const passwordOwner = await passwordAccount.query(api.users.currentUser);
-  assert.notEqual(passwordOwner._id, originalId);
-  await passwordAccount.mutation(api.users.claimUsername, { username: "email_signup" });
-  assert.equal(await passwordAccount.query(api.financeState.getMine), null);
+  await t.run(ctx => ctx.db.insert("authAccounts", {
+    userId: originalId, provider: "google", providerAccountId: "original-google",
+  }));
+  await assert.rejects(password(email, "signUp", { password: "unverified-password" }));
+  assert.equal((await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", email)).collect())).length, 1);
   assert.equal((await google.query(api.financeState.getMine)).payload,
     JSON.stringify({ profiles: [{ name: "Private records" }] }));
 });
@@ -307,9 +311,9 @@ test("Google registration prevents a second password account", async () => {
 });
 
 test("link two proven logins only if the second has no financial data", async () => {
-  const { t, password, session } = fixture();
+  const { t, password, session, register } = fixture();
   const email = "linked@example.org";
-  const extra = session(await password(email, "signUp", { password: "confirmed-password" }));
+  const extra = await register(email, "confirmed-password");
   const extraUser = await extra.query(api.users.currentUser);
   await extra.mutation(api.users.claimUsername, { username: "extra_user" });
   const primaryId = await t.run(async ctx => {
@@ -346,7 +350,7 @@ test("confirmed account deletion revokes sessions and allows a fresh empty accou
   assert.equal(await t.run(ctx => ctx.db.get(contact)), null);
   assert.equal(await secondSession.query(api.users.currentUser), null);
   await assert.rejects(password(email, "signIn", { password: "old-secure-password" }));
-  const fresh = session(await password(email, "signUp", { password: "new-secure-password" }));
+  const fresh = await register(email, "new-secure-password");
   await fresh.mutation(api.users.claimUsername, { username: "to_delete" });
   assert.equal(await fresh.query(api.financeState.getMine), null);
   assert.notEqual((await fresh.query(api.users.currentUser))._id, user._id);
@@ -391,4 +395,23 @@ test("an email one-time code signs into an existing verified Google account, not
   assert.equal((await signedIn.query(api.financeState.getMine)).payload, originalPayload);
   const users = await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", email)).collect());
   assert.equal(users.length, 1);
+});
+
+test("password registration requires the emailed code and resists invalid verification attempts", async () => {
+  const { t, mailbox, password, session } = fixture();
+  const email = "verification-required@example.org";
+  const pending = await password(email, "signUp", { password: "safe-new-password" });
+  assert.ok(!pending.tokens, "Unverified registration must not issue a login session");
+  assert.ok(mailbox.has(email));
+  const user = await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", email)).unique());
+  assert.ok(user && !user.emailVerificationTime);
+  await assert.rejects(password(email, "email-verification", { code: "000000" }));
+  assert.ok(!(await t.run(ctx => ctx.db.get(user._id)))?.emailVerificationTime);
+  const code = mailbox.get(email);
+  const activated = session(await password(email, "email-verification", { code }));
+  assert.ok((await activated.query(api.users.currentUser)).emailVerificationTime);
+  await activated.mutation(api.users.claimUsername, { username: "verified_signup" });
+  const signedIn = session(await password(email, "signIn", { password: "safe-new-password" }));
+  assert.equal((await signedIn.query(api.users.currentUser)).username, "verified_signup");
+  await assert.rejects(password(email, "signUp", { password: "another-password" }));
 });

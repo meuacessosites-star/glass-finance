@@ -8,8 +8,8 @@ import { internal } from "./_generated/api";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
 
 const standardPasswordProvider = Password({
-  // The first password signup has no email OTP; email ownership is still
-  // required before linking with an existing Google financial account.
+  // Email possession is verified before a password account can be used.
+  verify: createEmailOtp("email-verification"),
   reset: createEmailOtp("password-reset"),
   profile(params) {
     const email = normalizeEmail(params.email);
