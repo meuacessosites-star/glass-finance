@@ -26,12 +26,15 @@ const standardPasswordProvider = Password({
 
 // No new password identity may impersonate an existing verified Google identity.
 // Linking requires a signed-in Google session and the existing password.
+const basePasswordOptions = (standardPasswordProvider as unknown as {
+  options: { authorize: typeof standardPasswordProvider.authorize }
+}).options;
 const passwordProvider = {
   ...standardPasswordProvider,
   options: {
-    ...standardPasswordProvider.options,
-    async authorize(params: Parameters<typeof standardPasswordProvider.options.authorize>[0],
-      ctx: Parameters<typeof standardPasswordProvider.options.authorize>[1]) {
+    ...basePasswordOptions,
+    async authorize(params: Parameters<typeof basePasswordOptions.authorize>[0],
+      ctx: Parameters<typeof basePasswordOptions.authorize>[1]) {
       if (params.flow === "signUp") {
         const email = normalizeEmail(params.email);
         if (!email) throw new ConvexError("Informe um e-mail válido.");
@@ -40,7 +43,7 @@ const passwordProvider = {
           "Este e-mail já possui login Google. Entre com Google e adicione sua senha em Perfis → Senha da conta.",
         );
       }
-      return standardPasswordProvider.options.authorize(params, ctx);
+      return basePasswordOptions.authorize(params, ctx);
     },
   },
 };
