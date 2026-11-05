@@ -7,7 +7,7 @@ import { normalizeEmail, normalizeUsername } from "../lib/auth-fields";
 import { internal } from "./_generated/api";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
 
-const passwordProvider = Password({
+const standardPasswordProvider = Password({
   // The first password signup has no email OTP; email ownership is still
   // required before linking with an existing Google financial account.
   reset: createEmailOtp("password-reset"),
@@ -23,6 +23,24 @@ const passwordProvider = Password({
     }
   },
 });
+
+// No new password identity may impersonate an existing verified Google identity.
+// Linking requires a signed-in Google session and the existing password.
+const passwordProvider = {
+  ...standardPasswordProvider,
+  async authorize(params: Parameters<NonNullable<typeof standardPasswordProvider.authorize>>[0],
+    ctx: Parameters<NonNullable<typeof standardPasswordProvider.authorize>>[1]) {
+    if (params.flow === "signUp") {
+      const email = normalizeEmail(params.email);
+      if (!email) throw new ConvexError("Informe um e-mail válido.");
+      const verifiedGoogleAccount = await ctx.runQuery(internal.users.verifiedGoogleAccountForEmail, { email });
+      if (verifiedGoogleAccount) {
+        throw new ConvexError("Já existe uma conta Google com este e-mail. Entre com Google e escolha Perfis → Senha da conta para adicionar uma senha.");
+      }
+    }
+    return standardPasswordProvider.authorize(params, ctx);
+  },
+};
 
 const invalidLogin = "E-mail, nome de usuário ou senha incorretos.";
 const usernamePassword = ConvexCredentials({

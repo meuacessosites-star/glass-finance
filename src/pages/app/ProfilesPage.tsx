@@ -67,7 +67,25 @@ export default function ProfilesPage() {
 
   const passwordStatus = useQuery(api.users.passwordStatus);
   const managePassword = useAction(api.users.managePassword);
+  const linkPasswordAccount = useAction(api.users.linkPasswordAccount);
+  const [linkPassword, setLinkPassword] = useState("");
+  const [linkingPassword, setLinkingPassword] = useState(false);
   const [showPasswordEditor, setShowPasswordEditor] = useState(false);
+  const submitLinkPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!passwordStatus?.canLinkExisting) return;
+    setLinkingPassword(true);
+    try {
+      await linkPasswordAccount({ password: linkPassword });
+      setLinkPassword("");
+      toast.success("Login Google e senha vinculados na mesma conta. Os dados foram preservados.");
+    } catch (cause) {
+      toast.error(cause instanceof ConvexError && typeof cause.data === "string"
+        ? cause.data : "Não foi possível vincular. Confirme a senha da outra conta.");
+    } finally {
+      setLinkingPassword(false);
+    }
+  };
   const [currentAccountPassword, setCurrentAccountPassword] = useState("");
   const [newAccountPassword, setNewAccountPassword] = useState("");
   const [confirmAccountPassword, setConfirmAccountPassword] = useState("");
@@ -341,13 +359,26 @@ export default function ProfilesPage() {
             </p>
           </div>
         </div>
-        {!showPasswordEditor ? (
+        {passwordStatus?.canLinkExisting && <form onSubmit={(event) => void submitLinkPassword(event)} className="mt-3 space-y-2 rounded-xl border border-primary/20 p-3">
+          <p className="text-sm font-semibold text-glass-ink">Já criou outra conta com senha usando o mesmo e-mail?</p>
+          <p className="text-xs leading-relaxed text-glass-sub">Para usar a mesma conta Google, confirme a senha criada anteriormente. Se a outra conta tiver lançamentos financeiros, a vinculação será bloqueada para evitar perda de dados.</p>
+          <label className="block text-xs font-semibold text-glass-sub">Senha da outra conta
+            <input type="password" autoComplete="current-password" value={linkPassword}
+              onChange={(event) => setLinkPassword(event.target.value)}
+              required className="planning-search mt-1 w-full" />
+          </label>
+          <button type="submit" disabled={linkingPassword}
+            className="w-full rounded-xl bg-[#2F6BFF] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+            {linkingPassword ? "Verificando…" : "Vincular login com senha à conta Google"}
+          </button>
+        </form>}
+        {!passwordStatus?.canLinkExisting && !showPasswordEditor ? (
           <button type="button" disabled={!passwordStatus || (!passwordStatus.hasPassword && !passwordStatus.canCreate)}
             onClick={() => setShowPasswordEditor(true)}
             className="mt-3 w-full rounded-xl bg-[#2F6BFF] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
             {passwordStatus?.hasPassword ? "Alterar senha da conta" : "Criar senha da conta"}
           </button>
-        ) : (
+        ) : showPasswordEditor && !passwordStatus?.canLinkExisting ? (
           <form onSubmit={(event) => void submitAccountPassword(event)} className="mt-4 space-y-3">
             {passwordStatus?.hasPassword && <label className="block text-sm font-semibold text-glass-ink">Senha atual
               <input type="password" autoComplete="current-password" value={currentAccountPassword}
