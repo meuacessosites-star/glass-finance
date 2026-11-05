@@ -234,3 +234,61 @@ test("optional Google username is generated uniquely and can change without chan
   assert.equal((await first.query(api.financeState.getMine)).payload, payload);
   assert.equal((await second.query(api.users.currentUser)).username, "ana_maria_2");
 });
+
+test("account password creation for verified Google identity and password changes stay on the same user", async () => {
+  const { t, password, session, register } = fixture();
+  const email = "verified-google@gmail.com";
+  const userId = await t.run(ctx => ctx.db.insert("users", {
+    email, name: "Google Example", emailVerificationTime: Date.now(),
+  }));
+  const googleSession = t.withIdentity({ issuer, subject: String(userId) + "|google-auth" });
+  await googleSession.mutation(api.users.claimUsername, { username: "google_person" });
+  const initial = await googleSession.query(api.users.passwordStatus);
+  assert.deepEqual(initial, { hasPassword: false, canCreate: true });
+  const payload = JSON.stringify({ profiles: [{ name: "Metas importantes" }] });
+  await googleSession.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
+
+  await assert.rejects(googleSession.action(api.users.managePassword, { newPassword: "short" }));
+  await googleSession.action(api.users.managePassword, { newPassword: "first-safe-password" });
+  assert.equal((await googleSession.query(api.users.passwordStatus)).hasPassword, true);
+  const fromPassword = session(await password(email, "signIn", { password: "first-safe-password" }));
+  assert.equal((await fromPassword.query(api.users.currentUser))._id, userId);
+  assert.equal((await fromPassword.query(api.financeState.getMine)).payload, payload);
+
+  await assert.rejects(fromPassword.action(api.users.managePassword, {
+    currentPassword: "wrong-pass", newPassword: "replacement-password",
+  }));
+  await assert.rejects(fromPassword.action(api.users.managePassword, {
+    newPassword: "replacement-password",
+  }));
+  await fromPassword.action(api.users.managePassword, {
+    currentPassword: "first-safe-password", newPassword: "replacement-password",
+  });
+  await assert.rejects(password(email, "signIn", { password: "first-safe-password" }));
+  const loggedBackIn = session(await password(email, "signIn", { password: "replacement-password" }));
+  assert.equal((await loggedBackIn.query(api.users.currentUser))._id, userId);
+  assert.equal((await loggedBackIn.query(api.financeState.getMine)).payload, payload);
+  assert.equal((await loggedBackIn.query(api.users.currentUser)).username, "google_person");
+  const other = await register("another-person@gmail.com", "another-safe-password");
+  assert.equal((await other.query(api.users.passwordStatus)).hasPassword, true);
+  assert.equal(await other.query(api.financeState.getMine), null);
+});
+
+test("unverified password registration never attaches to an existing Google financial account", async () => {
+  const { t, password, session } = fixture();
+  const email = "existing-google@gmail.com";
+  const originalId = await t.run(ctx => ctx.db.insert("users", {
+    email, name: "Original Google", emailVerificationTime: Date.now(),
+  }));
+  const google = t.withIdentity({ issuer, subject: String(originalId) + "|google" });
+  await google.mutation(api.users.claimUsername, { username: "true_owner" });
+  await google.mutation(api.financeState.saveMine, {
+    payload: JSON.stringify({ profiles: [{ name: "Private records" }] }), expectedRevision: 0,
+  });
+  const passwordAccount = session(await password(email, "signUp", { password: "unverified-password" }));
+  const passwordOwner = await passwordAccount.query(api.users.currentUser);
+  assert.notEqual(passwordOwner._id, originalId);
+  assert.equal(await passwordAccount.query(api.financeState.getMine), null);
+  assert.equal((await google.query(api.financeState.getMine)).payload,
+    JSON.stringify({ profiles: [{ name: "Private records" }] }));
+});
