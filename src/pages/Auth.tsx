@@ -2,7 +2,7 @@ import { AppBackground } from "@/components/app/AppBackground";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
-import { dashboardReturnTo, normalizeEmail, normalizeUsername, USERNAME_HELP, USERNAME_PATTERN } from "@/lib/auth-fields";
+import { dashboardReturnTo, normalizeEmail, normalizeUsername, suggestUsername, USERNAME_HELP, USERNAME_PATTERN } from "@/lib/auth-fields";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2, Wallet } from "lucide-react";
@@ -17,12 +17,12 @@ const titles = {
   signIn: "Acesse sua conta", signUp: "Crie sua conta", verifyEmail: "Confirme seu e-mail",
   otpRequest: "Entrar com código", otpVerify: "Confira seu e-mail",
   resetRequest: "Recuperar acesso", resetVerify: "Crie uma nova senha",
-  username: "Escolha seu nome de usuário", switchAccount: "Entre com uma conta verificada",
+  username: "Como quer ser chamado?", switchAccount: "Entre com uma conta verificada",
 };
 const buttons = {
   signIn: "Entrar", signUp: "Criar conta", verifyEmail: "Confirmar e-mail", otpRequest: "Enviar código",
   otpVerify: "Verificar código", resetRequest: "Enviar instruções", resetVerify: "Salvar nova senha",
-  username: "Concluir cadastro", switchAccount: "Trocar de conta",
+  username: "Continuar para o painel", switchAccount: "Trocar de conta",
 };
 
 function GoogleMark() {
@@ -93,7 +93,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
       return;
     }
     if (screen === "username") {
-      void run(async () => { await claimUsername({ username: value("username") }); },
+      void run(async () => { await claimUsername({ username: value("username").trim() || undefined }); },
         "Não foi possível salvar seu nome de usuário. Tente novamente.");
       return;
     }
@@ -152,7 +152,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
   const descriptions = {
     signIn: "Entre para acessar seus dados financeiros.",
     signUp: "Confirme seu e-mail e escolha um nome de usuário para acessar sua conta.",
-    username: "Esse nome identifica sua conta. Se você cadastrou uma senha, também pode usá-lo para entrar.",
+    username: "O nome de usuário é opcional. Deixe em branco para usar uma sugestão criada a partir do seu nome do Google ou e-mail.",
     switchAccount: "Use o Google ou um e-mail confirmado para continuar.",
     otpRequest: "Vamos enviar um código de seis dígitos para o seu e-mail.",
     verifyEmail: `Digite o código enviado para ${address}.`,
@@ -217,10 +217,12 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
                   {visible ? <EyeOff size={17} /> : <Eye size={17} />}</button>
               </span>
             </label>}
-            {screen === "username" && <label className={labelClass}><span>Nome de usuário</span>
+            {screen === "username" && <label className={labelClass}><span>Nome de usuário (opcional)</span>
               <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} pattern={USERNAME_PATTERN}
-                minLength={3} maxLength={24} required defaultValue={preferredUsername} placeholder="Ex.: aline_silva" aria-describedby="username-help" className={inputClass} />
-              <span id="username-help" className="block font-normal">{USERNAME_HELP}</span>
+                minLength={3} maxLength={24} defaultValue={preferredUsername}
+                placeholder={suggestUsername(user?.name, user?.email)}
+                aria-describedby="username-help" className={inputClass} />
+              <span id="username-help" className="block font-normal">{USERNAME_HELP} Se deixar vazio, usaremos um nome disponível baseado em {user?.name ? "seu nome do Google" : "seu e-mail"}.</span>
             </label>}
             {emailUnavailable && <p role="status" className="text-sm text-glass-sub">O envio de códigos por e-mail ainda não foi configurado.</p>}
             {notice && <p role="status" className="text-sm text-glass-sub">{notice}</p>}

@@ -2,7 +2,7 @@ import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import "@/components/app/planning.css";
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import {
   Copy,
   Download,
@@ -17,6 +17,10 @@ import { toast } from "sonner";
 import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/convex/_generated/api";
+import { useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
+import { USERNAME_HELP, USERNAME_PATTERN } from "@/lib/auth-fields";
 import { cn } from "@/lib/utils";
 
 const CODE_PREFIX = "GRANASCAN1:";
@@ -42,6 +46,24 @@ const inputClass =
 
 export default function AccountPage() {
   const { user } = useAuth();
+  const updateUsername = useMutation(api.users.updateUsername);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameValue, setUsernameValue] = useState("");
+  const [savingUsername, setSavingUsername] = useState(false);
+  const saveUsername = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingUsername(true);
+    try {
+      await updateUsername({ username: usernameValue });
+      setEditingUsername(false);
+      toast.success("Nome de usuário atualizado.");
+    } catch (cause) {
+      toast.error(cause instanceof ConvexError && typeof cause.data === "string"
+        ? cause.data : "Não foi possível atualizar. Confira se o nome está disponível.");
+    } finally {
+      setSavingUsername(false);
+    }
+  };
   const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
@@ -153,6 +175,25 @@ export default function AccountPage() {
         <p className="text-xs font-semibold text-glass-sub">Conta conectada</p>
         <p className="mt-1 font-bold text-glass-ink">@{user?.username}</p>
         <p className="break-all text-sm text-glass-sub">{user?.email}</p>
+        {editingUsername ? (
+          <form onSubmit={(event) => void saveUsername(event)} className="mt-3 space-y-2">
+            <label htmlFor="account-username" className="text-xs font-semibold text-glass-sub">Novo nome de usuário</label>
+            <input id="account-username" value={usernameValue} onChange={(event) => setUsernameValue(event.target.value)}
+              autoComplete="username" autoCapitalize="none" spellCheck={false}
+              pattern={USERNAME_PATTERN} minLength={3} maxLength={24} required
+              className={inputClass} aria-describedby="account-username-help" />
+            <p id="account-username-help" className="text-xs text-glass-sub">{USERNAME_HELP} Seus dados e acesso Google continuam na mesma conta.</p>
+            <div className="flex gap-2">
+              <button type="submit" disabled={savingUsername} className="rounded-xl bg-[#2F6BFF] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Salvar nome</button>
+              <button type="button" disabled={savingUsername} onClick={() => setEditingUsername(false)} className="rounded-xl border border-black/15 px-4 py-2 text-sm font-semibold text-glass-ink">Cancelar</button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" className="mt-3 rounded-xl border border-[#2F6BFF]/30 bg-[#2F6BFF]/10 px-4 py-2 text-sm font-semibold text-[#2055d5]"
+            onClick={() => { setUsernameValue(user?.username || ""); setEditingUsername(true); }}>
+            Alterar nome de usuário
+          </button>
+        )}
       </div>
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Dados de{" "}

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { convexTest } from "convex-test";
 import schema from "../src/convex/schema";
 import { api } from "../src/convex/_generated/api";
-import { dashboardReturnTo, normalizeEmail, normalizeUsername } from "../src/lib/auth-fields";
+import { dashboardReturnTo, normalizeEmail, normalizeUsername, suggestUsername } from "../src/lib/auth-fields";
 
 const issuer = "https://test.convex.site";
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -70,6 +70,9 @@ test("username and protected return URL rules", () => {
   assert.equal(normalizeUsername(" ALine_23 "), "aline_23");
   for (const invalid of ["", "ab", "a".repeat(25), "a@b", "a b", "álî", "Kate"]) assert.equal(normalizeUsername(invalid), null);
   assert.equal(normalizeEmail("  A@EXAMPLE.ORG "), "a@example.org");
+  assert.equal(suggestUsername("Áline da Silva", "foo@example.org"), "aline_da_silva");
+  assert.equal(suggestUsername("  ", "Usuario Teste@example.org"), "usuario_teste");
+  assert.equal(suggestUsername(undefined, undefined), "usuario");
   assert.equal(normalizeEmail("x@@example.org"), null);
   assert.equal(dashboardReturnTo("/dashboard/conta?periodo=1#hoje"), "/dashboard/conta?periodo=1#hoje");
   for (const path of ["//evil.example", "//[", "/\\evil.example", "/dashboard/../auth", "/auth"]) {
@@ -209,4 +212,29 @@ test("two sessions see account saves and deletions, with no stale resurrection a
   const reopened = session(await password(email, "signIn", { password: secret }));
   assert.equal((await reopened.query(api.financeState.getMine)).payload, two);
   assert.equal((await reopened.query(api.users.currentUser)).username, "sync_account");
+});
+
+test("optional Google username is generated uniquely and can change without changing account data", async () => {
+  const { t } = fixture();
+  const ids = await t.run(async (ctx) => ({
+    first: await ctx.db.insert("users", { email: "ana1@gmail.com", name: "Ana Maria", emailVerificationTime: 1 }),
+    second: await ctx.db.insert("users", { email: "ana2@gmail.com", name: "Ana Maria", emailVerificationTime: 1 }),
+    third: await ctx.db.insert("users", { email: "ana3@gmail.com", name: "Ana Maria", emailVerificationTime: 1 }),
+  }));
+  const first = t.withIdentity({ issuer, subject: String(ids.first) + "|google-session" });
+  const second = t.withIdentity({ issuer, subject: String(ids.second) + "|google-session" });
+  const third = t.withIdentity({ issuer, subject: String(ids.third) + "|google-session" });
+  await first.mutation(api.users.claimUsername, {});
+  await second.mutation(api.users.claimUsername, {});
+  await third.mutation(api.users.claimUsername, { username: "custom_ana" });
+  assert.equal((await first.query(api.users.currentUser)).username, "ana_maria");
+  assert.equal((await second.query(api.users.currentUser)).username, "ana_maria_2");
+  assert.equal((await third.query(api.users.currentUser)).username, "custom_ana");
+  const payload = JSON.stringify({ profiles: [{ name: "Dados preservados" }] });
+  await first.mutation(api.financeState.saveMine, { payload, expectedRevision: 0 });
+  await assert.rejects(second.mutation(api.users.updateUsername, { username: "ana_maria" }));
+  await first.mutation(api.users.updateUsername, { username: "meu_usuario" });
+  assert.equal((await first.query(api.users.currentUser)).username, "meu_usuario");
+  assert.equal((await first.query(api.financeState.getMine)).payload, payload);
+  assert.equal((await second.query(api.users.currentUser)).username, "ana_maria_2");
 });

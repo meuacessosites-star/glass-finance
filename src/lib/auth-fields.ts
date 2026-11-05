@@ -10,6 +10,17 @@ export function normalizeUsername(value: unknown) {
   return value.trim().toLowerCase();
 }
 
+/** Safe, predictable default for an optional Google username. */
+export function suggestUsername(displayName: unknown, email: unknown) {
+  const fromName = typeof displayName === "string" ? displayName.trim() : "";
+  const fromEmail = typeof email === "string" ? email.split("@")[0] : "";
+  const raw = fromName || fromEmail || "usuario";
+  const base = raw.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "").slice(0, 24).replace(/_+$/g, "");
+  return base.length >= 3 ? base : "usuario";
+}
+
 export function normalizeEmail(value: unknown) {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
