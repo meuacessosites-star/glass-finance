@@ -28,17 +28,20 @@ const standardPasswordProvider = Password({
 // Linking requires a signed-in Google session and the existing password.
 const passwordProvider = {
   ...standardPasswordProvider,
-  async authorize(params: Parameters<NonNullable<typeof standardPasswordProvider.authorize>>[0],
-    ctx: Parameters<NonNullable<typeof standardPasswordProvider.authorize>>[1]) {
-    if (params.flow === "signUp") {
-      const email = normalizeEmail(params.email);
-      if (!email) throw new ConvexError("Informe um e-mail válido.");
-      const verifiedGoogleAccount = await ctx.runQuery(internal.users.verifiedGoogleAccountForEmail, { email });
-      if (verifiedGoogleAccount) {
-        throw new ConvexError("Já existe uma conta Google com este e-mail. Entre com Google e escolha Perfis → Senha da conta para adicionar uma senha.");
+  options: {
+    ...standardPasswordProvider.options,
+    async authorize(params: Parameters<typeof standardPasswordProvider.options.authorize>[0],
+      ctx: Parameters<typeof standardPasswordProvider.options.authorize>[1]) {
+      if (params.flow === "signUp") {
+        const email = normalizeEmail(params.email);
+        if (!email) throw new ConvexError("Informe um e-mail válido.");
+        const existing = await ctx.runQuery(internal.users.verifiedGoogleAccountForEmail, { email });
+        if (existing) throw new ConvexError(
+          "Este e-mail já possui login Google. Entre com Google e adicione sua senha em Perfis → Senha da conta.",
+        );
       }
-    }
-    return standardPasswordProvider.authorize(params, ctx);
+      return standardPasswordProvider.options.authorize(params, ctx);
+    },
   },
 };
 
