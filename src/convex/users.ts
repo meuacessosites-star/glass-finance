@@ -138,15 +138,30 @@ export const managePassword = action({
         throw new ConvexError("Confirme seu e-mail pelo login Google antes de criar uma senha.");
       const created = await createAccount(ctx, {
         provider: "password", account: { id: data.email, secret: newPassword },
-        profile: { email: data.email, emailVerified: true }, shouldLinkViaEmail: true,
+        profile: { email: data.email }, shouldLinkViaEmail: true,
       });
       if (created.user._id !== userId)
         throw new ConvexError("Não foi possível vincular a senha à conta conectada.");
+      await ctx.runMutation(internal.users.verifyAddedPasswordAccount, { accountId: created.account._id });
     }
     return { ok: true };
   },
 });
 
+
+/** The current Google-authenticated user already proved mailbox ownership. */
+export const verifyAddedPasswordAccount = internalMutation({
+  args: { accountId: v.id("authAccounts") },
+  handler: async (ctx, { accountId }) => {
+    const user = await getCurrentUser(ctx);
+    const account = await ctx.db.get(accountId);
+    if (!user?.email || !user.emailVerificationTime || !account ||
+      account.userId !== user._id || account.provider !== "password" ||
+      account.providerAccountId !== user.email)
+      throw new ConvexError("A identidade confirmada não corresponde à senha.");
+    await ctx.db.patch(accountId, { emailVerified: user.email });
+  },
+});
 
 /** Signup guard. Only a verified provider-owned address can block a new signup. */
 export const verifiedGoogleAccountForEmail = internalQuery({
