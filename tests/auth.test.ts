@@ -270,6 +270,7 @@ test("account password creation for verified Google identity and password change
   assert.equal((await loggedBackIn.query(api.financeState.getMine)).payload, payload);
   assert.equal((await loggedBackIn.query(api.users.currentUser)).username, "google_person");
   const other = await register("another-person@gmail.com", "another-safe-password");
+  await other.mutation(api.users.claimUsername, { username: "another_person" });
   assert.equal((await other.query(api.users.passwordStatus)).hasPassword, true);
   assert.equal(await other.query(api.financeState.getMine), null);
 });
@@ -288,6 +289,7 @@ test("unverified password registration never attaches to an existing Google fina
   const passwordAccount = session(await password(email, "signUp", { password: "unverified-password" }));
   const passwordOwner = await passwordAccount.query(api.users.currentUser);
   assert.notEqual(passwordOwner._id, originalId);
+  await passwordAccount.mutation(api.users.claimUsername, { username: "email_signup" });
   assert.equal(await passwordAccount.query(api.financeState.getMine), null);
   assert.equal((await google.query(api.financeState.getMine)).payload,
     JSON.stringify({ profiles: [{ name: "Private records" }] }));
