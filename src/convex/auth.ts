@@ -36,6 +36,14 @@ const passwordProvider = {
     async authorize(params: Parameters<typeof basePasswordOptions.authorize>[0],
       ctx: Parameters<typeof basePasswordOptions.authorize>[1]) {
       if (params.flow === "signUp") {
+        // Reject duplicate usernames before creating a pending email account
+        // or sending the verification code. Rechecked atomically on claim.
+        if (params.username !== undefined) {
+          const username = normalizeUsername(params.username);
+          if (!username) throw new ConvexError("Nome de usuário inválido. Use de 3 a 24 letras, números ou _.");
+          const taken = await ctx.runQuery(internal.users.usernameTakenForSignup, { username });
+          if (taken) throw new ConvexError("Esse nome de usuário já está cadastrado. Escolha outro para continuar.");
+        }
         const email = normalizeEmail(params.email);
         if (!email) throw new ConvexError("Informe um e-mail válido.");
         const existing = await ctx.runQuery(internal.users.verifiedGoogleAccountForEmail, { email });

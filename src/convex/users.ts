@@ -16,6 +16,30 @@ export const authMethods = query({
   }),
 });
 
+/** Public check for an available login name. No user details are exposed. */
+export const usernameAvailability = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
+    const normalized = normalizeUsername(username);
+    if (!normalized) return { available: false };
+    const taken = await ctx.db.query("users")
+      .withIndex("by_username", q => q.eq("username", normalized)).unique();
+    return { available: taken === null };
+  },
+});
+
+/** Re-check on the server before starting password signup.
+ * The username is still only reserved after verified email authentication. */
+export const usernameTakenForSignup = internalQuery({
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
+    const normalized = normalizeUsername(username);
+    if (!normalized) return true;
+    return Boolean(await ctx.db.query("users")
+      .withIndex("by_username", q => q.eq("username", normalized)).unique());
+  },
+});
+
 export const claimUsername = mutation({
   args: { username: v.optional(v.string()) },
   handler: async (ctx, args) => {

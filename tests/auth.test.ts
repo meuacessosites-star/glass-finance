@@ -415,3 +415,27 @@ test("password registration requires the emailed code and resists invalid verifi
   assert.equal((await signedIn.query(api.users.currentUser)).username, "verified_signup");
   await assert.rejects(password(email, "signUp", { password: "another-password" }));
 });
+
+test("signup warns and blocks an existing username before sending an email code", async () => {
+  const { t, mailbox, password, register } = fixture();
+  const first = await register("username-owner@example.org", "owner-password-123");
+  await first.mutation(api.users.claimUsername, { username: "MyName" });
+  assert.deepEqual(await t.query(api.users.usernameAvailability, { username: "MYNAME" }), { available: false });
+  assert.deepEqual(await t.query(api.users.usernameAvailability, { username: "free_user" }), { available: true });
+  assert.deepEqual(await t.query(api.users.usernameAvailability, { username: "!" }), { available: false });
+  const duplicateEmail = "another-user@example.org";
+  await assert.rejects(password(duplicateEmail, "signUp",
+    { username: "myname", password: "another-password-123" }), /nome de usuário já está cadastrado/i);
+  assert.equal(mailbox.has(duplicateEmail), false, "Do not send signup code to a blocked username");
+  assert.equal((await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", duplicateEmail)).collect())).length, 0);
+  const pending = await password(duplicateEmail, "signUp",
+    { username: "free_user", password: "another-password-123" });
+  assert.ok(!pending.tokens);
+  assert.ok(mailbox.has(duplicateEmail));
+  await password(duplicateEmail, "email-verification", { code: mailbox.get(duplicateEmail) });
+  const second = await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", duplicateEmail)).unique());
+  assert.ok(second);
+  // The final claim is authoritative even when the availability check was stale.
+  await assert.rejects(t.withIdentity({ issuer, subject: String(second._id) + "|session" })
+    .mutation(api.users.claimUsername, { username: "MYNAME" }), /nome de usuário já está em uso/i);
+});

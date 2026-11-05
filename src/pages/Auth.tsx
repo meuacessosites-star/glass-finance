@@ -38,6 +38,12 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
   const [step, setStep] = useState<Step>(params.get("modo") === "cadastro" ? "signUp" : "signIn");
   const [address, setAddress] = useState("");
   const [preferredUsername, setPreferredUsername] = useState("");
+  const candidateUsername = normalizeUsername(preferredUsername);
+  const usernameAvailability = useQuery(api.users.usernameAvailability,
+    step === "signUp" && !isAuthenticated && candidateUsername
+      ? { username: candidateUsername } : "skip");
+  const usernameTaken = step === "signUp" && !isAuthenticated &&
+    Boolean(candidateUsername && usernameAvailability?.available === false);
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -122,7 +128,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
         }
         if (screen === "signUp") {
           try {
-            await signIn("password", { flow: screen, email, password });
+            await signIn("password", { flow: screen, email, password, username: normalizeUsername(value("username"))! });
             setAddress(email);
             setStep("verifyEmail");
             setNotice("Enviamos um código de seis dígitos para confirmar seu e-mail. Ele expira em 15 minutos.");
@@ -229,10 +235,17 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             {screen === "signUp" && <label className={labelClass}><span>Nome de usuário</span>
               <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
                 pattern={USERNAME_PATTERN} minLength={3} maxLength={24} required
-                defaultValue={preferredUsername} placeholder="Ex.: aline_silva"
-                aria-describedby="signup-username-help" className={inputClass} />
+                defaultValue={preferredUsername} onChange={event => setPreferredUsername(event.currentTarget.value)}
+                placeholder="Ex.: aline_silva" aria-describedby="signup-username-help signup-username-status"
+                aria-invalid={usernameTaken} className={inputClass} />
               <span id="signup-username-help" className="block font-normal">
-                {USERNAME_HELP} A disponibilidade é verificada ao criar a conta.
+                {USERNAME_HELP} O nome também poderá ser usado para entrar com sua senha.
+              </span>
+              <span id="signup-username-status" className={usernameTaken
+                ? "block text-xs font-semibold text-red-600" : "block text-xs text-glass-sub"} aria-live="polite">
+                {usernameTaken ? "Esse nome de usuário já está cadastrado. Escolha outro."
+                  : candidateUsername && usernameAvailability?.available
+                    ? "Nome disponível no momento. A confirmação é feita ao concluir o cadastro." : ""}
               </span>
             </label>}
             {hasCode && <label className={labelClass}><span>Código de 6 dígitos</span>
@@ -255,7 +268,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             {emailUnavailable && <p role="status" className="text-sm text-glass-sub">O envio de códigos por e-mail ainda não foi configurado.</p>}
             {notice && <p role="status" className="text-sm text-glass-sub">{notice}</p>}
             {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
-            <button type="submit" disabled={busy || emailUnavailable} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2F6BFF] px-4 font-semibold text-white disabled:opacity-60">
+            <button type="submit" disabled={busy || emailUnavailable || usernameTaken} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2F6BFF] px-4 font-semibold text-white disabled:opacity-60">
               {buttons[screen]} {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
             </button>
           </form>
