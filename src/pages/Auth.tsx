@@ -125,7 +125,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
           setAddress(email);
           changeStep("verifyEmail");
         }
-      }, screen === "signUp" ? "Não foi possível criar a conta. Se já se cadastrou, tente entrar ou recuperar sua senha." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
+      }, screen === "signUp" ? "Não foi possível criar uma nova conta com este e-mail. Caso já esteja cadastrado, escolha Entrar ou Continuar com Google para acessar a conta existente. Não criamos outra conta." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
       return;
     }
     if (screen === "resetRequest" || screen === "otpRequest") {
@@ -230,8 +230,16 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
             </button>
           </form>
           <div className="relative mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-            {screen === "signIn" && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("resetRequest")}>Esqueci minha senha — receber código por e-mail</button>}
-            {screen === "signIn" && <button type="button" disabled={busy} className={linkClass} onClick={() => changeStep("otpRequest")}>Entrar com código por e-mail</button>}
+            {screen === "signIn" && <div className="grid w-full gap-2">
+              <button type="button" disabled={busy} onClick={() => changeStep("resetRequest")}
+                className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-[#2F6BFF]/25 bg-[#2F6BFF]/10 px-4 py-3 text-left text-sm font-semibold text-[#2055d5] shadow-sm transition-colors hover:border-[#2F6BFF]/60 hover:bg-[#2F6BFF]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF] disabled:opacity-60 dark:text-[#aacaff]">
+                <span>Esqueci minha senha</span><span className="inline-flex items-center gap-1 text-xs">Recuperar acesso <ArrowRight size={15} /></span>
+              </button>
+              <button type="button" disabled={busy} onClick={() => changeStep("otpRequest")}
+                className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-black/15 bg-white/80 px-4 py-3 text-left text-sm font-semibold text-glass-ink shadow-sm transition-colors hover:border-[#2F6BFF]/60 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF] disabled:opacity-60 dark:border-white/20 dark:bg-white/10">
+                <span>Entrar com código por e-mail</span><ArrowRight size={17} className="shrink-0 text-[#2F6BFF]" />
+              </button>
+            </div>}
             {hasCode && <button type="button" disabled={busy || emailUnavailable} className={linkClass} onClick={() =>
               void run(() => requestCode(screen === "verifyEmail" ? "verifyEmail" : screen === "otpVerify" ? "otpRequest" : "resetRequest", address), "Não foi possível reenviar o código.")}>
               Reenviar código</button>}

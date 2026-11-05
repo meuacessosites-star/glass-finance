@@ -93,6 +93,12 @@ test("signup, verification, recovery, username login and session isolation", asy
   await first.mutation(api.users.claimUsername, { username: "Alice" });
   await first.mutation(api.users.claimUsername, { username: "ALICE" });
   assert.equal((await first.query(api.users.currentUser)).username, "alice");
+  // Registering the same verified password account again cannot create
+  // another identity and cannot replace its financial history.
+  await assert.rejects(password(alice, "signUp", { password: "different-pass-123" }));
+  const existingAlice = await first.query(api.users.currentUser);
+  const signedInAgain = session(await password(alice, "signIn", { password: secret }));
+  assert.equal((await signedInAgain.query(api.users.currentUser))._id, existingAlice._id);
   const secondUser = await register(bob, secret);
   await assert.rejects(secondUser.mutation(api.users.claimUsername, { username: "aLiCe" }));
   await secondUser.mutation(api.users.claimUsername, { username: "bob" });

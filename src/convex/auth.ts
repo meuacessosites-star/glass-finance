@@ -46,6 +46,10 @@ const usernamePassword = ConvexCredentials({
 });
 
 const google = Google({
+  // A Google identity may join a password account only if the provider
+  // verifies ownership of the email (e.g. Gmail or Workspace). Do not
+  // auto-link unverified third-party mailbox addresses.
+  allowDangerousEmailAccountLinking: false,
   profile(profile) {
     const email = normalizeEmail(profile.email);
     if (!email || profile.email_verified !== true) throw new Error("O Google não confirmou este e-mail.");
