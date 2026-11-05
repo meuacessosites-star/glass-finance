@@ -294,3 +294,37 @@ test("unverified password registration never attaches to an existing Google fina
   assert.equal((await google.query(api.financeState.getMine)).payload,
     JSON.stringify({ profiles: [{ name: "Private records" }] }));
 });
+
+test("Google registration prevents a second password account", async () => {
+  const { t, password } = fixture();
+  const email = "registered-google@example.org";
+  await t.run(async ctx => {
+    const id = await ctx.db.insert("users", { email, emailVerificationTime: 1 });
+    await ctx.db.insert("authAccounts", { userId: id, provider: "google", providerAccountId: "google-id" });
+  });
+  await assert.rejects(password(email, "signUp", { password: "another-password" }));
+  assert.equal((await t.run(ctx => ctx.db.query("users").withIndex("email", q => q.eq("email", email)).collect())).length, 1);
+});
+
+test("link two proven logins only if the second has no financial data", async () => {
+  const { t, password, session } = fixture();
+  const email = "linked@example.org";
+  const extra = session(await password(email, "signUp", { password: "confirmed-password" }));
+  const extraUser = await extra.query(api.users.currentUser);
+  await extra.mutation(api.users.claimUsername, { username: "extra_user" });
+  const primaryId = await t.run(async ctx => {
+    const id = await ctx.db.insert("users", { email, emailVerificationTime: 1 });
+    await ctx.db.insert("authAccounts", { userId: id, provider: "google", providerAccountId: "google-id" });
+    return id;
+  });
+  const google = t.withIdentity({ issuer, subject: primaryId + "|session" });
+  await google.mutation(api.users.claimUsername, { username: "primary_user" });
+  const payload = JSON.stringify({ profiles: [{ name: "Dados da conta" }] });
+  await google.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
+  await assert.rejects(google.action(api.users.linkPasswordAccount, { password: "wrong-password" }));
+  await google.action(api.users.linkPasswordAccount, { password: "confirmed-password" });
+  const linked = session(await password(email, "signIn", { password: "confirmed-password" }));
+  assert.equal((await linked.query(api.users.currentUser))._id, primaryId);
+  assert.equal((await linked.query(api.financeState.getMine)).payload, payload);
+  assert.equal(await t.run(ctx => ctx.db.get(extraUser._id)), null);
+});
