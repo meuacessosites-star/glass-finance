@@ -446,9 +446,9 @@ export function Sidebar() {
         )}
       </AnimatePresence>
 
-      {deleteOpen && <div className="fixed inset-0 z-[350] flex items-center justify-center bg-black/70 p-4">
+      {deleteOpen && <div className="fixed inset-0 z-[350] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/70 p-4">
         <section role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description"
-          className="w-full max-w-md space-y-4 rounded-3xl bg-white p-6 text-slate-900 shadow-2xl dark:bg-[#202631] dark:text-white">
+          className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md space-y-4 overflow-y-auto overscroll-contain rounded-3xl bg-white p-6 text-slate-900 shadow-2xl dark:bg-[#202631] dark:text-white">
           <h2 id="delete-title" className="text-xl font-bold text-red-700 dark:text-red-300">Excluir minha conta permanentemente?</h2>
           <p id="delete-description" className="text-sm leading-relaxed">
             Todos os dados financeiros desta conta serão apagados: perfis, transações, cartões, empréstimos, metas,

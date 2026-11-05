@@ -190,9 +190,9 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
   };
 
   return (
-    <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
+    <main className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-6 touch-pan-y sm:px-6 sm:py-8">
       <AppBackground />
-      <section className="glass glass-strong relative z-10 w-full max-w-[460px] overflow-hidden rounded-[2rem] border border-white/60 p-6 sm:p-9">
+      <section className="glass glass-strong relative z-10 mx-auto my-auto w-full max-w-[460px] shrink-0 overflow-hidden rounded-[2rem] border border-white/60 p-6 sm:p-9">
         <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-[#5b9dff]/20 blur-3xl" />
         <header className="relative text-center">
           <Link to="/" aria-label="Voltar para o início" className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#5b9dff] to-[#5856d6] text-white">
