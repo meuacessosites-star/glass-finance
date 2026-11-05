@@ -138,7 +138,7 @@ export const managePassword = action({
         throw new ConvexError("Confirme seu e-mail pelo login Google antes de criar uma senha.");
       const created = await createAccount(ctx, {
         provider: "password", account: { id: data.email, secret: newPassword },
-        profile: { email: data.email }, shouldLinkViaEmail: true,
+        profile: { email: data.email, emailVerified: true }, shouldLinkViaEmail: true,
       });
       if (created.user._id !== userId)
         throw new ConvexError("Não foi possível vincular a senha à conta conectada.");
