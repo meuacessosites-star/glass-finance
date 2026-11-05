@@ -120,7 +120,30 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
           await signIn("username", { username: username!, password });
           return;
         }
-        await signIn("password", { flow: screen, email, password });
+        if (screen === "signUp") {
+          try {
+            await signIn("password", { flow: screen, email, password });
+          } catch (cause) {
+            // A verified Google login already owns this Gmail. Send an actual
+            // email one-time code; the verified OTP resolves to the same user ID.
+            const reason = cause instanceof ConvexError
+              ? String(cause.data) : cause instanceof Error ? cause.message : String(cause);
+            if (/já possui login Google|já possui uma conta Google|already.*google/i.test(reason)) {
+              if (!methods?.emailDelivery) {
+                setError("Este e-mail já está cadastrado. Entre com Google. O envio de códigos ainda não está disponível.");
+                return;
+              }
+              await signIn("email-otp", { email });
+              setAddress(email);
+              setStep("otpVerify");
+              setNotice("Este e-mail já está cadastrado. Enviamos um código para entrar na conta existente, sem criar outra. Depois, se quiser, crie uma senha em Perfis.");
+              return;
+            }
+            throw cause;
+          }
+        } else {
+          await signIn("password", { flow: screen, email, password });
+        }
       }, screen === "signUp" ? "Não foi possível cadastrar este e-mail. Se já possui uma conta, escolha Entrar ou Continuar com Google. Não crie outra conta." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
       return;
     }

@@ -352,6 +352,23 @@ test("confirmed account deletion revokes sessions and allows a fresh empty accou
   assert.notEqual((await fresh.query(api.users.currentUser))._id, user._id);
 });
 
+test("account deletion never touches an unrelated user's records or authentication", async () => {
+  const { t, register, password, session } = fixture();
+  const first = await register("first-delete@example.org", "first-password-123");
+  const second = await register("keep-data@example.org", "second-password-123");
+  await first.mutation(api.users.claimUsername, { username: "delete_only_one" });
+  await second.mutation(api.users.claimUsername, { username: "untouched_user" });
+  const person = await second.mutation(api.people.create, { name: "Keep contact" });
+  const saved = JSON.stringify({ profiles: [{ name: "Keep transactions" }] });
+  await second.mutation(api.financeState.saveMine, { payload: saved, expectedRevision: 0 });
+  await first.mutation(api.users.deleteMyAccount, {
+    email: "first-delete@example.org", confirmation: "EXCLUIR MINHA CONTA",
+  });
+  const reopened = session(await password("keep-data@example.org", "signIn", { password: "second-password-123" }));
+  assert.equal((await reopened.query(api.financeState.getMine)).payload, saved);
+  assert.equal((await reopened.query(api.people.list)).find(p => p._id === person)?.name, "Keep contact");
+});
+
 test("an email one-time code signs into an existing verified Google account, not a duplicate", async () => {
   const { t, mailbox, session } = fixture();
   const email = "verified-google-otp@gmail.com";

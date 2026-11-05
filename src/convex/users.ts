@@ -245,7 +245,7 @@ export const deleteMyAccount = mutation({
   args: { email: v.string(), confirmation: v.string() },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    if (!user?.email || !user.username) throw new ConvexError("Entre na sua conta para excluí-la.");
+    if (!user?.email) throw new ConvexError("Entre na sua conta para excluí-la.");
     if (args.confirmation !== "EXCLUIR MINHA CONTA" || normalizeEmail(args.email) !== normalizeEmail(user.email))
       throw new ConvexError("Confirmação incorreta.");
     const subjects = new Set([String(user._id)]);
