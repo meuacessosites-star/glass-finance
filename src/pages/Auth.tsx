@@ -120,12 +120,8 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
           await signIn("username", { username: username!, password });
           return;
         }
-        const { signingIn } = await signIn("password", { flow: screen, email, password });
-        if (!signingIn) {
-          setAddress(email);
-          changeStep("verifyEmail");
-        }
-      }, screen === "signUp" ? "Não foi possível criar uma nova conta com este e-mail. Caso já esteja cadastrado, escolha Entrar ou Continuar com Google para acessar a conta existente. Não criamos outra conta." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
+        await signIn("password", { flow: screen, email, password });
+      }, screen === "signUp" ? "Não foi possível cadastrar este e-mail. Se já possui uma conta, escolha Entrar ou Continuar com Google. Não crie outra conta." : "E-mail, nome de usuário ou senha incorretos. Confira os dados e tente novamente.");
       return;
     }
     if (screen === "resetRequest" || screen === "otpRequest") {
@@ -148,10 +144,11 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
 
   if (!isLoading && isAuthenticated && user?.username) return <Navigate to={redirect} replace />;
   const waiting = isLoading || methods === undefined;
-  const emailUnavailable = methods?.emailDelivery === false && (needsEmail || hasCode);
+  const emailUnavailable = methods?.emailDelivery === false &&
+    (screen === "otpRequest" || screen === "otpVerify" || screen === "resetRequest" || screen === "resetVerify" || screen === "verifyEmail");
   const descriptions = {
     signIn: "Entre para acessar seus dados financeiros.",
-    signUp: "Confirme seu e-mail e escolha um nome de usuário para acessar sua conta.",
+    signUp: "Crie sua conta sem código de e-mail. O código será usado apenas para entrar por e-mail ou recuperar acesso.",
     username: "O nome de usuário é opcional. Deixe em branco para usar uma sugestão criada a partir do seu nome do Google ou e-mail.",
     switchAccount: "Use o Google ou um e-mail confirmado para continuar.",
     otpRequest: "Vamos enviar um código de seis dígitos para o seu e-mail.",
@@ -204,7 +201,7 @@ export default function AuthPage({ redirectAfterAuth = "/dashboard" }: { redirec
                 defaultValue={preferredUsername} placeholder="Ex.: aline_silva"
                 aria-describedby="signup-username-help" className={inputClass} />
               <span id="signup-username-help" className="block font-normal">
-                {USERNAME_HELP} Confirmaremos a disponibilidade após verificar seu e-mail.
+                {USERNAME_HELP} A disponibilidade é verificada ao criar a conta.
               </span>
             </label>}
             {hasCode && <label className={labelClass}><span>Código de 6 dígitos</span>

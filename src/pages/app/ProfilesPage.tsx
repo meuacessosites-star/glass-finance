@@ -1,5 +1,8 @@
 import { ConfirmAction } from "@/components/app/PlanningUI";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { api } from "@/convex/_generated/api";
+import { useAction, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import {
   Check,
   LockKeyhole,
@@ -62,6 +65,41 @@ export default function ProfilesPage() {
     verifyPin,
   } = useAppStore();
 
+  const passwordStatus = useQuery(api.users.passwordStatus);
+  const managePassword = useAction(api.users.managePassword);
+  const [showPasswordEditor, setShowPasswordEditor] = useState(false);
+  const [currentAccountPassword, setCurrentAccountPassword] = useState("");
+  const [newAccountPassword, setNewAccountPassword] = useState("");
+  const [confirmAccountPassword, setConfirmAccountPassword] = useState("");
+  const [savingAccountPassword, setSavingAccountPassword] = useState(false);
+  const submitAccountPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newAccountPassword !== confirmAccountPassword) {
+      toast.error("As duas novas senhas não coincidem.");
+      return;
+    }
+    if (newAccountPassword.length < 8 || newAccountPassword.length > 128) {
+      toast.error("A senha deve ter de 8 a 128 caracteres.");
+      return;
+    }
+    setSavingAccountPassword(true);
+    try {
+      await managePassword({
+        newPassword: newAccountPassword,
+        currentPassword: passwordStatus?.hasPassword ? currentAccountPassword : undefined,
+      });
+      setCurrentAccountPassword("");
+      setNewAccountPassword("");
+      setConfirmAccountPassword("");
+      setShowPasswordEditor(false);
+      toast.success(passwordStatus?.hasPassword ? "Senha alterada com sucesso." : "Senha criada para sua conta.");
+    } catch (cause) {
+      toast.error(cause instanceof ConvexError && typeof cause.data === "string"
+        ? cause.data : "Não foi possível alterar a senha. Confira a senha atual e tente novamente.");
+    } finally {
+      setSavingAccountPassword(false);
+    }
+  };
   const [removing,setRemoving]=useState<AppProfile|null>(null);
   const [query,setQuery]=useState('');
   // Avatar/name editor (create or edit)
@@ -289,6 +327,55 @@ export default function ProfilesPage() {
         <Plus className="size-4" strokeWidth={2.5} />
         Adicionar perfil
       </button>
+
+      {/* The login password is distinct from each finance profile's local PIN. */}
+      <section className="glass rounded-3xl p-4" aria-label="Senha de acesso à conta">
+        <div className="flex items-start gap-3">
+          <LockKeyhole className="mt-1 size-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold text-glass-ink">Senha da conta</h2>
+            <p className="mt-1 text-xs leading-relaxed text-glass-sub">
+              {passwordStatus?.hasPassword ? "Sua conta já possui senha. Use a senha atual para alterá-la." :
+                "Entrou com Google? Você pode criar uma senha para entrar na mesma conta."}
+              {" "}Esta senha é diferente do PIN dos perfis.
+            </p>
+          </div>
+        </div>
+        {!showPasswordEditor ? (
+          <button type="button" disabled={!passwordStatus || (!passwordStatus.hasPassword && !passwordStatus.canCreate)}
+            onClick={() => setShowPasswordEditor(true)}
+            className="mt-3 w-full rounded-xl bg-[#2F6BFF] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+            {passwordStatus?.hasPassword ? "Alterar senha da conta" : "Criar senha da conta"}
+          </button>
+        ) : (
+          <form onSubmit={(event) => void submitAccountPassword(event)} className="mt-4 space-y-3">
+            {passwordStatus?.hasPassword && <label className="block text-sm font-semibold text-glass-ink">Senha atual
+              <input type="password" autoComplete="current-password" value={currentAccountPassword}
+                onChange={(event) => setCurrentAccountPassword(event.target.value)}
+                required className="planning-search mt-1 w-full" placeholder="Informe a senha atual" />
+            </label>}
+            <label className="block text-sm font-semibold text-glass-ink">Nova senha
+              <input type="password" autoComplete="new-password" value={newAccountPassword}
+                onChange={(event) => setNewAccountPassword(event.target.value)}
+                minLength={8} maxLength={128} required className="planning-search mt-1 w-full" placeholder="De 8 a 128 caracteres" />
+            </label>
+            <label className="block text-sm font-semibold text-glass-ink">Confirmar nova senha
+              <input type="password" autoComplete="new-password" value={confirmAccountPassword}
+                onChange={(event) => setConfirmAccountPassword(event.target.value)}
+                minLength={8} maxLength={128} required className="planning-search mt-1 w-full" placeholder="Repita a nova senha" />
+            </label>
+            <button type="submit" disabled={savingAccountPassword}
+              className="w-full rounded-xl bg-[#2F6BFF] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              {savingAccountPassword ? "Salvando…" : passwordStatus?.hasPassword ? "Salvar nova senha" : "Criar senha"}
+            </button>
+            <button type="button" disabled={savingAccountPassword}
+              onClick={() => { setShowPasswordEditor(false); setCurrentAccountPassword(""); setNewAccountPassword(""); setConfirmAccountPassword(""); }}
+              className="w-full rounded-xl border border-black/15 px-4 py-2 text-sm font-semibold text-glass-ink">Cancelar</button>
+          </form>
+        )}
+        {!passwordStatus?.hasPassword && passwordStatus && !passwordStatus.canCreate &&
+          <p className="mt-2 text-xs text-glass-sub">Confirme a titularidade do e-mail entrando com Google para ativar esta opção.</p>}
+      </section>
 
       {/* PIN section — always the active profile's PIN */}
       <div className="glass rounded-3xl p-4">

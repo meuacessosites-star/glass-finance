@@ -8,7 +8,8 @@ import { internal } from "./_generated/api";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
 
 const passwordProvider = Password({
-  verify: createEmailOtp("password-email-verification"),
+  // The first password signup has no email OTP; email ownership is still
+  // required before linking with an existing Google financial account.
   reset: createEmailOtp("password-reset"),
   profile(params) {
     const email = normalizeEmail(params.email);
@@ -37,7 +38,7 @@ const usernamePassword = ConvexCredentials({
       const { account, user } = await retrieveAccount(ctx, {
         provider: "password", account: { id: match.email, secret: params.password },
       });
-      if (user._id !== match.userId || account.emailVerified !== match.email) throw new Error();
+      if (user._id !== match.userId) throw new Error();
       return { userId: user._id };
     } catch {
       throw new ConvexError(invalidLogin);

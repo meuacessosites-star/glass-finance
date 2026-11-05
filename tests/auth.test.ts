@@ -59,9 +59,7 @@ function fixture() {
     return t.withIdentity({ issuer, subject: jwt.sub });
   };
   const register = async (email: string, secret: string) => {
-    const pending = await password(email, "signUp", { password: secret });
-    assert.ok(!pending.tokens);
-    return session(await password(email, "email-verification", { code: mailbox.get(email) }));
+    return session(await password(email, "signUp", { password: secret }));
   };
   return { t, mailbox, password, session, register };
 }
@@ -86,11 +84,9 @@ test("signup, verification, recovery, username login and session isolation", asy
   const secret = "valid-pass-1", replacement = "new-valid-pass";
   await assert.rejects(password(alice, "signUp", { password: "short" }));
   await assert.rejects(password("not-an-email", "signUp", { password: secret }));
-  assert.ok(!(await password(alice, "signUp", { password: secret })).tokens);
-  assert.ok(!(await password(alice, "signIn", { password: secret })).tokens);
-  const code = mailbox.get(alice);
-  const first = session(await password(alice, "email-verification", { code }));
-  await assert.rejects(password(alice, "email-verification", { code }));
+  const first = session(await password(alice, "signUp", { password: secret }));
+  assert.ok(!mailbox.has(alice), "Registration must not send an email code");
+  assert.ok((await password(alice, "signIn", { password: secret })).tokens);
   await assert.rejects(t.mutation(api.users.claimUsername, { username: "alice" }));
   await assert.rejects(first.query(api.financeState.getMine));
   await first.mutation(api.users.claimUsername, { username: "Alice" });
