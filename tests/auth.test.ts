@@ -328,3 +328,26 @@ test("link two proven logins only if the second has no financial data", async ()
   assert.equal((await linked.query(api.financeState.getMine)).payload, payload);
   assert.equal(await t.run(ctx => ctx.db.get(extraUser._id)), null);
 });
+
+test("confirmed account deletion revokes sessions and allows a fresh empty account", async () => {
+  const { t, password, session, register } = fixture();
+  const email = "deletion@example.org";
+  const first = await register(email, "old-secure-password");
+  await first.mutation(api.users.claimUsername, { username: "to_delete" });
+  const user = await first.query(api.users.currentUser);
+  const secondSession = session(await password(email, "signIn", { password: "old-secure-password" }));
+  const contact = await first.mutation(api.people.create, { name: "Confidential contact" });
+  await first.mutation(api.financeState.saveMine, {
+    expectedRevision: 0, payload: JSON.stringify({ profiles: [{ name: "Sensitive data" }] }),
+  });
+  await assert.rejects(first.mutation(api.users.deleteMyAccount, { email, confirmation: "EXCLUIR" }));
+  await first.mutation(api.users.deleteMyAccount, { email, confirmation: "EXCLUIR MINHA CONTA" });
+  assert.equal(await t.run(ctx => ctx.db.get(user._id)), null);
+  assert.equal(await t.run(ctx => ctx.db.get(contact)), null);
+  assert.equal(await secondSession.query(api.users.currentUser), null);
+  await assert.rejects(password(email, "signIn", { password: "old-secure-password" }));
+  const fresh = session(await password(email, "signUp", { password: "new-secure-password" }));
+  await fresh.mutation(api.users.claimUsername, { username: "to_delete" });
+  assert.equal(await fresh.query(api.financeState.getMine), null);
+  assert.notEqual((await fresh.query(api.users.currentUser))._id, user._id);
+});

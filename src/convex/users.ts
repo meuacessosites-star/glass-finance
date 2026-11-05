@@ -239,6 +239,44 @@ export const finishLinkPasswordAccount = internalMutation({
   },
 });
 
+
+/** Permanently delete ONLY the authenticated user's account and dependent data. */
+export const deleteMyAccount = mutation({
+  args: { email: v.string(), confirmation: v.string() },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user?.email || !user.username) throw new ConvexError("Entre na sua conta para excluí-la.");
+    if (args.confirmation !== "EXCLUIR MINHA CONTA" || normalizeEmail(args.email) !== normalizeEmail(user.email))
+      throw new ConvexError("Confirmação incorreta.");
+    const subjects = new Set([String(user._id)]);
+    if (user.financeSubject) {
+      if (user.financeSubject !== user._id && !user.financeSubject.startsWith(user._id + "|"))
+        throw new ConvexError("Há dados de origem desconhecida. Exclusão interrompida.");
+      subjects.add(user.financeSubject);
+    }
+    for (const legacy of await oldFinanceStates(ctx, user._id)) subjects.add(legacy.userSubject);
+    for (const subject of subjects) {
+      for (const chunk of await ctx.db.query("financeStateChunks").withIndex("by_user_subject", q => q.eq("userSubject", subject)).collect())
+        await ctx.db.delete(chunk._id);
+      for (const state of await ctx.db.query("financeStates").withIndex("by_user_subject", q => q.eq("userSubject", subject)).collect())
+        await ctx.db.delete(state._id);
+    }
+    for (const person of await accountPeople(ctx, user._id)) await ctx.db.delete(person._id);
+    for (const account of await ctx.db.query("authAccounts").withIndex("userIdAndProvider", q => q.eq("userId", user._id)).collect()) {
+      for (const code of await ctx.db.query("authVerificationCodes").withIndex("accountId", q => q.eq("accountId", account._id)).collect())
+        await ctx.db.delete(code._id);
+      await ctx.db.delete(account._id);
+    }
+    for (const session of await ctx.db.query("authSessions").withIndex("userId", q => q.eq("userId", user._id)).collect()) {
+      for (const token of await ctx.db.query("authRefreshTokens").withIndex("sessionId", q => q.eq("sessionId", session._id)).collect())
+        await ctx.db.delete(token._id);
+      await ctx.db.delete(session._id);
+    }
+    await ctx.db.delete(user._id);
+    return { deleted: true };
+  },
+});
+
 // Only the credential provider can resolve a username to its password account.
 export const passwordAccountForUsername = internalQuery({
   args: { username: v.string() },
