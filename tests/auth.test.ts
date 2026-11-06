@@ -26,6 +26,7 @@ const modules = {
   "./users.ts": () => import("../src/convex/users"),
   "./financeState.ts": () => import("../src/convex/financeState"),
   "./people.ts": () => import("../src/convex/people"),
+  "./userPreferences.ts": () => import("../src/convex/userPreferences"),
 };
 
 function fixture() {
@@ -438,4 +439,22 @@ test("signup warns and blocks an existing username before sending an email code"
   // The final claim is authoritative even when the availability check was stale.
   await assert.rejects(t.withIdentity({ issuer, subject: String(second._id) + "|session" })
     .mutation(api.users.claimUsername, { username: "MYNAME" }), /nome de usuário já está em uso/i);
+});
+
+test("UI preferences persist per account and are removed with account deletion", async () => {
+  const { register } = fixture();
+  const owner = await register("pref-owner@example.org", "owner-password-123");
+  const other = await register("pref-other@example.org", "other-password-123");
+  await owner.mutation(api.users.claimUsername, { username: "prefs_owner" });
+  await other.mutation(api.users.claimUsername, { username: "prefs_other" });
+  const key = "profile:p123:privacy:reserves-cards";
+  assert.equal(await owner.query(api.userPreferences.getMine, { key }), null);
+  await owner.mutation(api.userPreferences.setMine, { key, value: "true" });
+  assert.equal(await owner.query(api.userPreferences.getMine, { key }), "true");
+  assert.equal(await other.query(api.userPreferences.getMine, { key }), null);
+  await owner.mutation(api.userPreferences.setMine, { key, value: "false" });
+  assert.equal(await owner.query(api.userPreferences.getMine, { key }), "false");
+  await assert.rejects(owner.mutation(api.userPreferences.setMine, { key: "password", value: "secret" }));
+  await owner.mutation(api.users.deleteMyAccount, { email: "pref-owner@example.org", confirmation: "EXCLUIR MINHA CONTA" });
+  assert.equal(await other.query(api.userPreferences.getMine, { key }), null);
 });

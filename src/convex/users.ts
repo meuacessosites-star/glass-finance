@@ -301,6 +301,9 @@ export const deleteMyAccount = mutation({
         await ctx.db.delete(state._id);
     }
     for (const person of await accountPeople(ctx, user._id)) await ctx.db.delete(person._id);
+    for (const preference of await ctx.db.query("userPreferences")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect())
+      await ctx.db.delete(preference._id);
     for (const account of await ctx.db.query("authAccounts").withIndex("userIdAndProvider", q => q.eq("userId", user._id)).collect()) {
       for (const code of await ctx.db.query("authVerificationCodes").withIndex("accountId", q => q.eq("accountId", account._id)).collect())
         await ctx.db.delete(code._id);

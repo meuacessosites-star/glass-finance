@@ -34,6 +34,15 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]).index("by_username", ["username"]),
 
+    // UI preferences are account-owned and synced across devices. They do
+    // not alter transactions or financial amounts.
+    userPreferences: defineTable({
+      userId: v.id("users"),
+      key: v.string(),
+      value: v.string(),
+      updatedAt: v.number(),
+    }).index("by_user_key", ["userId", "key"]).index("by_user", ["userId"]),
+
     people: defineTable({
       userSubject: v.string(),
       name: v.string(),
