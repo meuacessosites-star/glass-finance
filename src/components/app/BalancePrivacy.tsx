@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '@/lib/app-store';
 import { balancePrivacyKey, formatPrivateAmount } from '@/lib/balance-privacy';
+import { useCloudPreference } from '@/hooks/useCloudPreference';
 const PrivacyContext = createContext({ hidden: false, toggle: () => {} });
 export function BalancePrivacyProvider({ children }: { children: ReactNode }) {
   const { activeProfileId } = useAppStore();
@@ -14,8 +15,9 @@ function ProfilePrivacy({ children }: { children: ReactNode }) {
 export function useStoredBalancePrivacy(scope: 'all' | 'home-summary' | 'reserves-cards' = 'all') {
   const { activeProfileId } = useAppStore();
   const key = balancePrivacyKey(activeProfileId, scope);
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === 'hidden'; } catch { return false; } });
-  const toggle = useCallback(() => setHidden(previous => { const next = !previous; try { localStorage.setItem(key, next ? 'hidden' : 'visible'); } catch { /* Still works in this visit. */ } return next; }), [key]);
+  const { value, setValue } = useCloudPreference(`profile:${activeProfileId}:privacy:${scope}`, "false", key);
+  const hidden = value === "true";
+  const toggle = useCallback(() => setValue(hidden ? "false" : "true"), [hidden, setValue]);
   return useMemo(() => ({ hidden, toggle }), [hidden, toggle]);
 }
 /** Display-only boundary: a summary can have its own privacy without hiding sibling rows. */

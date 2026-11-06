@@ -1,6 +1,8 @@
 import { ReserveBankSuggestions } from '@/components/app/ReserveBankSuggestions';
 import { applyReserveBankPreset } from '@/lib/reserve-bank-presets';
 import { useStoredBalancePrivacy } from "@/components/app/BalancePrivacy";
+import { useCloudPreference } from "@/hooks/useCloudPreference";
+import { useAppStore as usePreferenceProfile } from "@/lib/app-store";
 import { formatPrivateAmount } from "@/lib/balance-privacy";
 import { formatCurrency as rawCurrency } from "@/lib/mock-data";
 import { useMemo, useState, type CSSProperties } from 'react';
@@ -35,8 +37,9 @@ function ReserveWorkspace({ reserves: stored, addReserve, updateReserve, moveRes
   const formatCardCurrency = (amount: number) => formatPrivateAmount(amount, cardsPrivacy.hidden);
   const reserves = useMemo(() => sanitizeReserves(stored), [stored]);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('recent');
+  const { activeProfileId } = usePreferenceProfile();
+  const { value: filter, setValue: setFilter } = useCloudPreference(`profile:${activeProfileId}:reserves:filter`, 'all');
+  const { value: sort, setValue: setSort } = useCloudPreference(`profile:${activeProfileId}:reserves:sort`, 'recent');
   const [editor, setEditor] = useState<Editor | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [movement, setMovement] = useState<{ id: string; kind: 'deposit' | 'withdrawal'; cents: number; date: string; note: string } | null>(null);
