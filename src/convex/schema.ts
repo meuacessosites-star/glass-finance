@@ -28,9 +28,20 @@ const schema = defineSchema(
       email: v.optional(v.string()), // email of the user. do not remove
       emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
+      username: v.optional(v.string()),
+      financeSubject: v.optional(v.string()), // Storage key retained for pre-username snapshots.
 
       role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    }).index("email", ["email"]).index("by_username", ["username"]),
+
+    // UI preferences are account-owned and synced across devices. They do
+    // not alter transactions or financial amounts.
+    userPreferences: defineTable({
+      userId: v.id("users"),
+      key: v.string(),
+      value: v.string(),
+      updatedAt: v.number(),
+    }).index("by_user_key", ["userId", "key"]).index("by_user", ["userId"]),
 
     people: defineTable({
       userSubject: v.string(),

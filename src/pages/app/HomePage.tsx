@@ -67,10 +67,13 @@ export default function HomePage() {
     .filter((item) => item.date.startsWith(`${selectedMonth}-`))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
+  // The greeting identifies the account, not the active financial profile.
+  // A Google display name is only a fallback for accounts awaiting a username.
   const name =
-    activeProfile?.name?.trim().split(" ")[0] ||
+    user?.username ||
     user?.name?.trim().split(" ")[0] ||
-    "pessoa";
+    user?.email?.split("@")[0] ||
+    "usuário";
   const pendingCount =
     notifications.filter((n) => n.status === "pending").length +
     getPaymentNotifications({ cards, transactions: visibleTransactions, loanReceivables, readPaymentNotificationIds, includeBorrowedCardInvoices }, today).length;

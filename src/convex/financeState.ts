@@ -1,22 +1,18 @@
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { accountPeople, oldFinanceStates, requireAccount } from "./accountData";
 
 // Chunk each string well below Convex's per-document size limit while permitting
 // compressed receipt images and the rest of the account's JSON state.
 const CHUNK_CHARACTERS = 150_000;
 const MAX_PAYLOAD_BYTES = 12_000_000;
 
-async function getUserSubject(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Autenticação necessária para acessar os dados financeiros");
-  return identity.subject;
-}
-
 export const getMine = query({
   args: {},
   handler: async (ctx) => {
-    const userSubject = await getUserSubject(ctx);
+    const user = await requireAccount(ctx);
+    const userSubject = user.financeSubject ?? user._id;
     const state = await ctx.db
       .query("financeStates")
       .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
@@ -45,7 +41,8 @@ export const saveMine = mutation({
     expectedRevision: v.number(),
   },
   handler: async (ctx, { payload, expectedRevision }) => {
-    const userSubject = await getUserSubject(ctx);
+    const user = await requireAccount(ctx);
+    const userSubject = user.financeSubject ?? user._id;
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       throw new Error("Revisão inválida");
     }
@@ -119,24 +116,37 @@ export const saveMine = mutation({
 export const deleteMine = mutation({
   args: {},
   handler: async (ctx) => {
-    const userSubject = await getUserSubject(ctx);
-    const state = await ctx.db
+    const user = await requireAccount(ctx);
+    const canonical = await ctx.db
       .query("financeStates")
-      .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
+      .withIndex("by_user_subject", (q) => q.eq("userSubject", user._id))
       .unique();
-    if (state) await ctx.db.delete(state._id as Id<"financeStates">);
-
-    const chunks = await ctx.db
-      .query("financeStateChunks")
-      .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
-      .collect();
-    for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
-
-    const people = await ctx.db
-      .query("people")
-      .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
-      .collect();
+    const states = await oldFinanceStates(ctx, user._id);
+    if (canonical) states.push(canonical);
+    // Keep only a revision-only tombstone (NO personal financial content).
+    // Other online devices receive it through the live query. Stale devices
+    // cannot recreate deleted data with an earlier expectedRevision.
+    const revision = Math.max(0, ...states.map((state) => state.revision)) + 1;
+    for (const state of states) {
+      const chunks = await ctx.db.query("financeStateChunks")
+        .withIndex("by_user_subject", q => q.eq("userSubject", state.userSubject)).collect();
+      for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
+      if (state.userSubject !== user._id) await ctx.db.delete(state._id as Id<"financeStates">);
+    }
+    if (canonical) {
+      await ctx.db.patch(canonical._id as Id<"financeStates">, {
+        revision, updatedAt: Date.now(), chunkCount: 0,
+      });
+    } else {
+      await ctx.db.insert("financeStates", {
+        userSubject: user._id, revision, updatedAt: Date.now(), chunkCount: 0,
+      });
+    }
+    if (user.financeSubject !== user._id) {
+      await ctx.db.patch(user._id, { financeSubject: user._id });
+    }
+    const people = await accountPeople(ctx, user._id);
     for (const person of people) await ctx.db.delete(person._id as Id<"people">);
-    return { deleted: true };
+    return { deleted: true, revision };
   },
 });

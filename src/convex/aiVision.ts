@@ -1,6 +1,7 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { action, type ActionCtx } from "./_generated/server";
+import { api } from "./_generated/api";
 import { v } from "convex/values";
 
 // ---------------------------------------------------------------------------
@@ -475,9 +476,10 @@ async function callGemini(
  */
 export const extractReceipt = action({
   args: { image: v.string() },
-  // A tipagem ampla é intencional nesta action para compatibilidade com o codegen do deploy.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: async (_ctx: any, { image }: { image: any }): Promise<ReceiptResult> => {
+  handler: async (ctx: ActionCtx, { image }: { image: string }): Promise<ReceiptResult> => {
+    if (!(await ctx.runQuery(api.users.currentUser))?.username) {
+      return { ok: false, items: [], error: "Entre na sua conta para ler um comprovante." };
+    }
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       return { ok: false, items: [], error: "no-gemini-key" };
@@ -747,9 +749,12 @@ export const converseFinancialTransaction = action({
     ),
   },
   handler: async (
-    _ctx: unknown,
+    ctx: ActionCtx,
     { messages }: { messages: Array<{ role: string; text: string }> },
   ): Promise<FinanceChatResult> => {
+    if (!(await ctx.runQuery(api.users.currentUser))?.username) {
+      return { ok: false, kind: "error", message: "Entre na sua conta para usar o assistente." };
+    }
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       return {

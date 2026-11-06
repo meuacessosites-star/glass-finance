@@ -1,4 +1,5 @@
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { useCloudPreference } from "@/hooks/useCloudPreference";
 import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import "@/components/app/transaction-navigation.css";
 import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
@@ -84,16 +85,23 @@ export default function TransactionsPage() {
     goToPrevious: goToPreviousSearchResult,
     goToNext: goToNextSearchResult,
   } = useSearchNavigation(searchQuery);
-  const [scope, setScope] = useState<"month" | "all">("month");
+  const { activeProfileId } = useAppStore();
+  const { value: scope, setValue: setScope } = useCloudPreference<"month" | "all">(`profile:${activeProfileId}:transactions:scope`, "month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
+  const { value: paymentStatus, setValue: setPaymentStatus } = useCloudPreference<PaymentStatusFilter>(`profile:${activeProfileId}:transactions:payment-status`, "all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
+  const { value: summarySetting, setValue: saveSummary } =
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:summary-expanded`, "false");
+  const { value: chartSetting, setValue: saveChart } =
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:chart-expanded`, "false");
+  const summaryExpanded = summarySetting === "true";
+  const categoryChartExpanded = chartSetting === "true";
+  const setSummaryExpanded = (update: (current: boolean) => boolean) => saveSummary(update(summaryExpanded) ? "true" : "false");
+  const setCategoryChartExpanded = (update: (current: boolean) => boolean) => saveChart(update(categoryChartExpanded) ? "true" : "false");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 

@@ -1,7 +1,7 @@
 /**
  * Runtime and type-safe server builders for this Convex project.
  *
- * Convex normally generates this file from the active deployment. The generic
+ * Convex normally generates this file from the active deployment. The schema-typed
  * builders preserve the same public API while allowing CI and Vercel to run
  * TypeScript without a local `convex dev` process.
  */
@@ -17,7 +17,6 @@ import {
 import type {
   ActionBuilder,
   GenericActionCtx,
-  GenericDataModel,
   GenericMutationCtx,
   GenericQueryCtx,
   HttpActionBuilder,
@@ -25,18 +24,20 @@ import type {
   QueryBuilder,
 } from "convex/server";
 
-export const query: QueryBuilder<GenericDataModel, "public"> = queryGeneric;
-export const internalQuery: QueryBuilder<GenericDataModel, "internal"> =
+import type { DataModel } from "./dataModel";
+
+export const query: QueryBuilder<DataModel, "public"> = queryGeneric;
+export const internalQuery: QueryBuilder<DataModel, "internal"> =
   internalQueryGeneric;
-export const mutation: MutationBuilder<GenericDataModel, "public"> =
+export const mutation: MutationBuilder<DataModel, "public"> =
   mutationGeneric;
-export const internalMutation: MutationBuilder<GenericDataModel, "internal"> =
+export const internalMutation: MutationBuilder<DataModel, "internal"> =
   internalMutationGeneric;
-export const action: ActionBuilder<GenericDataModel, "public"> = actionGeneric;
-export const internalAction: ActionBuilder<GenericDataModel, "internal"> =
+export const action: ActionBuilder<DataModel, "public"> = actionGeneric;
+export const internalAction: ActionBuilder<DataModel, "internal"> =
   internalActionGeneric;
 export const httpAction: HttpActionBuilder = httpActionGeneric;
 
-export type QueryCtx = GenericQueryCtx<GenericDataModel>;
-export type MutationCtx = GenericMutationCtx<GenericDataModel>;
-export type ActionCtx = GenericActionCtx<GenericDataModel>;
+export type QueryCtx = GenericQueryCtx<DataModel>;
+export type MutationCtx = GenericMutationCtx<DataModel>;
+export type ActionCtx = GenericActionCtx<DataModel>;

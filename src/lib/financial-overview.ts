@@ -1,30 +1,119 @@
-import type {ProfileData} from './app-store';
-import {selectTransactionLedgers} from './transaction-ledgers';
-import {getTransactionPaymentStatus} from './transaction-status';
-import {isCreditCardExpense} from './card-billing';
-import {getInvoiceSummary,getScopedCommittedAmount,getScopedInvoiceMonths,getScopedInvoiceMetrics} from './card-invoice-summary';
-import {getInvoiceDates} from './card-billing';
-import {getLoanOutstandingAmount} from './loan-repayments';
-import {financingSummary,goalPlan} from './financing-plan';
-export function financialOverview(data:ProfileData,month:string,today:string){
- const ledgers=selectTransactionLedgers(data.transactions,data.loanReceivables);
- const regular=[...ledgers.regularTransactions,...ledgers.loanTransactions.filter(t=>t.operationType!=='card')].filter(t=>!t.id.startsWith('fin-')&&!isCreditCardExpense(t));
- const period=regular.filter(t=>(t.dueDate??t.date).startsWith(month));
- const sum=(rows:typeof regular)=>rows.reduce((s,t)=>s+Math.round(Math.abs(t.amount)*100),0)/100;
- const incomes=period.filter(t=>t.amount>0),expenses=period.filter(t=>t.amount<0);
- const paid=(t:typeof regular[number])=>getTransactionPaymentStatus(t,data.cards,data.loanReceivables,today)==='paid';
- const invoices=getInvoiceSummary({cards:data.cards,transactions:data.transactions,receivables:data.loanReceivables,month,includeBorrowed:true,today});
- const finance=data.financings.flatMap(f=>financingSummary(f,today).rows);
- const financeMonth=finance.filter(p=>p.date.startsWith(month));
- const add=(rows:typeof finance)=>rows.reduce((s,p)=>s+Math.round(p.amount*100),0)/100;
- const received=sum(incomes.filter(paid)),expected=sum(incomes.filter(t=>!paid(t))),expense=sum(expenses)+invoices.invoiceTotal+add(financeMonth);
- let overdueInvoices=0;
- for(const c of data.cards.filter(c=>!c.archived))for(const m of getScopedInvoiceMonths([c],data.transactions,data.loanReceivables,true)){
-  const due=getInvoiceDates(c,m)?.dueDate;if(due&&due<today&&getScopedInvoiceMetrics(c,data.transactions,data.loanReceivables,m,true,today).openAmount>0)overdueInvoices++;
- }
- return {received,expected,expense,result:received+expected-expense,paid:sum(expenses.filter(paid))+invoices.paidAmount+add(financeMonth.filter(p=>p.paid)),pending:sum(expenses.filter(t=>!paid(t)))+invoices.openAmount+add(financeMonth.filter(p=>!p.paid)),
- overdue:regular.filter(t=>t.amount<0&&getTransactionPaymentStatus(t,data.cards,data.loanReceivables,today)==='overdue').length+finance.filter(p=>!p.paid&&p.date<today).length+overdueInvoices,
- invoiceTotal:invoices.invoiceTotal,invoiceOpen:invoices.openAmount,cardCommitted:data.cards.filter(c=>!c.archived).reduce((s,c)=>s+getScopedCommittedAmount(c,data.transactions,data.loanReceivables,true,today),0),
- financingPending:add(finance.filter(p=>!p.paid)),financingMonth:add(financeMonth),loanOutstanding:data.loanReceivables.reduce((s,r)=>s+getLoanOutstandingAmount(r),0),loanOverdue:data.loanReceivables.filter(r=>r.dueDate&&r.dueDate<today&&getLoanOutstandingAmount(r)>0).length,
- reserveTotal:data.reserves.reduce((s,r)=>s+r.amount,0),goalTotal:data.goals.reduce((s,g)=>s+g.savedAmount,0),goalMonthly:data.goals.reduce((s,g)=>s+(goalPlan(g,today).monthly??0),0),goalsOverdue:data.goals.filter(g=>goalPlan(g,today).overdue).length,pendingNotifications:data.notifications.filter(n=>n.status==='pending').length,hasPeriodData:period.length>0||invoices.invoiceTotal>0||financeMonth.length>0};
+import type { ProfileData } from "./app-store";
+import { selectTransactionLedgers } from "./transaction-ledgers";
+import { getTransactionPaymentStatus } from "./transaction-status";
+import { isCreditCardExpense, getInvoiceDates } from "./card-billing";
+import { getInvoiceSummary, getScopedCommittedAmount, getScopedInvoiceMonths, getScopedInvoiceMetrics } from "./card-invoice-summary";
+import { getLoanOutstandingAmount } from "./loan-repayments";
+import { financingSummary, goalPlan } from "./financing-plan";
+import { fromCents, sumCents } from "./money";
+
+/**
+ * Finance totals are accumulated in integer cents, then converted to reais
+ * only at the view boundary. Do not accumulate BRL floats with `+`: even
+ * 0.1 + 0.2 can produce a different representation.
+ *
+ * sumCents throws for non-finite numbers and unsafe totals instead of
+ * displaying a plausible but incorrect financial amount.
+ */
+const moneySum = (amounts: readonly number[]) => fromCents(sumCents(amounts));
+
+export function financialOverview(data: ProfileData, month: string, today: string) {
+  const ledgers = selectTransactionLedgers(data.transactions, data.loanReceivables);
+  const regular = [
+    ...ledgers.regularTransactions,
+    ...ledgers.loanTransactions.filter((transaction) => transaction.operationType !== "card"),
+  ].filter((transaction) => !transaction.id.startsWith("fin-") && !isCreditCardExpense(transaction));
+
+  const period = regular.filter((transaction) => (transaction.dueDate ?? transaction.date).startsWith(month));
+  const sumTransactions = (rows: typeof regular) =>
+    moneySum(rows.map((transaction) => Math.abs(transaction.amount)));
+
+  const incomes = period.filter((transaction) => transaction.amount > 0);
+  const expenses = period.filter((transaction) => transaction.amount < 0);
+  const paid = (transaction: typeof regular[number]) =>
+    getTransactionPaymentStatus(transaction, data.cards, data.loanReceivables, today) === "paid";
+
+  const invoices = getInvoiceSummary({
+    cards: data.cards,
+    transactions: data.transactions,
+    receivables: data.loanReceivables,
+    month,
+    includeBorrowed: true,
+    today,
+  });
+  const installments = data.financings.flatMap((financing) => financingSummary(financing, today).rows);
+  const monthInstallments = installments.filter((installment) => installment.date.startsWith(month));
+  const sumInstallments = (rows: typeof installments) =>
+    moneySum(rows.map((installment) => installment.amount));
+
+  const received = sumTransactions(incomes.filter(paid));
+  const expected = sumTransactions(incomes.filter((transaction) => !paid(transaction)));
+  const expense = moneySum([
+    sumTransactions(expenses),
+    invoices.invoiceTotal,
+    sumInstallments(monthInstallments),
+  ]);
+
+  let overdueInvoices = 0;
+  for (const card of data.cards.filter((card) => !card.archived)) {
+    for (const invoiceMonth of getScopedInvoiceMonths([card], data.transactions, data.loanReceivables, true)) {
+      const due = getInvoiceDates(card, invoiceMonth)?.dueDate;
+      if (
+        due && due < today &&
+        getScopedInvoiceMetrics(card, data.transactions, data.loanReceivables, invoiceMonth, true, today).openAmount > 0
+      ) {
+        overdueInvoices++;
+      }
+    }
+  }
+
+  return {
+    received,
+    expected,
+    expense,
+    result: moneySum([received, expected, -expense]),
+    paid: moneySum([
+      sumTransactions(expenses.filter(paid)),
+      invoices.paidAmount,
+      sumInstallments(monthInstallments.filter((installment) => installment.paid)),
+    ]),
+    pending: moneySum([
+      sumTransactions(expenses.filter((transaction) => !paid(transaction))),
+      invoices.openAmount,
+      sumInstallments(monthInstallments.filter((installment) => !installment.paid)),
+    ]),
+    overdue:
+      regular.filter(
+        (transaction) =>
+          transaction.amount < 0 &&
+          getTransactionPaymentStatus(transaction, data.cards, data.loanReceivables, today) === "overdue",
+      ).length +
+      installments.filter((installment) => !installment.paid && installment.date < today).length +
+      overdueInvoices,
+    invoiceTotal: invoices.invoiceTotal,
+    invoiceOpen: invoices.openAmount,
+    cardCommitted: moneySum(
+      data.cards
+        .filter((card) => !card.archived)
+        .map((card) =>
+          getScopedCommittedAmount(card, data.transactions, data.loanReceivables, true, today),
+        ),
+    ),
+    financingPending: sumInstallments(installments.filter((installment) => !installment.paid)),
+    financingMonth: sumInstallments(monthInstallments),
+    loanOutstanding: moneySum(
+      data.loanReceivables.map((receivable) => getLoanOutstandingAmount(receivable)),
+    ),
+    loanOverdue: data.loanReceivables.filter(
+      (receivable) =>
+        receivable.dueDate && receivable.dueDate < today &&
+        getLoanOutstandingAmount(receivable) > 0,
+    ).length,
+    reserveTotal: moneySum(data.reserves.map((reserve) => reserve.amount)),
+    goalTotal: moneySum(data.goals.map((goal) => goal.savedAmount)),
+    goalMonthly: moneySum(data.goals.map((goal) => goalPlan(goal, today).monthly ?? 0)),
+    goalsOverdue: data.goals.filter((goal) => goalPlan(goal, today).overdue).length,
+    pendingNotifications: data.notifications.filter((notification) => notification.status === "pending").length,
+    hasPeriodData: period.length > 0 || invoices.invoiceTotal > 0 || monthInstallments.length > 0,
+  };
 }
