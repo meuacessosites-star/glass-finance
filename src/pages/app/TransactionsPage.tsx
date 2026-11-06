@@ -95,9 +95,9 @@ export default function TransactionsPage() {
   const { value: paymentStatus, setValue: setPaymentStatus } = useCloudPreference<PaymentStatusFilter>(`profile:${activeProfileId}:transactions:payment-status`, "all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
   const { value: summarySetting, setValue: saveSummary } =
-    useCloudPreference(`profile:${activeProfileId}:transactions:summary-expanded`, "false");
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:summary-expanded`, "false");
   const { value: chartSetting, setValue: saveChart } =
-    useCloudPreference(`profile:${activeProfileId}:transactions:chart-expanded`, "false");
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:chart-expanded`, "false");
   const summaryExpanded = summarySetting === "true";
   const categoryChartExpanded = chartSetting === "true";
   const setSummaryExpanded = (update: (current: boolean) => boolean) => saveSummary(update(summaryExpanded) ? "true" : "false");

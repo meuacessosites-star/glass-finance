@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
   const { value: savedTheme, setValue: saveTheme, ready } =
-    useCloudPreference("account:theme", "light", "theme");
+    useCloudPreference<"light" | "dark">("account:theme", "light", "theme");
   const [mounted, setMounted] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => setMounted(true), []);

@@ -38,8 +38,8 @@ function ReserveWorkspace({ reserves: stored, addReserve, updateReserve, moveRes
   const reserves = useMemo(() => sanitizeReserves(stored), [stored]);
   const [query, setQuery] = useState('');
   const { activeProfileId } = usePreferenceProfile();
-  const { value: filter, setValue: setFilter } = useCloudPreference(`profile:${activeProfileId}:reserves:filter`, 'all');
-  const { value: sort, setValue: setSort } = useCloudPreference(`profile:${activeProfileId}:reserves:sort`, 'recent');
+  const { value: filter, setValue: setFilter } = useCloudPreference<string>(`profile:${activeProfileId}:reserves:filter`, 'all');
+  const { value: sort, setValue: setSort } = useCloudPreference<string>(`profile:${activeProfileId}:reserves:sort`, 'recent');
   const [editor, setEditor] = useState<Editor | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [movement, setMovement] = useState<{ id: string; kind: 'deposit' | 'withdrawal'; cents: number; date: string; note: string } | null>(null);

@@ -15,7 +15,7 @@ function ProfilePrivacy({ children }: { children: ReactNode }) {
 export function useStoredBalancePrivacy(scope: 'all' | 'home-summary' | 'reserves-cards' = 'all') {
   const { activeProfileId } = useAppStore();
   const key = balancePrivacyKey(activeProfileId, scope);
-  const { value, setValue } = useCloudPreference(`profile:${activeProfileId}:privacy:${scope}`, "false", key);
+  const { value, setValue } = useCloudPreference<"true" | "false">(`profile:${activeProfileId}:privacy:${scope}`, "false", key);
   const hidden = value === "true";
   const toggle = useCallback(() => setValue(hidden ? "false" : "true"), [hidden, setValue]);
   return useMemo(() => ({ hidden, toggle }), [hidden, toggle]);
