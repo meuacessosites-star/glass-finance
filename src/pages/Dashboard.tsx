@@ -1,3 +1,4 @@
+import { PushScheduleSync } from "@/components/app/PushScheduleSync";
 import { BrowserReminderRunner } from "@/components/app/BrowserReminderRunner";
 import { preloadRoute } from '@/lib/route-preload';
 import { BalancePrivacyProvider } from "@/components/app/BalancePrivacy";
@@ -81,6 +82,7 @@ function DashboardShell() {
           </main>
 
           <BrowserReminderRunner />
+          <PushScheduleSync />
           {!isTransactionEdit && <DueTodayAlerts />}
           {!isTransactionEdit && (
             <BottomNav
