@@ -1,5 +1,6 @@
 import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
+import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import "@/components/app/planning.css";
 import { useRef, useState } from "react";
@@ -41,6 +42,7 @@ const inputClass =
 
 export default function AccountPage() {
   const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
+  const storageHealth = estimateStorageHealth(profiles);
   const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
@@ -156,6 +158,31 @@ export default function AccountPage() {
         <p className="text-sm font-semibold text-glass-ink">{syncMessage}</p>
         {(cloudSyncStatus === "error" || cloudSyncStatus === "conflict") && <button type="button" onClick={retryCloudSync} className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white">Tentar sincronizar</button>}
       </div>
+
+      {/* Diagnóstico local: limites do formato antigo, não quota do plano Convex. */}
+      <section className="glass rounded-3xl p-4" aria-label="Armazenamento dos dados">
+        <p className="text-[15px] font-semibold text-glass-ink">Armazenamento e histórico</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
+          Estimativa dos dados carregados neste dispositivo. Não representa o espaço total da sua conta no Convex.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-glass-sub">
+          <div>Transações <strong className="block text-glass-ink">{storageHealth.transactionCount.toLocaleString("pt-BR")}</strong></div>
+          <div>Anexos <strong className="block text-glass-ink">{storageHealth.attachmentCount.toLocaleString("pt-BR")}</strong></div>
+          <div>Dados estimados <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.totalJsonBytes)}</strong></div>
+          <div>Anexos embutidos <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.inlineAttachmentBytes)}</strong></div>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10" role="progressbar" aria-label="Uso estimado do limite atual de snapshot" aria-valuenow={storageHealth.usagePercent} aria-valuemin={0} aria-valuemax={100}>
+          <div className={cn("h-full rounded-full", storageHealth.level === "critical" ? "bg-red-500" : storageHealth.level === "warning" ? "bg-amber-500" : "bg-primary")} style={{ width: `${storageHealth.usagePercent}%` }} />
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
+          {storageHealth.usagePercent}% do limite atual de {formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.
+          {storageHealth.level === "critical"
+            ? " Atenção: exporte uma cópia e evite novos anexos grandes até concluir a migração."
+            : storageHealth.level === "warning"
+              ? " O histórico está crescendo; mantenha backups atualizados."
+              : " O carregamento e o armazenamento ainda dependem do formato antigo."}
+        </p>
+      </section>
 
       {/* Export */}
       <div className="glass rounded-3xl p-4">
