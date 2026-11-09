@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "../src/convex/schema";
-import { api } from "../src/convex/_generated/api";
+import { api, internal } from "../src/convex/_generated/api";
 
 const modules = import.meta.glob("../src/convex/**/*.{ts,js}");
 
@@ -117,4 +117,44 @@ test("normalized writes preserve per-user isolation and reject concurrent stale 
     .toMatchObject([{ amount: 75 }]);
   expect((await bob.query(api.financeV2.listProfilePage, { profileId: "personal" })).page)
     .toHaveLength(0);
+});
+
+test("a registered receipt cannot be read or claimed by another account", async () => {
+  const t = convexTest(schema, modules);
+  const alice = t.withIdentity({ subject: "alice" });
+  const bob = t.withIdentity({ subject: "bob" });
+  const storageId = await t.mutation(async ctx =>
+    await ctx.storage.store(new Blob(["private example"], { type: "image/png" })));
+  await alice.mutation(api.financeFiles.register, {
+    storageId, profileId: "personal", fileName: "private.png", contentType: "image/png",
+  });
+  expect(await bob.query(api.financeFiles.getDownloadUrl, { storageId })).toBeNull();
+  expect(await bob.query(api.financeFiles.getMetadata, { storageId })).toBeNull();
+  await expect(bob.mutation(api.financeFiles.register, {
+    storageId, profileId: "personal", fileName: "stolen.png", contentType: "image/png",
+  })).rejects.toThrow();
+  const metadata = await alice.query(api.financeFiles.getMetadata, { storageId });
+  expect(metadata.name).toBe("private.png");
+});
+
+test("committed receipt remains accessible after orphan cleanup", async () => {
+  const t = convexTest(schema, modules);
+  const alice = t.withIdentity({ subject: "alice" });
+  const storageId = await t.mutation(async ctx =>
+    await ctx.storage.store(new Blob(["receipt"], { type: "image/png" })));
+  await alice.mutation(api.financeFiles.register, {
+    storageId, profileId: "personal", fileName: "receipt.png", contentType: "image/png",
+  });
+  const transactionWithAttachment = {
+    ...transaction("attached", -1),
+    attachments: [`glass-file:${storageId}:image`],
+  };
+  const snapshot = makeSnapshot([transactionWithAttachment]);
+  await alice.mutation(api.financeState.saveMine, { payload: snapshot, expectedRevision: 0 });
+  await t.run(async ctx => {
+    const file = await ctx.db.query("financeFiles").first();
+    await ctx.db.patch(file._id, { createdAt: Date.now() - 40 * 24 * 60 * 60 * 1000 });
+  });
+  await t.mutation(internal.financeFiles.cleanupAbandonedUploads, {});
+  expect(await alice.query(api.financeFiles.getMetadata, { storageId })).not.toBeNull();
 });
