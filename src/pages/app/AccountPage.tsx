@@ -44,7 +44,7 @@ const inputClass =
 
 export default function AccountPage() {
   const convex = useConvex();
-  const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
+  const { activeProfile, profiles, restoreTrashedTransaction, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
   const [backupBusy,setBackupBusy]=useState(false);
@@ -203,6 +203,33 @@ export default function AccountPage() {
               ? " O histórico está crescendo; mantenha backups atualizados."
               : " O carregamento e o armazenamento ainda dependem do formato antigo."}
         </p>
+      </section>
+
+      {/* Restauração após excluir um lançamento: o período de retenção é de 30 dias. */}
+      <section className="glass rounded-3xl p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Lixeira de transações</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Lançamentos apagados ficam disponíveis para recuperação por até 30 dias.
+          A exclusão não remove automaticamente comprovantes ainda vinculados a backups.
+        </p>
+        {profiles.every(profile => !profile.data.trashedTransactions?.length)
+          ? <p className="mt-3 text-[12px] text-glass-faint">Nenhum lançamento recuperável.</p>
+          : <div className="mt-3 max-h-60 space-y-2 overflow-y-auto">
+              {profiles.flatMap(profile => (profile.data.trashedTransactions ?? []).map(entry => ({
+                entry, profileId: profile.id, profileName: profile.name,
+              }))).map(({ entry, profileId, profileName }) => (
+                <div key={`${profileId}:${entry.transaction.id}`} className="flex items-center gap-2 rounded-2xl bg-black/5 p-3 dark:bg-white/5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-glass-ink">{entry.transaction.title}</p>
+                    <p className="text-[11px] text-glass-sub">{profileName} · Excluída em {new Date(entry.deletedAt).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  <button type="button" className="rounded-full bg-primary px-3 py-2 text-[12px] font-semibold text-white" onClick={() => {
+                    restoreTrashedTransaction(profileId, entry.transaction.id);
+                    toast.success("Lançamento restaurado. Aguarde a sincronização.");
+                  }}>Restaurar</button>
+                </div>
+              ))}
+            </div>}
       </section>
 
       {/* Export */}
