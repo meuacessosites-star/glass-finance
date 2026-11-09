@@ -57,6 +57,33 @@ const schema = defineSchema(
       .index("by_user_created", ["userId", "createdAt"])
       .index("by_storage_id", ["storageId"]),
 
+    // Individual transaction copies: revision-bound and non-authoritative until a safe cutover.
+    transactionEntries: defineTable({
+      userId: v.id("users"),
+      profileId: v.string(),
+      externalId: v.string(),
+      sourceRevision: v.number(),
+      date: v.string(),
+      amountCents: v.number(),
+      payload: v.string(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_profile_revision_id", ["userId", "profileId", "sourceRevision", "externalId"])
+      .index("by_user_profile_revision_date", ["userId", "profileId", "sourceRevision", "date"]),
+    transactionMigrationStates: defineTable({
+      userId: v.id("users"),
+      profileId: v.string(),
+      sourceRevision: v.number(),
+      offset: v.number(),
+      total: v.number(),
+      totalCents: v.number(),
+      migratedCents: v.number(),
+      completed: v.boolean(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_profile", ["userId", "profileId"]),
+
     people: defineTable({
       userSubject: v.string(),
       name: v.string(),
