@@ -94,11 +94,13 @@ export const verifyProfile = query({
       return { verified: false, reason: "missing_profile" as const };
     const expected = profile.data.transactions;
     const expectedIds = new Set<string>();
+    const expectedById = new Map<string, { id: string; amount: number; date: string }>();
     let expectedCents = 0;
     for (const item of expected) {
       if (!item.id || expectedIds.has(item.id))
         return { verified: false, reason: "duplicate_legacy_id" as const };
       expectedIds.add(item.id);
+      expectedById.set(item.id, item);
       expectedCents += cents(item.amount);
       if (!Number.isSafeInteger(expectedCents)) throw new Error("Soma excedeu a precisão segura");
     }
@@ -108,11 +110,16 @@ export const verifyProfile = query({
     let copiedCents = 0;
     const copiedIds = new Set<string>();
     for (const item of copied) {
-      if (item.sourceRevision !== sourceRevision || !expectedIds.has(item.transactionId) ||
-          copiedIds.has(item.transactionId))
-        return { verified: false, reason: "unexpected_record" as const };
+      const original = expectedById.get(item.transactionId);
+      if (item.sourceRevision !== sourceRevision || !original ||
+          copiedIds.has(item.transactionId) ||
+          JSON.stringify(original) !== JSON.stringify(item.payload) ||
+          cents(original.amount) !== item.amountCents ||
+          original.date !== item.dateKey)
+        return { verified: false, reason: "unexpected_or_changed_record" as const };
       copiedIds.add(item.transactionId);
       copiedCents += item.amountCents;
+      if (!Number.isSafeInteger(copiedCents)) throw new Error("Soma excedeu a precisão segura");
     }
     return {
       verified: expected.length === copied.length && expectedCents === copiedCents,
