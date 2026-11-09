@@ -60,6 +60,37 @@ const schema = defineSchema(
     }).index("by_user_subject", ["userSubject"])
       .index("by_user_subject_revision", ["userSubject", "revision"]),
 
+    // Push credentials are private per authenticated device; never expose
+    // endpoints or encryption keys via public queries.
+    pushDevices: defineTable({
+      userSubject: v.string(),
+      profileId: v.string(),
+      endpoint: v.string(),
+      p256dh: v.string(),
+      auth: v.string(),
+      timeZone: v.string(),
+      enabled: v.boolean(),
+      lastSentDay: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_endpoint", ["endpoint"])
+      .index("by_user", ["userSubject"])
+      .index("by_user_profile", ["userSubject", "profileId"]),
+
+    // Stores only generic due dates and event kinds, not titles or amounts.
+    // Each profile is replaced atomically when its finance data changes.
+    pushSchedules: defineTable({
+      userSubject: v.string(),
+      profileId: v.string(),
+      items: v.array(v.object({
+        key: v.string(),
+        date: v.string(),
+        kind: v.union(v.literal("invoice"), v.literal("transaction"), v.literal("loan"), v.literal("review")),
+      })),
+      updatedAt: v.number(),
+    }).index("by_user_profile", ["userSubject", "profileId"]),
+
     // Files are stored in Convex File Storage, not as base64 in financial JSON.
     // Never delete objects automatically while their references may exist.
     financeFiles: defineTable({
