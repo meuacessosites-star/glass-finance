@@ -74,6 +74,16 @@ const schema = defineSchema(
       .index("by_storage_id", ["storageId"])
       .index("by_owner_profile", ["userSubject", "profileId"]),
 
+    // Separately versioned metadata. Transaction history lives in financeTransactions
+    // after a fully verified migration, and legacy snapshots remain untouched.
+    financeV2States: defineTable({
+      userSubject: v.string(),
+      revision: v.number(),
+      metadataPayload: v.string(),
+      legacyRevision: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user_subject", ["userSubject"]),
+
     // Preparação da migração: registros separados, ainda sem mudar a leitura/escrita legada.
     // Nunca ativar esta tabela como fonte principal antes da conferência por perfil.
     financeTransactions: defineTable({
