@@ -20,6 +20,7 @@ export function BrowserReminderRunner() {
     readPaymentNotificationIds, includeBorrowedCardInvoices, reminderPreferences,
   } = useAppStore();
   const [tick, setTick] = useState(0);
+  const [hasPushSubscription, setHasPushSubscription] = useState(false);
   const today = localDateKey(new Date());
   const reminders = useMemo(
     () => getPaymentNotifications({
@@ -29,6 +30,24 @@ export function BrowserReminderRunner() {
     [cards, visibleTransactions, loanReceivables, readPaymentNotificationIds,
       includeBorrowedCardInvoices, today, tick],
   );
+  useEffect(() => {
+    if (!reminderPreferences.browserEnabled || !activeProfile?.id ||
+        !("serviceWorker" in navigator)) {
+      setHasPushSubscription(false);
+      return;
+    }
+    let mounted = true;
+    void navigator.serviceWorker.getRegistration("/")
+      .then(registration => registration?.pushManager.getSubscription())
+      .then(subscription => {
+        if (mounted) setHasPushSubscription(Boolean(subscription));
+      })
+      .catch(() => {
+        if (mounted) setHasPushSubscription(false);
+      });
+    return () => { mounted = false; };
+  }, [activeProfile?.id, reminderPreferences.browserEnabled, tick]);
+
   useEffect(() => {
     if (!reminderPreferences.browserEnabled || !activeProfile?.id) return;
     const update = () => setTick(value => value + 1);
@@ -42,7 +61,7 @@ export function BrowserReminderRunner() {
     };
   }, [activeProfile?.id, reminderPreferences.browserEnabled]);
   useEffect(() => {
-    if (!reminderPreferences.browserEnabled || !activeProfile?.id ||
+    if (!reminderPreferences.browserEnabled || !activeProfile?.id || hasPushSubscription ||
         typeof Notification === "undefined" || Notification.permission !== "granted" ||
         document.visibilityState !== "visible") return;
     let cancelled = false;
@@ -86,6 +105,6 @@ export function BrowserReminderRunner() {
     };
     void execute().catch(() => { /* alerts must never crash financial dashboard */ });
     return () => { cancelled = true; };
-  }, [activeProfile?.id, reminderPreferences.browserEnabled, reminders, notifications, today, tick]);
+  }, [activeProfile?.id, reminderPreferences.browserEnabled, hasPushSubscription, reminders, notifications, today, tick]);
   return null;
 }
