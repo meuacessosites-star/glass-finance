@@ -63,14 +63,13 @@ export const registerDevice = mutation({
       userSubject, profileId: args.profileId,
       endpoint: args.endpoint, p256dh: args.p256dh, auth: args.auth,
       timeZone: args.timeZone, enabled: true, updatedAt: Date.now(),
-      lastSentDay: undefined as string | undefined,
     };
     if (existing) {
       // An endpoint must never be taken over by another logged-in account.
       if (existing.userSubject !== userSubject)
         throw new Error("Dispositivo associado a outra conta. Remova a inscrição anterior neste navegador.");
       await ctx.db.patch(existing._id as Id<"pushDevices">, {
-        ...record, lastSentDay: existing.lastSentDay,
+        ...record,
       });
     } else {
       await ctx.db.insert("pushDevices", { ...record, createdAt: Date.now() });
@@ -106,8 +105,8 @@ export const syncSchedule = mutation({
       seen.add(item.key);
     }
     const existing = await ctx.db.query("pushSchedules")
-      .withIndex("by_user_profile", q =>
-        q.eq("userSubject", userSubject).eq("profileId", profileId)).unique();
+      .withIndex("by_user_profile", q => q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("profileId"), profileId)).unique();
     const fields = { userSubject, profileId, items, updatedAt: Date.now() };
     if (existing) await ctx.db.patch(existing._id as Id<"pushSchedules">, fields);
     else await ctx.db.insert("pushSchedules", fields);
@@ -137,13 +136,21 @@ function localParts(timeZone: string, now: number) {
 export const reserveDailyPush = internalMutation({
   args: { deviceId: v.id("pushDevices") },
   handler: async (ctx, { deviceId }) => {
-    const device = await ctx.db.get(deviceId);
+    const device = await ctx.db.get(deviceId) as unknown as {
+      _id: Id<"pushDevices">; enabled: boolean; userSubject: string;
+      profileId: string; endpoint: string; p256dh: string; auth: string;
+      timeZone: string; lastSentDay?: string;
+    } | null;
     if (!device || !device.enabled) return null;
     const local = localParts(device.timeZone, Date.now());
     if (local.hour !== 9 || device.lastSentDay === local.date) return null;
-    const schedule = await ctx.db.query("pushSchedules")
-      .withIndex("by_user_profile", q =>
-        q.eq("userSubject", device.userSubject).eq("profileId", device.profileId)).unique();
+    const rawSchedule = await ctx.db.query("pushSchedules")
+      .withIndex("by_user_profile", q => q.eq("userSubject", device.userSubject))
+      .filter(q => q.eq(q.field("profileId"), device.profileId)).unique();
+    const schedule = rawSchedule as unknown as {
+      updatedAt: number;
+      items: Array<{key: string; date: string; kind: "invoice" | "loan" | "transaction" | "review"}>;
+    } | null;
     if (!schedule || Date.now() - schedule.updatedAt > 45 * 86400000) return null;
     const dayNumber = Date.parse(local.date + "T12:00:00Z");
     const due = schedule.items.filter(item => {
