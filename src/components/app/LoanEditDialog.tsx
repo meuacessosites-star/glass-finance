@@ -1,3 +1,6 @@
+import { useConvex } from "convex/react";
+import { uploadAttachmentToCloud, isAttachmentImage } from "@/lib/cloud-attachments";
+import { CloudAttachmentImage } from "./CloudAttachmentImage";
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { formatCurrency as rawCurrency } from "@/lib/mock-data";
 import { useRef, useState, type FormEvent } from "react";
@@ -36,8 +39,9 @@ export function LoanEditDialog({
   onClose: () => void;
   onSaved?: () => void;
 }) {
+  const convex = useConvex();
   const formatCurrency = usePrivateCurrency();
-  const { loanReceivables, updateLoanRecord } = useAppStore();
+  const { activeProfileId, loanReceivables, updateLoanRecord } = useAppStore();
   const [contact, setContact] = useState(item.contact);
   const [description, setDescription] = useState(item.description ?? "");
   const [amountCents, setAmountCents] = useState(Math.round(item.amount * 100));
@@ -80,12 +84,22 @@ export function LoanEditDialog({
     patch.suggestedPaymentAmount = suggestedCents / 100;
   const error = validateLoanRecordEdit({ loanReceivables }, item.id, patch);
   const changed = Object.keys(patch).length > 0;
-  const save = (event: FormEvent) => {
+  const save = async (event: FormEvent) => {
     event.preventDefault();
     if (error || !changed || addingFiles) return;
-    updateLoanRecord(item.id, patch);
-    toast.success("Alterações salvas");
-    if (onSaved) onSaved(); else onClose();
+    setAddingFiles(true);
+    try {
+      const restored = await Promise.all(attachments.map((src, index) =>
+        uploadAttachmentToCloud(convex, src, activeProfileId, `anexo-${index + 1}`, isAttachmentImage(src))
+      ));
+      updateLoanRecord(item.id, { ...patch, attachments: restored });
+      toast.success("Alterações salvas");
+      if (onSaved) onSaved(); else onClose();
+    } catch {
+      toast.error("Não foi possível salvar os anexos na nuvem. Nenhuma alteração foi aplicada.");
+    } finally {
+      setAddingFiles(false);
+    }
   };
   const addFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -94,7 +108,10 @@ export function LoanEditDialog({
       const added = await Promise.all(
         Array.from(files)
           .slice(0, Math.max(0, 6 - attachments.length))
-          .map(compressAttachmentFile),
+          .map(async (file) => {
+            const src = await compressAttachmentFile(file);
+            return uploadAttachmentToCloud(convex, src, activeProfileId, file.name, isAttachmentImage(src));
+          }),
       );
       setAttachments((current) => [...current, ...added].slice(0, 6));
     } catch {
@@ -314,8 +331,8 @@ export function LoanEditDialog({
                     key={index}
                     className="flex items-center gap-2 rounded-xl bg-primary/5 p-2"
                   >
-                    {src.startsWith("data:image") ? (
-                      <img
+                    {isAttachmentImage(src) ? (
+                      <CloudAttachmentImage
                         src={src}
                         alt={`Anexo ${index + 1}`}
                         className="size-10 rounded-lg object-cover"
