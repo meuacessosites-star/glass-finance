@@ -972,6 +972,20 @@ export default function TransactionsPage() {
         ))
         )}
         </div>
+        {visibleLimit < filtered.length && (
+          <div className="flex flex-col items-center gap-2 pb-6 pt-3">
+            <p className="text-xs text-glass-sub">
+              Exibindo {visibleRows.length} de {filtered.length} transações
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisibleLimit((count) => count + 50)}
+              className="glass glass-soft min-h-11 rounded-2xl px-5 py-3 text-[13px] font-semibold text-glass-ink transition-transform active:scale-95"
+            >
+              Carregar mais 50 transações
+            </button>
+          </div>
+        )}
       </div>
 
       <AnimatePresence initial={false}>
