@@ -1,3 +1,4 @@
+import { linkReferencedFiles } from "./financeFileRefs";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
@@ -77,6 +78,8 @@ export const saveMine = mutation({
     if (expectedRevision !== currentRevision) {
       return { ok: false as const, conflict: true as const, revision: currentRevision };
     }
+
+    await linkReferencedFiles(ctx, userSubject, parsed);
 
     const revision = currentRevision + 1;
     const updatedAt = Date.now();
