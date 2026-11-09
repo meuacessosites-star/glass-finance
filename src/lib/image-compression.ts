@@ -47,7 +47,8 @@ export async function compressUploadImage(file: File, options: ImageCompressionO
   const maxDimension = options.maxDimension ?? (use === "document" ? 1400 : use === "avatar" ? 512 : 640);
   const targetBytes = options.targetBytes ?? (use === "document" ? 450_000 : use === "avatar" ? 75_000 : 120_000);
   const startQuality = options.quality ?? (use === "document" ? 0.86 : 0.83);
-  const image = await decodeImage(await readImage(file));
+  const originalDataUrl = await readImage(file);
+  const image = await decodeImage(originalDataUrl);
   if (!image.width || !image.height || image.width * image.height > MAX_SOURCE_PIXELS)
     throw new Error("image-resolution-too-large");
   const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
@@ -80,6 +81,13 @@ export async function compressUploadImage(file: File, options: ImageCompressionO
     const candidate = canvas.toDataURL(encodedType, q);
     if (imageDataUrlBytes(candidate) < imageDataUrlBytes(best)) best = candidate;
     if (imageDataUrlBytes(best) <= targetBytes) break;
+  }
+  // Small pre-compressed JPEG/PNG/WebP files can already be more efficient
+  // than re-encoding. Keep them when doing so saves bytes and is within budget.
+  const safeOriginal = /^(?:image\\/(?:jpeg|png|webp))$/.test(file.type);
+  if (safeOriginal && file.size <= targetBytes &&
+      imageDataUrlBytes(originalDataUrl) < imageDataUrlBytes(best)) {
+    return originalDataUrl;
   }
   return best;
 }
