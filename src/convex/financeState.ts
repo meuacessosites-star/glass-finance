@@ -132,6 +132,27 @@ export const deleteMine = mutation({
       .collect();
     for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
 
+    // Also remove the normalized migration copies and uploaded files when the
+    // account owner explicitly requests permanent deletion. This is atomic with
+    // the legacy state deletion: an oversized operation fails without partial
+    // database deletion, rather than silently retaining private financial data.
+    const transactions = await ctx.db.query("financeTransactions")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const entry of transactions) {
+      await ctx.db.delete(entry._id as Id<"financeTransactions">);
+    }
+    const migrations = await ctx.db.query("financeMigrationProgress")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const entry of migrations) {
+      await ctx.db.delete(entry._id as Id<"financeMigrationProgress">);
+    }
+    const files = await ctx.db.query("financeFiles")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const file of files) {
+      await ctx.storage.delete(file.storageId as Id<"_storage">);
+      await ctx.db.delete(file._id as Id<"financeFiles">);
+    }
+
     const people = await ctx.db
       .query("people")
       .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
