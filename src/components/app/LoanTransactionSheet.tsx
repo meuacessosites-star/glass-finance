@@ -1,3 +1,5 @@
+import { useConvex } from "convex/react";
+import { uploadAttachmentToCloud } from "@/lib/cloud-attachments";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
@@ -39,6 +41,7 @@ type PickedAttachment = {
   src: string;
   isImage: boolean;
   name: string;
+  previewSrc?: string;
 };
 
 const PAYMENT_OPTIONS: {
@@ -85,7 +88,8 @@ export function LoanTransactionSheet({
   onCommit?: (data: LoanCreationInput) => void;
   onSaved?: () => void;
 }) {
-  const { createLoanRecord, categories, cards } = useAppStore();
+  const convex = useConvex();
+  const { activeProfileId, createLoanRecord, categories, cards } = useAppStore();
   const overlay = useExclusiveOverlay({
     name: "loan-transaction-sheet",
     open,
@@ -215,11 +219,12 @@ export function LoanTransactionSheet({
 
     try {
       const picked = await Promise.all(
-        selected.map(async (file) => ({
-          src: await compressAttachmentFile(file),
-          isImage: file.type.startsWith("image/"),
-          name: file.name,
-        })),
+        selected.map(async (file) => {
+          const previewSrc = await compressAttachmentFile(file);
+          const isImage = file.type.startsWith("image/");
+          const src = await uploadAttachmentToCloud(convex, previewSrc, activeProfileId, file.name, isImage);
+          return { src, previewSrc: isImage ? previewSrc : undefined, isImage, name: file.name };
+        }),
       );
       setAttachments((current) => [...current, ...picked].slice(0, 6));
     } catch {
@@ -478,7 +483,7 @@ export function LoanTransactionSheet({
                           className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl"
                         >
                           <img
-                            src={attachment.src}
+                            src={attachment.previewSrc ?? attachment.src}
                             alt={attachment.name}
                             className="size-full object-cover"
                           />
