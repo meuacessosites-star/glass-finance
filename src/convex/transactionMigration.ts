@@ -8,6 +8,10 @@ async function owner(ctx: { auth: { getUserIdentity: () => Promise<{ subject: st
   if (!identity) throw new Error("Autenticação necessária");
   return identity.subject;
 }
+const ownerProfileKey = (userSubject: string, profileId: string) =>
+  JSON.stringify([userSubject, profileId]);
+const ownerTransactionKey = (userSubject: string, profileId: string, transactionId: string) =>
+  JSON.stringify([userSubject, profileId, transactionId]);
 const item = v.object({
   id: v.string(),
   amount: v.number(),
@@ -68,8 +72,7 @@ export const copyBatch = mutation({
       const amountCents = cents(transaction.amount);
       const existing = await ctx.db.query("financeTransactions")
         .withIndex("by_owner_profile_transaction", q =>
-          q.eq("userSubject", userSubject))
-        .filter(q => q.and(q.eq(q.field("profileId"), args.profileId), q.eq(q.field("transactionId"), transaction.id)))
+          q.eq("ownerTransactionKey", ownerTransactionKey(userSubject, args.profileId, transaction.id)))
         .unique();
       if (existing) {
         if (existing.sourceRevision === args.sourceRevision &&
@@ -78,6 +81,8 @@ export const copyBatch = mutation({
       }
       await ctx.db.insert("financeTransactions", {
         userSubject, profileId: args.profileId, transactionId: transaction.id,
+        ownerProfileKey: ownerProfileKey(userSubject, args.profileId),
+        ownerTransactionKey: ownerTransactionKey(userSubject, args.profileId, transaction.id),
         payload: transaction.payload, amountCents, dateKey: transaction.date,
         sourceRevision: args.sourceRevision, updatedAt: Date.now(),
       });
@@ -92,8 +97,7 @@ export const listPage = query({
     const userSubject = await owner(ctx);
     const numItems = Math.min(100, Math.max(1, Math.floor(limit ?? 50)));
     return ctx.db.query("financeTransactions")
-      .withIndex("by_owner_profile_date", q => q.eq("userSubject", userSubject))
-      .filter(q => q.eq(q.field("profileId"), profileId))
+      .withIndex("by_owner_profile_date", q => q.eq("ownerProfileKey", ownerProfileKey(userSubject, profileId)))
       .order("desc").paginate({ cursor: cursor ?? null, numItems });
   },
 });
@@ -132,8 +136,7 @@ export const verifyProfile = query({
     }
     const copied = await ctx.db.query("financeTransactions")
       .withIndex("by_owner_profile", q =>
-        q.eq("userSubject", userSubject))
-      .filter(q => q.eq(q.field("profileId"), profileId)).collect();
+        q.eq("ownerProfileKey", ownerProfileKey(userSubject, profileId))).collect();
     let copiedCents = 0;
     const copiedIds = new Set<string>();
     for (const item of copied) {
