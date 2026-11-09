@@ -45,7 +45,8 @@ export const copyBatch = mutation({
       const amountCents = cents(transaction.amount);
       const existing = await ctx.db.query("financeTransactions")
         .withIndex("by_owner_profile_transaction", q =>
-          q.eq("userSubject", userSubject).eq("profileId", args.profileId).eq("transactionId", transaction.id))
+          q.eq("userSubject", userSubject))
+        .filter(q => q.and(q.eq(q.field("profileId"), args.profileId), q.eq(q.field("transactionId"), transaction.id)))
         .unique();
       if (existing) {
         if (existing.sourceRevision === args.sourceRevision &&
@@ -68,7 +69,8 @@ export const listPage = query({
     const userSubject = await owner(ctx);
     const numItems = Math.min(100, Math.max(1, Math.floor(limit ?? 50)));
     return ctx.db.query("financeTransactions")
-      .withIndex("by_owner_profile_date", q => q.eq("userSubject", userSubject).eq("profileId", profileId))
+      .withIndex("by_owner_profile_date", q => q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("profileId"), profileId))
       .order("desc").paginate({ cursor: cursor ?? null, numItems });
   },
 });
@@ -84,10 +86,11 @@ export const verifyProfile = query({
       return { verified: false, reason: "revision_changed" as const };
     const chunks = await ctx.db.query("financeStateChunks")
       .withIndex("by_user_subject_revision", q =>
-        q.eq("userSubject", userSubject).eq("revision", sourceRevision)).collect();
+        q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("revision"), sourceRevision)).collect();
     if (chunks.length !== state.chunkCount)
       return { verified: false, reason: "incomplete_snapshot" as const };
-    const raw = chunks.sort((a,b) => a.chunkIndex-b.chunkIndex).map(c=>c.payload).join("");
+    const raw = chunks.sort((a,b) => Number(a.chunkIndex)-Number(b.chunkIndex)).map(c=>String(c.payload)).join("");
     const snapshot = JSON.parse(raw) as { profiles?: Array<{ id: string; data?: { transactions?: Array<{ id:string; amount:number; date:string }> } }> };
     const profile = snapshot.profiles?.find(p => p.id === profileId);
     if (!profile?.data || !Array.isArray(profile.data.transactions))
@@ -110,15 +113,15 @@ export const verifyProfile = query({
     let copiedCents = 0;
     const copiedIds = new Set<string>();
     for (const item of copied) {
-      const original = expectedById.get(item.transactionId);
+      const original = expectedById.get(String(item.transactionId));
       if (item.sourceRevision !== sourceRevision || !original ||
-          copiedIds.has(item.transactionId) ||
+          copiedIds.has(String(item.transactionId)) ||
           JSON.stringify(original) !== JSON.stringify(item.payload) ||
           cents(original.amount) !== item.amountCents ||
           original.date !== item.dateKey)
         return { verified: false, reason: "unexpected_or_changed_record" as const };
-      copiedIds.add(item.transactionId);
-      copiedCents += item.amountCents;
+      copiedIds.add(String(item.transactionId));
+      copiedCents += Number(item.amountCents);
       if (!Number.isSafeInteger(copiedCents)) throw new Error("Soma excedeu a precisão segura");
     }
     return {
