@@ -16,7 +16,7 @@ const ONE_DAY = 86_400_000;
  */
 export function BrowserReminderRunner() {
   const {
-    activeProfile, cards, visibleTransactions, loanReceivables,
+    activeProfile, cards, visibleTransactions, loanReceivables, notifications,
     readPaymentNotificationIds, includeBorrowedCardInvoices, reminderPreferences,
   } = useAppStore();
   const [tick, setTick] = useState(0);
@@ -70,9 +70,21 @@ export function BrowserReminderRunner() {
           try { localStorage.setItem(key, JSON.stringify(values)); } catch { /* optional */ }
         }
       }
+      const pendingKey = JSON.stringify([today, "pending-review"]);
+      if (!cancelled && notifications.some(item => item.status === "pending") &&
+          !seen.has(pendingKey) && registration) {
+        await registration.showNotification("Lembrete do Glass Finance", {
+          body: "Você tem mensagens aguardando revisão no aplicativo.",
+          tag: "glass-finance-review",
+          icon: "/favicon.png",
+          data: { url: "/dashboard/notificacoes" },
+        });
+        values[pendingKey] = now;
+        try { localStorage.setItem(key, JSON.stringify(values)); } catch { /* optional */ }
+      }
     };
     void execute().catch(() => { /* alerts must never crash financial dashboard */ });
     return () => { cancelled = true; };
-  }, [activeProfile?.id, reminderPreferences.browserEnabled, reminders, today, tick]);
+  }, [activeProfile?.id, reminderPreferences.browserEnabled, reminders, notifications, today, tick]);
   return null;
 }
