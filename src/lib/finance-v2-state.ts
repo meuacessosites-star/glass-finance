@@ -30,7 +30,11 @@ export function metadataWithoutTransactions(raw: string) {
     ...state,
     profiles: state.profiles.map(profile => ({
       ...profile,
-      data: { ...profile.data, transactions: [] },
+      data: {
+        ...profile.data,
+        transactions: [],
+        transactionOrder: profile.data.transactions.map(item => item.id),
+      },
     })),
   });
 }
@@ -38,10 +42,23 @@ export function inflateTransactionPages(metadata: string, rows: Record<string, I
   const state = parseRoot(metadata);
   return JSON.stringify({
     ...state,
-    profiles: state.profiles.map(profile => ({
-      ...profile,
-      data: { ...profile.data, transactions: rows[profile.id] ?? [] },
-    })),
+    profiles: state.profiles.map(profile => {
+      const saved = rows[profile.id] ?? [];
+      const order = profile.data.transactionOrder;
+      let restored = saved;
+      if (Array.isArray(order)) {
+        const byId = new Map(saved.map(item => [item.id, item]));
+        if (new Set(order).size !== order.length ||
+            byId.size !== saved.length || order.length !== saved.length ||
+            order.some(id => typeof id !== "string" || !byId.has(id))) {
+          throw new Error("Histórico paginado incompleto ou com identificadores divergentes");
+        }
+        restored = order.map(id => byId.get(id as string)!);
+      }
+      // transactionOrder is a transport manifest; it is not a user setting.
+      const { transactionOrder: _order, ...data } = profile.data;
+      return { ...profile, data: { ...data, transactions: restored } };
+    }),
   });
 }
 function indexRows(state: Root) {
