@@ -39,7 +39,7 @@ export const register = mutation({
     if (existing) throw new Error("Este arquivo já foi registrado");
     await ctx.db.insert("financeFiles", {
       userSubject, profileId, storageId, fileName,
-      contentType, byteSize: metadata.size, createdAt: Date.now(),
+      contentType, byteSize: metadata.size, linked: false, createdAt: Date.now(),
     });
     return { storageId };
   },
