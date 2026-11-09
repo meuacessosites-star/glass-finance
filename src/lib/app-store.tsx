@@ -1375,7 +1375,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             ? splitTransactionBatches(changes)
             : [];
           const pieces = batches.length ? batches : [[]];
-          let result: { ok: boolean; revision: number } | undefined;
+          let result: { ok: boolean; revision: number } = { ok: false, revision: revisionRef.current };
           let checkpoint = lastSyncedPayloadRef.current;
           for (let index = 0; index < pieces.length; index++) {
             const intermediate = v2ModeRef.current
