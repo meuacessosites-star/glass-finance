@@ -115,7 +115,7 @@ export async function deliverWebPush(
       TTL: "86400",
       Urgency: "normal",
     },
-    body,
+    body: new Uint8Array(body),
     signal: AbortSignal.timeout(15_000),
   });
   return response.status;
