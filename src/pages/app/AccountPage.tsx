@@ -18,7 +18,7 @@ import { SettingsHeader } from "@/components/app/SettingsHeader";
 import { useAppStore } from "@/lib/app-store";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { USERNAME_HELP, USERNAME_PATTERN } from "@/lib/auth-fields";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,11 @@ const inputClass =
 export default function AccountPage() {
   const { user } = useAuth();
   const updateUsername = useMutation(api.users.updateUsername);
+  const sourceInfo = useQuery(api.transactionMigration.sourceInfo, {});
+  const migrationStatus = useQuery(api.transactionMigration.statusMine, {});
+  const prepareNext = useMutation(api.transactionMigration.prepareNext);
+  const [migrationRunning, setMigrationRunning] = useState<string | null>(null);
+  const [migrationProgress, setMigrationProgress] = useState<{profileId: string; migrated: number; total: number} | null>(null);
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameValue, setUsernameValue] = useState("");
   const [savingUsername, setSavingUsername] = useState(false);
@@ -66,6 +71,33 @@ export default function AccountPage() {
   };
   const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const [pdfBusy,setPdfBusy]=useState(false);
+  const prepareProfileMigration = async (profileId: string) => {
+    if (migrationRunning || cloudSyncStatus !== "synced" || !sourceInfo?.hasSnapshot) {
+      toast.error("Sincronize os dados antes de preparar a migração.");
+      return;
+    }
+    const revision = sourceInfo.revision;
+    setMigrationRunning(profileId);
+    try {
+      let completed = false;
+      // A bounded number of small server-side batches avoids a single
+      // expensive operation and permits resuming later without duplicates.
+      for (let step = 0; step < 20; step += 1) {
+        const result = await prepareNext({ profileId, expectedRevision: revision });
+        setMigrationProgress({ profileId, migrated: result.migrated, total: result.total });
+        if (result.completed) {
+          completed = true;
+          toast.success("Cópia conferida. O histórico original foi preservado.");
+          break;
+        }
+      }
+      if (!completed) toast.info("Preparação parcial salva. Toque em Continuar para processar mais registros.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Não foi possível preparar a migração.");
+    } finally {
+      setMigrationRunning(null);
+    }
+  };
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
   const [pendingImport,setPendingImport]=useState<{raw:string;profiles:number;transactions:number;names:string}|null>(null);
@@ -200,6 +232,53 @@ export default function AccountPage() {
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —
         o backup inclui os {profiles.length} perfis desta conta.
       </p>
+      {/* Explicit, non-destructive preparation. This is not a cutover. */}
+      <section className="glass rounded-3xl p-4" aria-label="Preparação para histórico de grande volume">
+        <h3 className="text-[15px] font-semibold text-glass-ink">Preparação para histórico de grande volume</h3>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Cria uma cópia individual das transações no Convex, por lotes, com verificação de
+          identificadores e valores em centavos. O histórico original continua sendo a fonte
+          oficial. Esta preparação não ativa ainda o novo sistema de gravação.
+        </p>
+        <div className="mt-3 space-y-3">
+          {profiles.map(profile => {
+            const saved = migrationStatus?.find(item => item.profileId === profile.id);
+            const copied = migrationProgress?.profileId === profile.id
+              ? migrationProgress : null;
+            const migrated = copied?.migrated ?? saved?.migrated ?? 0;
+            const total = copied?.total ?? saved?.total ?? profile.data.transactions.length;
+            const completed = Boolean(saved?.completed && !copied);
+            const running = migrationRunning === profile.id;
+            return (
+              <div key={profile.id} className="rounded-2xl border border-glass-ink/10 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-glass-ink">{profile.name}</p>
+                    <p className="mt-1 text-[11px] text-glass-sub">
+                      {completed ? "Cópia conferida para a revisão atual" :
+                        saved && !copied && saved.sourceRevision !== saved.currentRevision
+                          ? "Cópia desatualizada: os dados mudaram"
+                          : `${migrated} de ${total} transações preparadas`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={Boolean(migrationRunning) || cloudSyncStatus !== "synced" || !sourceInfo?.hasSnapshot || completed}
+                    onClick={() => void prepareProfileMigration(profile.id)}
+                    className="shrink-0 rounded-xl bg-primary px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40"
+                  >
+                    {running ? "Preparando…" : completed ? "Conferido" : migrated > 0 ? "Continuar" : "Preparar"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-glass-sub">
+          É seguro sair e continuar depois. Se alguma transação for alterada durante a cópia,
+          a preparação precisará ser refeita para a nova revisão. Os dados não são apagados.
+        </p>
+      </section>
       <div role="status" className="glass rounded-2xl p-4">
         <p className="text-sm font-semibold text-glass-ink">{syncMessage}</p>
         {(cloudSyncStatus === "error" || cloudSyncStatus === "conflict") && <button type="button" onClick={retryCloudSync} className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white">Tentar sincronizar</button>}
