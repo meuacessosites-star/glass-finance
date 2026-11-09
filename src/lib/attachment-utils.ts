@@ -1,3 +1,5 @@
+import type { ConvexReactClient } from "convex/react";
+import { cloudAttachmentUrl } from "./cloud-attachments";
 import { imageToDataUrl } from "./receipt-scan";
 
 const GZIP_DATA_URL_PREFIX = "data:application/x-granascan-gzip;";
@@ -83,8 +85,9 @@ export function isCompressedAttachment(src: string): boolean {
 export async function downloadAttachment(
   src: string,
   fallbackName: string,
+  client?: ConvexReactClient,
 ): Promise<void> {
-  let url = src;
+  let url = client ? await cloudAttachmentUrl(client, src) : src;
   let revoke = false;
   let filename = fallbackName;
 
