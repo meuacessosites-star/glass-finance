@@ -84,7 +84,7 @@ export async function compressUploadImage(file: File, options: ImageCompressionO
   }
   // Small pre-compressed JPEG/PNG/WebP files can already be more efficient
   // than re-encoding. Keep them when doing so saves bytes and is within budget.
-  const safeOriginal = /^(?:image\\/(?:jpeg|png|webp))$/.test(file.type);
+  const safeOriginal = /^(?:image\/(?:jpeg|png|webp))$/.test(file.type);
   if (safeOriginal && file.size <= targetBytes &&
       imageDataUrlBytes(originalDataUrl) < imageDataUrlBytes(best)) {
     return originalDataUrl;
