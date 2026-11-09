@@ -60,6 +60,34 @@ const schema = defineSchema(
     }).index("by_user_subject", ["userSubject"])
       .index("by_user_subject_revision", ["userSubject", "revision"]),
 
+    // Preparação da migração: registros separados, ainda sem mudar a leitura/escrita legada.
+    // Nunca ativar esta tabela como fonte principal antes da conferência por perfil.
+    financeTransactions: defineTable({
+      userSubject: v.string(),
+      profileId: v.string(),
+      transactionId: v.string(),
+      payload: v.any(),
+      amountCents: v.number(),
+      dateKey: v.string(),
+      sourceRevision: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_owner_profile", ["userSubject", "profileId"])
+      .index("by_owner_profile_transaction", ["userSubject", "profileId", "transactionId"])
+      .index("by_owner_profile_date", ["userSubject", "profileId", "dateKey"]),
+
+    financeMigrationProgress: defineTable({
+      userSubject: v.string(),
+      profileId: v.string(),
+      sourceRevision: v.number(),
+      expectedCount: v.number(),
+      copiedCount: v.number(),
+      expectedAmountCents: v.number(),
+      copiedAmountCents: v.number(),
+      status: v.union(v.literal("preparing"), v.literal("verified"), v.literal("stale")),
+      updatedAt: v.number(),
+    }).index("by_owner_profile", ["userSubject", "profileId"]),
+
     // tableName: defineTable({
     //   ...
     //   // table fields
