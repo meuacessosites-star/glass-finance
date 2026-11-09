@@ -242,12 +242,15 @@ export default function AccountPage() {
         </p>
         <div className="mt-3 space-y-3">
           {profiles.map(profile => {
-            const saved = migrationStatus?.find(item => item.profileId === profile.id);
+            const saved = migrationStatus?.find((item: {
+              profileId: string; sourceRevision: number; currentRevision: number;
+              migrated: number; total: number; completed: boolean;
+            }) => item.profileId === profile.id);
             const copied = migrationProgress?.profileId === profile.id
               ? migrationProgress : null;
-            const migrated = copied?.migrated ?? saved?.migrated ?? 0;
+            const migrated = saved?.completed ? saved.migrated : copied?.migrated ?? saved?.migrated ?? 0;
             const total = copied?.total ?? saved?.total ?? profile.data.transactions.length;
-            const completed = Boolean(saved?.completed && !copied);
+            const completed = Boolean(saved?.completed && saved.sourceRevision === sourceInfo?.revision);
             const running = migrationRunning === profile.id;
             return (
               <div key={profile.id} className="rounded-2xl border border-glass-ink/10 p-3">
