@@ -137,7 +137,7 @@ export const deleteMine = mutation({
     // the legacy state deletion: an oversized operation fails without partial
     // database deletion, rather than silently retaining private financial data.
     const transactions = await ctx.db.query("financeTransactions")
-      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+      .withIndex("by_owner", q => q.eq("userSubject", userSubject)).collect();
     for (const entry of transactions) {
       await ctx.db.delete(entry._id as Id<"financeTransactions">);
     }
