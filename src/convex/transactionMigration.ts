@@ -72,3 +72,54 @@ export const listPage = query({
       .order("desc").paginate({ cursor: cursor ?? null, numItems });
   },
 });
+
+/** Confere o snapshot legado contra os registros copiados, sem modificar dados. */
+export const verifyProfile = query({
+  args: { profileId: v.string(), sourceRevision: v.number() },
+  handler: async (ctx, { profileId, sourceRevision }) => {
+    const userSubject = await owner(ctx);
+    const state = await ctx.db.query("financeStates")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (!state || state.revision !== sourceRevision)
+      return { verified: false, reason: "revision_changed" as const };
+    const chunks = await ctx.db.query("financeStateChunks")
+      .withIndex("by_user_subject_revision", q =>
+        q.eq("userSubject", userSubject).eq("revision", sourceRevision)).collect();
+    if (chunks.length !== state.chunkCount)
+      return { verified: false, reason: "incomplete_snapshot" as const };
+    const raw = chunks.sort((a,b) => a.chunkIndex-b.chunkIndex).map(c=>c.payload).join("");
+    const snapshot = JSON.parse(raw) as { profiles?: Array<{ id: string; data?: { transactions?: Array<{ id:string; amount:number; date:string }> } }> };
+    const profile = snapshot.profiles?.find(p => p.id === profileId);
+    if (!profile?.data || !Array.isArray(profile.data.transactions))
+      return { verified: false, reason: "missing_profile" as const };
+    const expected = profile.data.transactions;
+    const expectedIds = new Set<string>();
+    let expectedCents = 0;
+    for (const item of expected) {
+      if (!item.id || expectedIds.has(item.id))
+        return { verified: false, reason: "duplicate_legacy_id" as const };
+      expectedIds.add(item.id);
+      expectedCents += cents(item.amount);
+      if (!Number.isSafeInteger(expectedCents)) throw new Error("Soma excedeu a precisão segura");
+    }
+    const copied = await ctx.db.query("financeTransactions")
+      .withIndex("by_owner_profile", q =>
+        q.eq("userSubject", userSubject).eq("profileId", profileId)).collect();
+    let copiedCents = 0;
+    const copiedIds = new Set<string>();
+    for (const item of copied) {
+      if (item.sourceRevision !== sourceRevision || !expectedIds.has(item.transactionId) ||
+          copiedIds.has(item.transactionId))
+        return { verified: false, reason: "unexpected_record" as const };
+      copiedIds.add(item.transactionId);
+      copiedCents += item.amountCents;
+    }
+    return {
+      verified: expected.length === copied.length && expectedCents === copiedCents,
+      expectedCount: expected.length, copiedCount: copied.length,
+      expectedAmountCents: expectedCents, copiedAmountCents: copiedCents,
+      reason: expected.length === copied.length && expectedCents === copiedCents
+        ? "matched" as const : "mismatch" as const,
+    };
+  },
+});
