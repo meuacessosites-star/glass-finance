@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api";
 
 const PREFIX = "glass-file:";
 export function cloudFileStorageId(src: string): Id<"_storage"> | null {
-  const match = /^glass-file:([a-zA-Z0-9_-]+):(image|file)$/.exec(src);
+  const match = /^glass-file:([a-zA-Z0-9_-]+):(image|file|gzip)$/.exec(src);
   return match ? match[1] as Id<"_storage"> : null;
 }
 export function isAttachmentImage(src: string) {
@@ -19,11 +19,11 @@ function fromDataUrl(src: string): Blob {
     throw new Error("O formato do anexo não pode ser enviado");
   }
   const binary = atob(src.slice(comma + 1));
-  const parts: Uint8Array[] = [];
+  const parts: ArrayBuffer[] = [];
   for (let start = 0; start < binary.length; start += 32_768) {
     const part = new Uint8Array(Math.min(32_768, binary.length - start));
     for (let i = 0; i < part.length; i++) part[i] = binary.charCodeAt(start + i);
-    parts.push(part);
+    parts.push(part.buffer as ArrayBuffer);
   }
   const contentType = src.slice(5, src.indexOf(";")) || "application/octet-stream";
   return new Blob(parts, { type: contentType });
@@ -45,10 +45,14 @@ export async function uploadAttachmentToCloud(
   if (!result || typeof result !== "object" || !("storageId" in result) ||
       typeof result.storageId !== "string") throw new Error("Resposta inválida do armazenamento");
   const storageId = result.storageId as Id<"_storage">;
+  const compressed = src.startsWith("data:application/x-granascan-gzip;");
+  const originalMime = compressed
+    ? decodeURIComponent(/;mime=([^;]+)/.exec(src.slice(0, src.indexOf(",")))?.[1] ?? "application/octet-stream")
+    : blob.type || "application/octet-stream";
   await client.mutation(api.financeFiles.register, {
-    storageId, profileId, fileName: name, contentType: blob.type || "application/octet-stream",
+    storageId, profileId, fileName: name, contentType: originalMime,
   });
-  return `${PREFIX}${storageId}:${image ? "image" : "file"}`;
+  return `${PREFIX}${storageId}:${compressed ? "gzip" : image ? "image" : "file"}`;
 }
 export async function cloudAttachmentUrl(client: ConvexReactClient, src: string) {
   const storageId = cloudFileStorageId(src);
