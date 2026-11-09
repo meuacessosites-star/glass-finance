@@ -23,6 +23,10 @@ jobs:
       - run: npm ci
       - name: Financial and storage regression tests
         run: npm run test:billing
+      - name: Convex function integration tests (isolated mock database)
+        run: |
+          npm install --no-save convex-test vitest @edge-runtime/vm
+          npx vitest run --config vitest.convex.config.mjs
       - name: TypeScript
         run: npm run typecheck
       - name: Production build
