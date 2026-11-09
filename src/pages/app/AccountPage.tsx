@@ -245,11 +245,18 @@ export default function AccountPage() {
               copiar e conferir suas transações antes de ativar o armazenamento individual.
               Durante a migração, mantenha esta página aberta e não altere dados em outro dispositivo.
             </p>
+            {import.meta.env.VITE_ENABLE_FINANCE_MIGRATION === "true" ? (
             <button type="button" disabled={migrationBusy || backupBusy || cloudSyncStatus !== "synced"}
               className="mt-3 w-full rounded-full bg-primary px-4 py-3 text-[13px] font-semibold text-white disabled:opacity-50"
               onClick={() => void handleMigrate()}>
               {migrationBusy ? "Preparando migração…" : "Migrar histórico com conferência"}
             </button>
+            ) : (
+              <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+                Migração temporariamente indisponível enquanto os testes do banco de dados
+                e de recuperação são concluídos.
+              </p>
+            )}
           </>
         )}
       </section>
