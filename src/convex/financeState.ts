@@ -167,6 +167,17 @@ export const deleteMine = mutation({
       await ctx.db.delete(file._id as Id<"financeFiles">);
     }
 
+    const pushDevices = await ctx.db.query("pushDevices")
+      .withIndex("by_user", q => q.eq("userSubject", userSubject)).collect();
+    for (const device of pushDevices) {
+      await ctx.db.delete(device._id as Id<"pushDevices">);
+    }
+    const pushSchedules = await ctx.db.query("pushSchedules")
+      .withIndex("by_user_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const schedule of pushSchedules) {
+      await ctx.db.delete(schedule._id as Id<"pushSchedules">);
+    }
+
     const people = await ctx.db
       .query("people")
       .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
