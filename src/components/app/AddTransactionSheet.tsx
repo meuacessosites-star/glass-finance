@@ -430,10 +430,14 @@ export function AddTransactionSheet({
   const removeAttachment = (index: number) =>
     setAttachments((prev) => prev.filter((_, i) => i !== index));
 
-  const saveTransaction = (invoiceMonth?: string) => {
+  const saveTransaction = async (invoiceMonth?: string) => {
     if (!canSave || savedRef.current) return;
     if (billingChoices && ![billingChoices.current.month, billingChoices.next.month].includes(invoiceMonth ?? "")) return;
     savedRef.current = true;
+    try {
+    const uploadedAttachments = await Promise.all(attachments.map((item) =>
+      uploadAttachmentToCloud(convex, item.src, activeProfileId, item.name, item.isImage)
+    ));
     const payload = {
       title: title.trim(),
       categoryId,
@@ -443,9 +447,7 @@ export function AddTransactionSheet({
       time: time || undefined,
       note: note.trim() || undefined,
       draftDisplay,
-      attachments: attachments.length
-        ? attachments.map((a) => a.src)
-        : undefined,
+      attachments: uploadedAttachments.length ? uploadedAttachments : undefined,
       recurrence: recurrence === "unica" ? undefined : recurrence,
       frequency: recurrence === "recorrente" ? frequency : undefined,
       frequencyInterval:
@@ -482,6 +484,10 @@ export function AddTransactionSheet({
       });
     }
     if (onSaved) onSaved(); else onClose();
+    } catch {
+      savedRef.current = false;
+      toast.error("Não foi possível guardar os anexos na nuvem. Nada foi salvo.");
+    }
   };
 
   const handleSave = () => {
