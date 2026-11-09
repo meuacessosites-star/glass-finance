@@ -1,6 +1,8 @@
 name: Validate Glass Finance changes
 
 on:
+  push:
+    branches: [feat/convex-transactions-migration-safe]
   pull_request:
     branches: [main]
   workflow_dispatch:
