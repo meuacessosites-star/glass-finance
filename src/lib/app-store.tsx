@@ -1,3 +1,4 @@
+import { DEFAULT_REMINDER_PREFERENCES, sanitizeReminderPreferences, type ReminderPreferences } from "./reminder-filters";
 import { useConvex, type ConvexReactClient } from "convex/react";
 import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges, splitTransactionBatches, applyTransactionBatch } from "./finance-v2-state";
 import { uploadAttachmentToCloud, isAttachmentImage } from "./cloud-attachments";
@@ -233,6 +234,7 @@ export type ProfileData = {
   ignoredNotificationCount?: number;
   ignoredNotificationDate?: string;
   notificationRetentionDays?: number;
+  reminderPreferences?: ReminderPreferences;
   readPaymentNotificationIds?: string[];
   financings: AppFinancing[];
   /** true = parcelas dos financiamentos aparecem junto com as transações. */
@@ -291,6 +293,7 @@ function defaultData(): ProfileData {
     ignoredNotificationCount: 0,
     ignoredNotificationDate: localDateKey(),
     notificationRetentionDays: 7,
+    reminderPreferences: { ...DEFAULT_REMINDER_PREFERENCES },
     readPaymentNotificationIds: [],
     financings: [],
     financingsInFlow: false,
@@ -872,6 +875,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
           readPaymentNotificationIds: sanitizeReadNotificationIds(nested.readPaymentNotificationIds),
           ignoredNotificationDate: sanitizeDueDate(nested.ignoredNotificationDate),
           notificationRetentionDays: sanitizeNotificationRetention(nested.notificationRetentionDays),
+          reminderPreferences: sanitizeReminderPreferences(nested.reminderPreferences),
           financings: sanitizeFinancings(nested.financings),
           financingsInFlow:
             typeof nested.financingsInFlow === "boolean"
@@ -1050,6 +1054,8 @@ type AppStoreValue = {
   ignoredNotificationCount: number;
   notificationRetentionDays: number;
   setNotificationRetentionDays: (days: number) => void;
+  reminderPreferences: ReminderPreferences;
+  setReminderPreferences: (preferences: ReminderPreferences) => void;
   readPaymentNotificationIds: string[];
   approveNotification: (id: string, input?: NotificationTransactionInput) => void;
   approveLoanNotification: (id: string, input: LoanCreationInput) => void;
@@ -1676,6 +1682,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       notifications: activeData.notifications,
       ignoredNotificationCount: ignoredCountToday(activeData),
       notificationRetentionDays: sanitizeNotificationRetention(activeData.notificationRetentionDays),
+      reminderPreferences: sanitizeReminderPreferences(activeData.reminderPreferences),
+      setReminderPreferences: (preferences) => patchActiveData((data) => ({
+        ...data, reminderPreferences: sanitizeReminderPreferences(preferences),
+      })),
       setNotificationRetentionDays: (days) => patchActiveData((data) => setNotificationRetention(data, days)),
       readPaymentNotificationIds: activeData.readPaymentNotificationIds ?? [],
       financings: activeData.financings,
