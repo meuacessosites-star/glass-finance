@@ -22,7 +22,7 @@ export function PushScheduleSync() {
       cards, transactions: visibleTransactions, loanReceivables,
       includeBorrowedCardInvoices, readPaymentNotificationIds: [],
     }, today, 90);
-    const items = payments
+    const items: Array<{ key: string; date: string; kind: "invoice" | "transaction" | "loan" | "review" }> = payments
       .slice(0, 295)
       .map(item => ({
         key: item.id.slice(0, 160),
