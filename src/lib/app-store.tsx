@@ -1,5 +1,5 @@
 import { useConvex, type ConvexReactClient } from "convex/react";
-import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges } from "./finance-v2-state";
+import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges, splitTransactionBatches, applyTransactionBatch } from "./finance-v2-state";
 import { uploadAttachmentToCloud, isAttachmentImage } from "./cloud-attachments";
 import {sanitizeFinancingPaymentMethod,type FinancingPaymentMethod} from './financing-payment-method';
 import { inspectBackup } from "./backup-validation";
@@ -1365,22 +1365,41 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         inFlightPayloadRef.current = payload;
         setCloudSyncStatus("saving");
         try {
-          const result = v2ModeRef.current
-            ? await saveMineV2({
-                expectedRevision: revisionRef.current,
-                metadataPayload: metadataWithoutTransactions(payload),
-                operations: transactionChanges(lastSyncedPayloadRef.current, payload),
-              })
-            : await saveMine({ payload, expectedRevision: revisionRef.current });
-          if (!result.ok) {
+          // Large imports and multi-select edits are committed in bounded
+          // revisions instead of failing at the 30-record mutation ceiling.
+          // Each acknowledged revision becomes an explicit recovery checkpoint.
+          const changes = v2ModeRef.current
+            ? transactionChanges(lastSyncedPayloadRef.current, payload)
+            : [];
+          const batches = v2ModeRef.current
+            ? splitTransactionBatches(changes)
+            : [];
+          const pieces = batches.length ? batches : [[]];
+          let result: { ok: boolean; revision: number } | undefined;
+          let checkpoint = lastSyncedPayloadRef.current;
+          for (let index = 0; index < pieces.length; index++) {
+            const intermediate = v2ModeRef.current
+              ? applyTransactionBatch(checkpoint, payload, pieces[index], index === pieces.length - 1)
+              : payload;
+            result = v2ModeRef.current
+              ? await saveMineV2({
+                  expectedRevision: revisionRef.current,
+                  metadataPayload: metadataWithoutTransactions(intermediate),
+                  operations: pieces[index],
+                })
+              : await saveMine({ payload, expectedRevision: revisionRef.current });
+            if (!result.ok) break;
+            revisionRef.current = result.revision;
+            checkpoint = intermediate;
+            lastSyncedPayloadRef.current = checkpoint;
+          }
+          if (!result?.ok) {
             conflictRef.current = true;
             localDirtyRef.current = true;
             setCloudSyncStatus("conflict");
             toast.error("Outra sessão salvou dados mais recentes. Nenhum dado remoto foi sobrescrito; exporte um backup antes de atualizar esta página.");
             break;
           }
-          revisionRef.current = result.revision;
-          lastSyncedPayloadRef.current = payload;
           const latestPayload = JSON.stringify(latestStateRef.current);
           localDirtyRef.current = latestPayload !== payload;
           if (localDirtyRef.current) pendingPayloadRef.current = latestPayload;
