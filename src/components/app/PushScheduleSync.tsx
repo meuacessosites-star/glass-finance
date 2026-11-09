@@ -22,7 +22,14 @@ export function PushScheduleSync() {
       cards, transactions: visibleTransactions, loanReceivables,
       includeBorrowedCardInvoices, readPaymentNotificationIds: [],
     }, today, 90);
+    // Exclude very old unpaid entries so they cannot crowd out near-term
+    // reminders when a long-running account has hundreds of past transactions.
+    const origin = Date.parse(today + "T12:00:00Z");
     const items: Array<{ key: string; date: string; kind: "invoice" | "transaction" | "loan" | "review" }> = payments
+      .filter(item => Date.parse(item.date + "T12:00:00Z") >= origin - 7 * 86400000)
+      .sort((a, b) =>
+        Math.abs(Date.parse(a.date + "T12:00:00Z") - origin) -
+        Math.abs(Date.parse(b.date + "T12:00:00Z") - origin))
       .slice(0, 295)
       .map(item => ({
         key: item.id.slice(0, 160),
