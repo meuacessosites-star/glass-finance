@@ -1221,15 +1221,24 @@ async function loadNormalizedAccount(
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
+  const convex = useConvex();
   const userId = user?._id ? String(user._id) : null;
-  const cloudSnapshot = useQuery(
-    api.financeState.getMine,
+  const v2Snapshot = useQuery(
+    api.financeV2.getMine,
     !authLoading && isAuthenticated ? {} : "skip",
   );
+  const cloudSnapshot = useQuery(
+    api.financeState.getMine,
+    !authLoading && isAuthenticated && v2Snapshot === null ? {} : "skip",
+  );
   const saveMine = useMutation(api.financeState.saveMine);
+  const saveMineV2 = useMutation(api.financeV2.saveMine);
   const deleteMine = useMutation(api.financeState.deleteMine);
   const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(createInitialState()));
   const [cloudReady, setCloudReady] = useState(false);
+  const [storageVersion, setStorageVersion] = useState<"legacy" | "v2">("legacy");
+  const [migrationInProgress, setMigrationInProgress] = useState(false);
+  const [migrationMessage, setMigrationMessage] = useState("Preparando armazenamento…");
   const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>("loading");
   const hydratedUserRef = useRef<string | null>(null);
   const revisionRef = useRef(0);
@@ -1240,31 +1249,53 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const saveInFlightRef = useRef(false);
   const localDirtyRef = useRef(false);
   const conflictRef = useRef(false);
+  const v2ModeRef = useRef(false);
+  const migrationRef = useRef(false);
 
   useEffect(() => {
     latestStateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !userId || cloudSnapshot === undefined) return;
+    if (authLoading || !isAuthenticated || !userId || v2Snapshot === undefined) return;
+    if (v2Snapshot === null && cloudSnapshot === undefined) return;
     if (hydratedUserRef.current === userId) return;
-    hydratedUserRef.current = userId;
-    revisionRef.current = cloudSnapshot?.revision ?? 0;
-    lastSyncedPayloadRef.current = cloudSnapshot?.payload ?? "";
-    localDirtyRef.current = false;
-    conflictRef.current = false;
-    const nextState = cloudSnapshot?.payload
-      ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
-      : createInitialState();
-    // Hydration is an intentional one-time replacement after the user-scoped
-    // Convex query resolves; no local browser data is imported into the account.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(startPaymentNoticeSession(nextState));
-    setCloudSyncStatus("synced");
-    setCloudReady(true);
-  }, [authLoading, isAuthenticated, userId, cloudSnapshot]);
+    let cancelled = false;
+    const hydrate = async () => {
+      try {
+        const nextState = v2Snapshot
+          ? await loadNormalizedAccount(convex, v2Snapshot.metadataPayload, v2Snapshot.revision)
+          : startPaymentNoticeSession(
+              cloudSnapshot?.payload
+                ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
+                : createInitialState(),
+            );
+        if (cancelled) return;
+        hydratedUserRef.current = userId;
+        v2ModeRef.current = Boolean(v2Snapshot);
+        setStorageVersion(v2Snapshot ? "v2" : "legacy");
+        revisionRef.current = v2Snapshot?.revision ?? cloudSnapshot?.revision ?? 0;
+        lastSyncedPayloadRef.current = v2Snapshot
+          ? JSON.stringify(nextState)
+          : cloudSnapshot?.payload ?? "";
+        localDirtyRef.current = false;
+        conflictRef.current = false;
+        pendingPayloadRef.current = null;
+        setState(nextState);
+        setCloudSyncStatus("synced");
+        setCloudReady(true);
+      } catch {
+        if (cancelled) return;
+        // A bad remote response must never be interpreted as an empty account.
+        setCloudSyncStatus("error");
+      }
+    };
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated, userId, v2Snapshot, cloudSnapshot, convex]);
 
   useEffect(() => {
+    if (v2ModeRef.current) return;
     if (!cloudReady || !cloudSnapshot || cloudSnapshot.revision <= revisionRef.current) return;
     if (cloudSnapshot.payload === lastSyncedPayloadRef.current) {
       revisionRef.current = cloudSnapshot.revision;
@@ -1290,6 +1321,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setState(startPaymentNoticeSession(stateFromSnapshot(JSON.parse(cloudSnapshot.payload))));
     setCloudSyncStatus("synced");
   }, [cloudReady, cloudSnapshot]);
+
+  useEffect(() => {
+    if (!cloudReady || !v2ModeRef.current || migrationRef.current ||
+        !v2Snapshot || v2Snapshot.revision <= revisionRef.current) return;
+    if (localDirtyRef.current || saveInFlightRef.current) {
+      conflictRef.current = true;
+      pendingPayloadRef.current = null;
+      setCloudSyncStatus("conflict");
+      toast.error("O histórico foi alterado em outro dispositivo. Exporte um backup antes de recarregar.");
+      return;
+    }
+    let cancelled = false;
+    void loadNormalizedAccount(convex, v2Snapshot.metadataPayload, v2Snapshot.revision)
+      .then(nextState => {
+        if (cancelled) return;
+        revisionRef.current = v2Snapshot.revision;
+        lastSyncedPayloadRef.current = JSON.stringify(nextState);
+        setState(nextState);
+        setCloudSyncStatus("synced");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCloudSyncStatus("error");
+          toast.error("Não foi possível conferir o histórico remoto. Os dados locais foram preservados.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [cloudReady, v2Snapshot, convex]);
 
   const drainSaveQueue = useCallback(async () => {
     if (saveInFlightRef.current || conflictRef.current) return;
