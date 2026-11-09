@@ -194,3 +194,25 @@ export const confirmProfile = mutation({
     return { verified: true, count: check.expectedCount };
   },
 });
+
+/** Bounded cleanup of stale shadow copies. Never touches active v2 records. */
+export const clearStaleBatch = mutation({
+  args: { profileId: v.string(), sourceRevision: v.number() },
+  handler: async (ctx, { profileId, sourceRevision }) => {
+    const userSubject = await owner(ctx);
+    const active = await ctx.db.query("financeV2States")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (active) throw new Error("Limpeza bloqueada: histórico individual ativo");
+    const source = await ctx.db.query("financeStates")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (!source || source.revision !== sourceRevision)
+      throw new Error("Revisão de origem diferente");
+    const key = ownerProfileKey(userSubject, profileId);
+    const stale = await ctx.db.query("financeTransactions")
+      .withIndex("by_owner_profile", q => q.eq("ownerProfileKey", key))
+      .filter(q => q.neq(q.field("sourceRevision"), sourceRevision))
+      .take(20);
+    for (const row of stale) await ctx.db.delete(row._id as Id<"financeTransactions">);
+    return { deleted: stale.length };
+  },
+});
