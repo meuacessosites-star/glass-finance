@@ -1,4 +1,5 @@
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 
 /**
  * Link only files that have already been registered to the current account.
@@ -6,12 +7,7 @@ import type { Id } from "./_generated/dataModel";
  * Runs in the same Convex mutation as a successful financial write.
  */
 export async function linkReferencedFiles(
-  ctx: {
-    db: {
-      query: (table: "financeFiles") => any;
-      patch: (id: Id<"financeFiles">, patch: { linked: boolean }) => Promise<unknown>;
-    };
-  },
+  ctx: MutationCtx,
   userSubject: string,
   value: unknown,
   profileId?: string,
@@ -34,7 +30,7 @@ export async function linkReferencedFiles(
     // Indexed record ownership also prevents a user from borrowing another
     // account's file by guessing its storage identifier.
     const record = await ctx.db.query("financeFiles")
-      .withIndex("by_storage_id", (q: any) => q.eq("storageId", key))
+      .withIndex("by_storage_id", q => q.eq("storageId", key as Id<"_storage">))
       .unique();
     if (!record || record.userSubject !== userSubject ||
         (profileId && record.profileId !== profileId)) {
