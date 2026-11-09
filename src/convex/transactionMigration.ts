@@ -14,6 +14,22 @@ const ownerProfileKey = (userSubject: string, profileId: string) =>
   JSON.stringify([userSubject, profileId]);
 const ownerTransactionKey = (userSubject: string, profileId: string, transactionId: string) =>
   JSON.stringify([userSubject, profileId, transactionId]);
+// Object field order is not a data change; array order is significant.
+// Convex may materialize object properties in a different insertion order.
+function normalized(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalized);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+        .map(([key, child]) => [key, normalized(child)]),
+    );
+  }
+  return value;
+}
+function sameRecord(first: unknown, second: unknown): boolean {
+  return JSON.stringify(normalized(first)) === JSON.stringify(normalized(second));
+}
 const item = v.object({
   id: v.string(),
   amount: v.number(),
@@ -71,7 +87,7 @@ export const copyBatch = mutation({
         throw new Error("Transação inválida ou duplicada no lote");
       const sourceRow = legacyRows.get(transaction.id);
       if (!sourceRow ||
-          JSON.stringify(sourceRow) !== JSON.stringify(transaction.payload) ||
+          !sameRecord(sourceRow, transaction.payload) ||
           sourceRow.amount !== transaction.amount || sourceRow.date !== transaction.date)
         throw new Error("O registro enviado não corresponde ao snapshot original");
       if (new TextEncoder().encode(JSON.stringify(transaction.payload)).byteLength > 900_000)
@@ -84,7 +100,7 @@ export const copyBatch = mutation({
         .unique();
       if (existing) {
         if (existing.sourceRevision === args.sourceRevision &&
-            JSON.stringify(existing.payload) === JSON.stringify(transaction.payload)) continue;
+            sameRecord(existing.payload, transaction.payload)) continue;
         throw new Error("Conflito de migração: registro existente diferente. Nenhum dado será substituído.");
       }
       await ctx.db.insert("financeTransactions", {
@@ -151,7 +167,7 @@ export const verifyProfile = query({
       const original = expectedById.get(String(item.transactionId));
       if (item.sourceRevision !== sourceRevision || !original ||
           copiedIds.has(String(item.transactionId)) ||
-          JSON.stringify(original) !== JSON.stringify(item.payload) ||
+          !sameRecord(original, item.payload) ||
           cents(original.amount) !== item.amountCents ||
           original.date !== item.dateKey)
         return { verified: false, reason: "unexpected_or_changed_record" as const };
