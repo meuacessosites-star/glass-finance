@@ -123,7 +123,7 @@ test("a registered receipt cannot be read or claimed by another account", async 
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
   const bob = t.withIdentity({ subject: "bob" });
-  const storageId = await t.mutation(async ctx =>
+  const storageId = await t.run(async ctx =>
     await ctx.storage.store(new Blob(["private example"], { type: "image/png" })));
   await alice.mutation(api.financeFiles.register, {
     storageId, profileId: "personal", fileName: "private.png", contentType: "image/png",
@@ -140,7 +140,7 @@ test("a registered receipt cannot be read or claimed by another account", async 
 test("committed receipt remains accessible after orphan cleanup", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
-  const storageId = await t.mutation(async ctx =>
+  const storageId = await t.run(async ctx =>
     await ctx.storage.store(new Blob(["receipt"], { type: "image/png" })));
   await alice.mutation(api.financeFiles.register, {
     storageId, profileId: "personal", fileName: "receipt.png", contentType: "image/png",
