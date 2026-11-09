@@ -79,6 +79,8 @@ const schema = defineSchema(
     financeTransactions: defineTable({
       userSubject: v.string(),
       profileId: v.string(),
+      ownerProfileKey: v.string(),
+      ownerTransactionKey: v.string(),
       transactionId: v.string(),
       payload: v.any(),
       amountCents: v.number(),
@@ -86,9 +88,10 @@ const schema = defineSchema(
       sourceRevision: v.number(),
       updatedAt: v.number(),
     })
-      .index("by_owner_profile", ["userSubject", "profileId"])
-      .index("by_owner_profile_transaction", ["userSubject", "profileId", "transactionId"])
-      .index("by_owner_profile_date", ["userSubject", "profileId", "dateKey"]),
+      .index("by_owner", ["userSubject"])
+      .index("by_owner_profile", ["ownerProfileKey"])
+      .index("by_owner_profile_transaction", ["ownerTransactionKey"])
+      .index("by_owner_profile_date", ["ownerProfileKey", "dateKey"]),
 
     financeMigrationProgress: defineTable({
       userSubject: v.string(),
