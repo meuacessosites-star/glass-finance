@@ -209,19 +209,26 @@ export default function AccountPage() {
           <div>Dados estimados <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.totalJsonBytes)}</strong></div>
           <div>Anexos embutidos <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.inlineAttachmentBytes)}</strong></div>
         </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10" role="progressbar" aria-label="Uso estimado do limite atual de snapshot" aria-valuenow={storageHealth.usagePercent} aria-valuemin={0} aria-valuemax={100}>
-          <div className={cn("h-full rounded-full", storageHealth.level === "critical" ? "bg-red-500" : storageHealth.level === "warning" ? "bg-amber-500" : "bg-primary")} style={{ width: `${storageHealth.usagePercent}%` }} />
-        </div>
-        <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
-          {storageVersion === "v2"
-            ? "Histórico individual ativo. Este diagnóstico é uma estimativa local, não a quota do Convex."
-            : `${storageHealth.usagePercent}% do limite atual de ${formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.`}
-          {storageHealth.level === "critical"
-            ? " Atenção: exporte uma cópia e evite novos anexos grandes até concluir a migração."
-            : storageHealth.level === "warning"
-              ? " O histórico está crescendo; mantenha backups atualizados."
-              : " O carregamento e o armazenamento ainda dependem do formato antigo."}
-        </p>
+        {storageVersion === "legacy" ? (
+          <>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10" role="progressbar" aria-label="Uso estimado do limite atual de snapshot" aria-valuenow={storageHealth.usagePercent} aria-valuemin={0} aria-valuemax={100}>
+              <div className={cn("h-full rounded-full", storageHealth.level === "critical" ? "bg-red-500" : storageHealth.level === "warning" ? "bg-amber-500" : "bg-primary")} style={{ width: `${storageHealth.usagePercent}%` }} />
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
+              {storageHealth.usagePercent}% do limite atual de {formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.
+              {storageHealth.level === "critical"
+                ? " Atenção: exporte uma cópia e evite novos anexos grandes até concluir a migração."
+                : storageHealth.level === "warning"
+                  ? " O histórico está crescendo; mantenha backups atualizados."
+                  : " O carregamento e o armazenamento ainda dependem do formato antigo."}
+            </p>
+          </>
+        ) : (
+          <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+            Histórico individual ativo. O tamanho acima é uma estimativa local de informações
+            carregadas, não o consumo total de arquivos e documentos no Convex.
+          </p>
+        )}
       </section>
 
       <section className="glass rounded-3xl p-4">
