@@ -1351,7 +1351,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [cloudReady, v2Snapshot, convex]);
 
   const drainSaveQueue = useCallback(async () => {
-    if (saveInFlightRef.current || conflictRef.current) return;
+    if (saveInFlightRef.current || conflictRef.current || migrationRef.current) return;
     saveInFlightRef.current = true;
     try {
       while (pendingPayloadRef.current && !conflictRef.current) {
@@ -1360,7 +1360,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         inFlightPayloadRef.current = payload;
         setCloudSyncStatus("saving");
         try {
-          const result = await saveMine({ payload, expectedRevision: revisionRef.current });
+          const result = v2ModeRef.current
+            ? await saveMineV2({
+                expectedRevision: revisionRef.current,
+                metadataPayload: metadataWithoutTransactions(payload),
+                operations: transactionChanges(lastSyncedPayloadRef.current, payload),
+              })
+            : await saveMine({ payload, expectedRevision: revisionRef.current });
           if (!result.ok) {
             conflictRef.current = true;
             localDirtyRef.current = true;
@@ -1387,10 +1393,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       saveInFlightRef.current = false;
     }
-  }, [saveMine]);
+  }, [saveMine, saveMineV2]);
 
   useEffect(() => {
-    if (!cloudReady || !userId || conflictRef.current) return;
+    if (!cloudReady || !userId || conflictRef.current || migrationRef.current) return;
     const payload = JSON.stringify(state);
     if (payload === lastSyncedPayloadRef.current) {
       localDirtyRef.current = false;
@@ -1428,6 +1434,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       throw error;
     }
     revisionRef.current = 0;
+    v2ModeRef.current = false;
+    setStorageVersion("legacy");
     lastSyncedPayloadRef.current = "";
     pendingPayloadRef.current = null;
     localDirtyRef.current = false;
