@@ -1,3 +1,4 @@
+import { api } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -50,6 +51,12 @@ export const copyBatch = mutation({
     if (!profile || !Array.isArray(profile.data?.transactions))
       throw new Error("Perfil de origem não encontrado");
     const legacyRows = new Map(profile.data.transactions.map(t => [t.id, t]));
+
+    const progress = await ctx.db.query("financeMigrationProgress")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("profileId"), args.profileId)).unique();
+    if (progress?.status === "verified" && progress.sourceRevision === args.sourceRevision)
+      throw new Error("Perfil já conferido. Não é possível copiar novos lançamentos nesta revisão");
 
     const ids = new Set<string>();
     let copied = 0;
@@ -158,5 +165,31 @@ export const verifyProfile = query({
       reason: expected.length === copied.length && expectedCents === copiedCents
         ? "matched" as const : "mismatch" as const,
     };
+  },
+});
+
+/** Records a successful, read-only reconciliation as an activation prerequisite. */
+export const confirmProfile = mutation({
+  args: { profileId: v.string(), sourceRevision: v.number() },
+  handler: async (ctx, args) => {
+    const userSubject = await owner(ctx);
+    const check = await ctx.runQuery(api.transactionMigration.verifyProfile, args);
+    if (!check.verified || check.expectedCount === undefined ||
+        check.expectedAmountCents === undefined || check.copiedCount === undefined ||
+        check.copiedAmountCents === undefined)
+      throw new Error("Migração incompleta ou diferente do histórico original");
+    const existing = await ctx.db.query("financeMigrationProgress")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("profileId"), args.profileId)).unique();
+    const row = {
+      userSubject, profileId: args.profileId, sourceRevision: args.sourceRevision,
+      expectedCount: check.expectedCount, copiedCount: check.copiedCount,
+      expectedAmountCents: check.expectedAmountCents,
+      copiedAmountCents: check.copiedAmountCents,
+      status: "verified" as const, updatedAt: Date.now(),
+    };
+    if (existing) await ctx.db.patch(existing._id, row);
+    else await ctx.db.insert("financeMigrationProgress", row);
+    return { verified: true, count: check.expectedCount };
   },
 });
