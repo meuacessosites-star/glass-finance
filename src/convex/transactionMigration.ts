@@ -1,3 +1,4 @@
+import type { Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
@@ -188,7 +189,7 @@ export const confirmProfile = mutation({
       copiedAmountCents: check.copiedAmountCents,
       status: "verified" as const, updatedAt: Date.now(),
     };
-    if (existing) await ctx.db.patch(existing._id, row);
+    if (existing) await ctx.db.patch(existing._id as Id<"financeMigrationProgress">, row);
     else await ctx.db.insert("financeMigrationProgress", row);
     return { verified: true, count: check.expectedCount };
   },
