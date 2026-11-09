@@ -28,9 +28,61 @@ const schema = defineSchema(
       email: v.optional(v.string()), // email of the user. do not remove
       emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
+      username: v.optional(v.string()),
+      financeSubject: v.optional(v.string()), // Storage key retained for pre-username snapshots.
 
       role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    }).index("email", ["email"]).index("by_username", ["username"]),
+
+    // UI preferences are account-owned and synced across devices. They do
+    // not alter transactions or financial amounts.
+    userPreferences: defineTable({
+      userId: v.id("users"),
+      key: v.string(),
+      value: v.string(),
+      updatedAt: v.number(),
+    }).index("by_user_key", ["userId", "key"]).index("by_user", ["userId"]),
+
+    // Files live in Convex File Storage, not inline in financial JSON.
+    // Storage metadata belongs to the authenticated account.
+    fileAssets: defineTable({
+      userId: v.id("users"),
+      storageId: v.id("_storage"),
+      fileName: v.string(),
+      mimeType: v.string(),
+      byteLength: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_created", ["userId", "createdAt"])
+      .index("by_storage_id", ["storageId"]),
+
+    // Individual transaction copies: revision-bound and non-authoritative until a safe cutover.
+    transactionEntries: defineTable({
+      userId: v.id("users"),
+      profileId: v.string(),
+      externalId: v.string(),
+      sourceRevision: v.number(),
+      date: v.string(),
+      amountCents: v.number(),
+      payload: v.string(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_profile_revision_id", ["userId", "profileId", "sourceRevision", "externalId"])
+      .index("by_user_profile_revision_date", ["userId", "profileId", "sourceRevision", "date"]),
+    transactionMigrationStates: defineTable({
+      userId: v.id("users"),
+      profileId: v.string(),
+      sourceRevision: v.number(),
+      offset: v.number(),
+      total: v.number(),
+      totalCents: v.number(),
+      migratedCents: v.number(),
+      completed: v.boolean(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_profile", ["userId", "profileId"]),
 
     people: defineTable({
       userSubject: v.string(),

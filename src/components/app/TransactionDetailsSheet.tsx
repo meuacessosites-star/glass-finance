@@ -29,6 +29,8 @@ import {
   X,
 } from "lucide-react";
 import { downloadAttachment } from "@/lib/attachment-utils";
+import { isImageAttachment } from "@/lib/cloud-attachments";
+import { StoredAttachmentTile } from "@/components/app/StoredAttachment";
 import { useAppStore } from "@/lib/app-store";
 import {
   dayLabel,
@@ -168,7 +170,7 @@ export function TransactionDetailsSheet({
   };
 
   const openLightbox = (attachmentIndex: number) => {
-    if (attachments[attachmentIndex]?.startsWith("data:image"))
+    if (attachments[attachmentIndex] && isImageAttachment(attachments[attachmentIndex]))
       setLightboxIndex(attachmentIndex);
   };
 
@@ -562,35 +564,9 @@ export function TransactionDetailsSheet({
                     Anexos
                   </p>
                   <div className="grid grid-cols-3 gap-2">
-                    {attachments.map((src, i) =>
-                      src.startsWith("data:image") ? (
-                        <button
-                          key={i}
-                          type="button"
-                          aria-label={`Ver anexo ${i + 1}`}
-                          onClick={() => openLightbox(i)}
-                          className="group relative aspect-square overflow-hidden rounded-2xl transition-transform active:scale-95"
-                        >
-                          <img
-                            src={src}
-                            alt={`Anexo ${i + 1}`}
-                            className="size-full object-cover"
-                          />
-                        </button>
-                      ) : (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => void handleAttachmentDownload(src, i)}
-                          className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-2xl bg-white/40 px-2 text-center transition-transform active:scale-95"
-                        >
-                          <FileText className="size-5 shrink-0 text-[#2F6BFF]" />
-                          <span className="truncate text-[10.5px] font-semibold leading-tight text-glass-sub">
-                            Arquivo
-                          </span>
-                        </button>
-                      ),
-                    )}
+                    {attachments.map((src, i) => <StoredAttachmentTile key={i} source={src} index={i}
+                      onView={() => openLightbox(i)}
+                      onDownload={url => void handleAttachmentDownload(url, i)} />)}
                   </div>
                 </div>
               )}

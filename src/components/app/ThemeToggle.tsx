@@ -2,21 +2,32 @@ import type { LucideIcon } from "lucide-react";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { useCloudPreference } from "@/hooks/useCloudPreference";
 import { cn } from "@/lib/utils";
 
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const { value: savedTheme, setValue: saveTheme, ready } =
+    useCloudPreference<"light" | "dark">("account:theme", "light", "theme");
   const [mounted, setMounted] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => setMounted(true), []);
   /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (mounted && ready && resolvedTheme !== savedTheme) setTheme(savedTheme);
+  }, [mounted, ready, resolvedTheme, savedTheme, setTheme]);
   const dark = mounted && resolvedTheme === "dark";
+  const changeTheme = () => {
+    const next = dark ? "light" : "dark";
+    saveTheme(next);
+    setTheme(next);
+  };
 
   return (
     <button
       type="button"
       aria-label={dark ? "Mudar para tema claro" : "Mudar para tema escuro"}
-      onClick={() => setTheme(dark ? "light" : "dark")}
+      onClick={changeTheme}
       className={cn(
         "glass glass-soft flex size-11 items-center justify-center rounded-full text-glass-ink transition-transform active:scale-90",
         className,

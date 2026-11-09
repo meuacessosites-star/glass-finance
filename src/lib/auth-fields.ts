@@ -1,0 +1,36 @@
+import { email as emailFormat } from "zod/mini";
+
+export const USERNAME_PATTERN = "[a-zA-Z0-9_]{3,24}";
+export const USERNAME_HELP = "Use de 3 a 24 letras sem acento, números ou sublinhados.";
+const usernameFormat = new RegExp(`^${USERNAME_PATTERN}$`);
+const emailAddress = emailFormat();
+
+export function normalizeUsername(value: unknown) {
+  if (typeof value !== "string" || !usernameFormat.test(value.trim())) return null;
+  return value.trim().toLowerCase();
+}
+
+/** Safe, predictable default for an optional Google username. */
+export function suggestUsername(displayName: unknown, email: unknown) {
+  const fromName = typeof displayName === "string" ? displayName.trim() : "";
+  const fromEmail = typeof email === "string" ? email.split("@")[0] : "";
+  const raw = fromName || fromEmail || "usuario";
+  const base = raw.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "").slice(0, 24).replace(/_+$/g, "");
+  return base.length >= 3 ? base : "usuario";
+}
+
+export function normalizeEmail(value: unknown) {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  return email.length <= 254 && emailAddress.safeParse(email).success ? email : null;
+}
+
+export function dashboardReturnTo(value: string | null, fallback = "/dashboard") {
+  if (!value || !/^\/dashboard(?:[/?#]|$)/.test(value) || value.includes("\\")) return fallback;
+  const base = "https://glass.invalid";
+  const url = new URL(value, base);
+  if (url.origin !== base || !/^\/dashboard(?:\/|$)/.test(url.pathname)) return fallback;
+  return url.pathname + url.search + url.hash;
+}

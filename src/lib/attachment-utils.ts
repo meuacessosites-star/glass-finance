@@ -39,7 +39,7 @@ function metadataFromCompressedUrl(src: string, key: string): string | null {
 
 /**
  * Compresses a newly selected attachment while keeping the persisted value
- * self-contained. Images use the existing high-quality JPEG pipeline. Other
+ * self-contained. Images use adaptive high-quality JPEG compression. Other
  * files use gzip only when the browser supports it and the result is smaller;
  * otherwise the original data URL is kept for lossless compatibility.
  */

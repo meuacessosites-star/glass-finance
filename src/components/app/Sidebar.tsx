@@ -16,6 +16,7 @@ import {
   Landmark,
   LockKeyhole,
   LogOut,
+  Trash2,
   Menu,
   PiggyBank,
   ReceiptText,
@@ -30,6 +31,8 @@ import {
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useAppStore, type AppProfile } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
@@ -179,9 +182,32 @@ export function Sidebar() {
   const { isOpen, close } = useSidebar();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { activeProfile, profiles, activeProfileId, setActiveProfile } =
+  const { activeProfile, profiles, activeProfileId, setActiveProfile, flushCloudSync } =
     useAppStore();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  const deleteMyAccount = useMutation(api.users.deleteMyAccount);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteEmail, setDeleteEmail] = useState("");
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const confirmedDelete = deletePhrase === "EXCLUIR MINHA CONTA" &&
+    deleteEmail.trim().toLowerCase() === user?.email?.trim().toLowerCase();
+  const handleDeleteAccount = async () => {
+    if (!confirmedDelete) return;
+    setDeleting(true);
+    try {
+      await deleteMyAccount({ email: deleteEmail, confirmation: deletePhrase });
+      try { await signOut(); } catch { /* All sessions revoked server-side. */ }
+      close();
+      setDeleteOpen(false);
+      navigate("/auth", { replace: true });
+      toast.success("Conta excluída. Para voltar, crie uma nova conta.");
+    } catch {
+      toast.error("A exclusão não foi concluída. Confira sua conexão.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const [showProfiles, setShowProfiles] = useState(false);
   const [gateProfile, setGateProfile] = useState<AppProfile | null>(null);
@@ -209,9 +235,17 @@ export function Sidebar() {
   };
 
   const handleSignOut = async () => {
-    close();
-    await signOut();
-    navigate("/");
+    if (!(await flushCloudSync())) {
+      toast.error("Ainda há alterações não confirmadas na nuvem. Abra Conta, sincronize ou exporte um backup antes de sair.");
+      return;
+    }
+    try {
+      await signOut();
+      close();
+      navigate("/");
+    } catch {
+      toast.error("Não foi possível sair da conta. Tente novamente.");
+    }
   };
 
   return (
@@ -387,6 +421,11 @@ export function Sidebar() {
                 })}
               </nav>
 
+              <button type="button" onClick={() => { close(); setDeleteEmail(""); setDeletePhrase(""); setDeleteOpen(true); }}
+                className="mt-2 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left text-red-700 hover:bg-red-500/10 dark:text-red-300">
+                <div className="flex size-10 items-center justify-center rounded-2xl bg-red-500/10"><Trash2 className="size-5" /></div>
+                <span className="text-sm font-semibold">Excluir minha conta</span>
+              </button>
               {/* Sign out */}
               <button
                 type="button"
@@ -407,6 +446,35 @@ export function Sidebar() {
         )}
       </AnimatePresence>
 
+      {deleteOpen && <div className="fixed inset-0 z-[350] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/70 p-4">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description"
+          className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md space-y-4 overflow-y-auto overscroll-contain rounded-3xl bg-white p-6 text-slate-900 shadow-2xl dark:bg-[#202631] dark:text-white">
+          <h2 id="delete-title" className="text-xl font-bold text-red-700 dark:text-red-300">Excluir minha conta permanentemente?</h2>
+          <p id="delete-description" className="text-sm leading-relaxed">
+            Todos os dados financeiros desta conta serão apagados: perfis, transações, cartões, empréstimos, metas,
+            anexos e configurações. O login Google, a senha e o nome de usuário desta conta serão removidos,
+            e todas as sessões serão encerradas. Para voltar, crie uma nova conta vazia.
+            Essa ação é irreversível.
+          </p>
+          <p className="text-xs font-semibold">Se desejar guardar seus dados, baixe um backup antes.</p>
+          <label className="block text-sm font-semibold">Digite o e-mail da conta
+            <input type="email" autoComplete="off" value={deleteEmail} onChange={e => setDeleteEmail(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent p-3" />
+          </label>
+          <label className="block text-sm font-semibold">Digite EXCLUIR MINHA CONTA
+            <input autoComplete="off" value={deletePhrase} onChange={e => setDeletePhrase(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent p-3" />
+          </label>
+          <div className="flex gap-3">
+            <button type="button" disabled={deleting} onClick={() => setDeleteOpen(false)}
+              className="flex-1 rounded-xl border border-slate-300 p-3 font-semibold">Cancelar</button>
+            <button type="button" disabled={deleting || !confirmedDelete} onClick={() => void handleDeleteAccount()}
+              className="flex-1 rounded-xl bg-red-700 p-3 font-semibold text-white disabled:opacity-40">
+              {deleting ? "Excluindo…" : "Excluir definitivamente"}
+            </button>
+          </div>
+        </section>
+      </div>}
       {/* PIN gate for protected profiles (covers the open sidebar) */}
       {gateProfile && (
         <ProfilePinGate

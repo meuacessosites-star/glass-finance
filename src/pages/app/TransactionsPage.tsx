@@ -1,4 +1,5 @@
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
+import { useCloudPreference } from "@/hooks/useCloudPreference";
 import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import "@/components/app/transaction-navigation.css";
 import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
@@ -84,16 +85,23 @@ export default function TransactionsPage() {
     goToPrevious: goToPreviousSearchResult,
     goToNext: goToNextSearchResult,
   } = useSearchNavigation(searchQuery);
-  const [scope, setScope] = useState<"month" | "all">("month");
+  const { activeProfileId } = useAppStore();
+  const { value: scope, setValue: setScope } = useCloudPreference<"month" | "all">(`profile:${activeProfileId}:transactions:scope`, "month");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [periodMode, setPeriodMode] = useState<PeriodMode>("current");
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
+  const { value: paymentStatus, setValue: setPaymentStatus } = useCloudPreference<PaymentStatusFilter>(`profile:${activeProfileId}:transactions:payment-status`, "all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
+  const { value: summarySetting, setValue: saveSummary } =
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:summary-expanded`, "false");
+  const { value: chartSetting, setValue: saveChart } =
+    useCloudPreference<"true" | "false">(`profile:${activeProfileId}:transactions:chart-expanded`, "false");
+  const summaryExpanded = summarySetting === "true";
+  const categoryChartExpanded = chartSetting === "true";
+  const setSummaryExpanded = (update: (current: boolean) => boolean) => saveSummary(update(summaryExpanded) ? "true" : "false");
+  const setCategoryChartExpanded = (update: (current: boolean) => boolean) => saveChart(update(categoryChartExpanded) ? "true" : "false");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
@@ -354,15 +362,28 @@ export default function TransactionsPage() {
     .filter((transaction) => transaction.amount > 0)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
+  // Incrementally render the list on smaller devices. Totals and filters
+  // still operate on the FULL result, so no transactions disappear from sums.
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const visibleRows = useMemo(() => filtered.slice(0, visibleLimit), [filtered, visibleLimit]);
+  useEffect(() => { setVisibleLimit(50); }, [
+    activeProfileId, selectedMonth, periodMode, rangeStart, rangeEnd,
+    selectedMonths, scope, paymentStatus, selectedCategories, searchQuery,
+  ]);
+  useEffect(() => {
+    if (!navigationTarget) return;
+    const index = filtered.findIndex((row) => row.id === navigationTarget);
+    if (index >= 0 && index >= visibleLimit) setVisibleLimit(Math.ceil((index + 1) / 50) * 50);
+  }, [filtered, navigationTarget, visibleLimit]);
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filtered>();
-    for (const transaction of filtered) {
+    for (const transaction of visibleRows) {
       const key = dayLabel(transaction.date);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(transaction);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [visibleRows]);
 
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories((current) =>
@@ -951,6 +972,20 @@ export default function TransactionsPage() {
         ))
         )}
         </div>
+        {visibleLimit < filtered.length && (
+          <div className="flex flex-col items-center gap-2 pb-6 pt-3">
+            <p className="text-xs text-glass-sub">
+              Exibindo {visibleRows.length} de {filtered.length} transações
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisibleLimit((count) => count + 50)}
+              className="glass glass-soft min-h-11 rounded-2xl px-5 py-3 text-[13px] font-semibold text-glass-ink transition-transform active:scale-95"
+            >
+              Carregar mais 50 transações
+            </button>
+          </div>
+        )}
       </div>
 
       <AnimatePresence initial={false}>

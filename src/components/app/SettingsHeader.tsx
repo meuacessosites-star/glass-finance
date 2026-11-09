@@ -10,10 +10,14 @@ export function SettingsHeader({
   title,
   titleClassName = "",
   onBack,
+  privacy,
+  privacyCardsOnly = false,
 }: {
   title: string;
   titleClassName?: string;
   onBack?: () => void;
+  privacy?: { hidden: boolean; toggle: () => void };
+  privacyCardsOnly?: boolean;
 }) {
   return (
     <header className="flex items-center justify-between pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
@@ -32,7 +36,7 @@ export function SettingsHeader({
       <h1 className={`text-[20px] font-bold tracking-tight text-foreground ${titleClassName}`}>
         {title}
       </h1>
-      <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle /><ThemeToggle /></div>
+      <div className="flex shrink-0 items-center gap-1.5"><BalancePrivacyToggle privacy={privacy} cardsOnly={privacyCardsOnly} /><ThemeToggle /></div>
     </header>
   );
 }

@@ -27,7 +27,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
-import { compressAttachmentFile } from "@/lib/attachment-utils";
+import { useUploadAttachment } from "@/lib/cloud-attachments";
+import { StoredAttachmentImage } from "@/components/app/StoredAttachment";
 import type {
   DraftDisplayMode,
   RecurrenceFrequency,
@@ -386,6 +387,8 @@ export function AddTransactionSheet({
     normalizeText(c.label).includes(normalizeText(query)),
   );
 
+  const uploadAttachment = useUploadAttachment();
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
     const room = 6 - attachments.length;
@@ -394,6 +397,7 @@ export function AddTransactionSheet({
       toast("Limite de 6 anexos por transação");
       return;
     }
+    setUploadingAttachment(true);
     for (const file of picked) {
       if (file.size > 12_000_000) {
         toast(`"${file.name}" é grande demais`, {
@@ -402,8 +406,8 @@ export function AddTransactionSheet({
         continue;
       }
       try {
-        const src = await compressAttachmentFile(file);
-        if (src.length >= 3_000_000) {
+        const src = await uploadAttachment(file);
+        if (!src.startsWith("glass-") && src.length >= 3_000_000) {
           toast(`"${file.name}" continua grande demais`, {
             description: "Escolha um arquivo menor para manter o armazenamento otimizado.",
           });
@@ -417,6 +421,7 @@ export function AddTransactionSheet({
         toast(`Não foi possível ler "${file.name}"`);
       }
     }
+    setUploadingAttachment(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -425,7 +430,7 @@ export function AddTransactionSheet({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
 
   const saveTransaction = (invoiceMonth?: string) => {
-    if (!canSave || savedRef.current) return;
+    if (!canSave || savedRef.current || uploadingAttachment) return;
     if (billingChoices && ![billingChoices.current.month, billingChoices.next.month].includes(invoiceMonth ?? "")) return;
     savedRef.current = true;
     const payload = {
@@ -479,7 +484,7 @@ export function AddTransactionSheet({
   };
 
   const handleSave = () => {
-    if (!canSave || savedRef.current) return;
+    if (!canSave || savedRef.current || uploadingAttachment) return;
     if (billingChoices) {
       setInvoiceChoiceMonth(
         savedInvoiceMonth && [billingChoices.current.month, billingChoices.next.month].includes(savedInvoiceMonth)
@@ -1045,11 +1050,8 @@ export function AddTransactionSheet({
                       key={i}
                       className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl"
                     >
-                      <img
-                        src={att.src}
-                        alt={att.name}
-                        className="size-full object-cover"
-                      />
+                      <StoredAttachmentImage source={att.src} alt={att.name}
+                        className="size-full object-cover" />
                       <button
                         type="button"
                         aria-label={`Remover ${att.name}`}

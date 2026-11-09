@@ -944,6 +944,8 @@ type AppStoreValue = {
   profiles: AppProfile[];
   cloudSyncStatus: "loading" | "synced" | "saving" | "error" | "conflict";
   retryCloudSync: () => void;
+  /** Do not leave the account until every pending write is confirmed. */
+  flushCloudSync: () => Promise<boolean>;
   deleteCloudData: () => Promise<void>;
   activeProfileId: string;
   pinUsage: PinUsage;
@@ -1177,7 +1179,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const hydratedUserRef = useRef<string | null>(null);
   const revisionRef = useRef(0);
   const lastSyncedPayloadRef = useRef("");
+  const lastRemotePayloadRef = useRef("");
   const latestStateRef = useRef(state);
+  const deletingCloudDataRef = useRef(false);
   const pendingPayloadRef = useRef<string | null>(null);
   const inFlightPayloadRef = useRef<string | null>(null);
   const saveInFlightRef = useRef(false);
@@ -1193,44 +1197,58 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     if (hydratedUserRef.current === userId) return;
     hydratedUserRef.current = userId;
     revisionRef.current = cloudSnapshot?.revision ?? 0;
-    lastSyncedPayloadRef.current = cloudSnapshot?.payload ?? "";
+    lastRemotePayloadRef.current = cloudSnapshot?.payload ?? "";
     localDirtyRef.current = false;
     conflictRef.current = false;
-    const nextState = cloudSnapshot?.payload
+    pendingPayloadRef.current = null;
+    inFlightPayloadRef.current = null;
+    const nextState = startPaymentNoticeSession(cloudSnapshot?.payload
       ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
-      : createInitialState();
-    // Hydration is an intentional one-time replacement after the user-scoped
-    // Convex query resolves; no local browser data is imported into the account.
+      : createInitialState());
+    // Do not write a newly opened account's empty/default UI back to Convex.
+    // Only an actual user edit should create a new stored snapshot.
+    lastSyncedPayloadRef.current = JSON.stringify(nextState);
+    latestStateRef.current = nextState;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(startPaymentNoticeSession(nextState));
+    setState(nextState);
     setCloudSyncStatus("synced");
     setCloudReady(true);
   }, [authLoading, isAuthenticated, userId, cloudSnapshot]);
 
   useEffect(() => {
-    if (!cloudReady || !cloudSnapshot || cloudSnapshot.revision <= revisionRef.current) return;
-    if (cloudSnapshot.payload === lastSyncedPayloadRef.current) {
-      revisionRef.current = cloudSnapshot.revision;
+    if (!cloudReady || cloudSnapshot === undefined || deletingCloudDataRef.current) return;
+    const remoteRevision = cloudSnapshot?.revision ?? 0;
+    if (remoteRevision <= revisionRef.current && cloudSnapshot !== null) return;
+    if (cloudSnapshot === null && revisionRef.current === 0) return;
+    const remotePayload = cloudSnapshot?.payload ?? "";
+    if (cloudSnapshot && remotePayload === lastRemotePayloadRef.current) {
+      revisionRef.current = remoteRevision;
       return;
     }
-    if (cloudSnapshot.payload === inFlightPayloadRef.current) {
-      revisionRef.current = cloudSnapshot.revision;
-      lastSyncedPayloadRef.current = cloudSnapshot.payload;
+    if (cloudSnapshot && remotePayload === inFlightPayloadRef.current) {
+      revisionRef.current = remoteRevision;
+      lastRemotePayloadRef.current = remotePayload;
+      lastSyncedPayloadRef.current = remotePayload;
       return;
     }
-    if (localDirtyRef.current || saveInFlightRef.current) {
+    const localStateChanged = JSON.stringify(latestStateRef.current) !== lastSyncedPayloadRef.current;
+    if (localDirtyRef.current || saveInFlightRef.current || pendingPayloadRef.current || localStateChanged) {
       conflictRef.current = true;
       pendingPayloadRef.current = null;
       setCloudSyncStatus("conflict");
-      toast.error("Os dados mudaram em outro dispositivo. Esta sessão não sobrescreveu a versão remota; exporte um backup antes de recarregar.");
+      toast.error("Os dados mudaram em outro dispositivo. Sua alteração local não foi descartada nem enviada por cima da versão remota. Exporte um backup antes de recarregar.");
       return;
     }
-    revisionRef.current = cloudSnapshot.revision;
-    lastSyncedPayloadRef.current = cloudSnapshot.payload;
-    // A atualização remota só substitui o estado quando esta sessão não tem
-    // nenhuma alteração local pendente.
+    const nextState = startPaymentNoticeSession(remotePayload
+      ? stateFromSnapshot(JSON.parse(remotePayload))
+      : createInitialState());
+    revisionRef.current = remoteRevision;
+    lastRemotePayloadRef.current = remotePayload;
+    lastSyncedPayloadRef.current = JSON.stringify(nextState);
+    latestStateRef.current = nextState;
+    // This live subscription applies saves AND deletions made on another device.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(startPaymentNoticeSession(stateFromSnapshot(JSON.parse(cloudSnapshot.payload))));
+    setState(nextState);
     setCloudSyncStatus("synced");
   }, [cloudReady, cloudSnapshot]);
 
@@ -1253,6 +1271,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             break;
           }
           revisionRef.current = result.revision;
+          lastRemotePayloadRef.current = payload;
           lastSyncedPayloadRef.current = payload;
           const latestPayload = JSON.stringify(latestStateRef.current);
           localDirtyRef.current = latestPayload !== payload;
@@ -1296,28 +1315,55 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     void drainSaveQueue();
   }, [drainSaveQueue]);
 
+  const flushCloudSync = useCallback(async (): Promise<boolean> => {
+    if (conflictRef.current || deletingCloudDataRef.current) return false;
+    const current = JSON.stringify(latestStateRef.current);
+    if (current !== lastSyncedPayloadRef.current) {
+      pendingPayloadRef.current = current;
+      localDirtyRef.current = true;
+    }
+    // In-flight saves may have a newer local state waiting behind them.
+    // Never sign out until the last revision is acknowledged by Convex.
+    const deadline = Date.now() + 12_000;
+    while (saveInFlightRef.current && Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    if (saveInFlightRef.current) return false;
+    await drainSaveQueue();
+    return !conflictRef.current && !saveInFlightRef.current &&
+      pendingPayloadRef.current === null &&
+      JSON.stringify(latestStateRef.current) === lastSyncedPayloadRef.current;
+  }, [drainSaveQueue]);
+
   const deleteCloudData = useCallback(async () => {
+    deletingCloudDataRef.current = true;
     conflictRef.current = true;
     pendingPayloadRef.current = null;
     while (saveInFlightRef.current) {
       await new Promise((resolve) => window.setTimeout(resolve, 25));
     }
+    let result: { deleted: boolean; revision: number };
     try {
-      await deleteMine({});
+      result = await deleteMine({});
     } catch (error) {
+      deletingCloudDataRef.current = false;
       conflictRef.current = false;
       pendingPayloadRef.current = JSON.stringify(latestStateRef.current);
       localDirtyRef.current = true;
       setCloudSyncStatus("error");
       throw error;
     }
-    revisionRef.current = 0;
-    lastSyncedPayloadRef.current = "";
+    const nextState = startPaymentNoticeSession(createInitialState());
+    revisionRef.current = result.revision;
+    lastRemotePayloadRef.current = "";
+    lastSyncedPayloadRef.current = JSON.stringify(nextState);
+    latestStateRef.current = nextState;
     pendingPayloadRef.current = null;
     localDirtyRef.current = false;
     conflictRef.current = false;
-    setState(startPaymentNoticeSession(createInitialState()));
+    setState(nextState);
     setCloudSyncStatus("synced");
+    deletingCloudDataRef.current = false;
   }, [deleteMine]);
 
   useEffect(() => {
@@ -1387,6 +1433,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       profiles: state.profiles,
       cloudSyncStatus,
       retryCloudSync,
+      flushCloudSync,
       deleteCloudData,
       activeProfileId: state.activeProfileId,
       pinUsage: state.pinUsage,
@@ -1724,7 +1771,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
-  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData]);
+  }, [state, cloudSyncStatus, retryCloudSync, flushCloudSync, deleteCloudData]);
 
   if (!cloudReady) {
     return (

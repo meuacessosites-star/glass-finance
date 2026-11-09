@@ -36,8 +36,9 @@ You must follow these conventions when using authentication.
 
 ## Authentication and account data
 
-Convex Auth supports Google OAuth, email/password (including email verification
-and password reset), and the existing email OTP provider. New signup data starts
+Convex Auth supports Google OAuth, verified email and password, login by unique
+username and password, password recovery, and the existing email OTP provider.
+Users choose their username after authenticating. New signup data starts
 empty; financial snapshots are stored per authenticated user in Convex, not in a
 shared browser store. `src/convex/auth/emailOtp.ts` reads email credentials from
 the backend environment; never add secrets to the repository.
@@ -49,7 +50,7 @@ secret, email-service key, and Convex deployment must be configured and deployed
 
 ## Using Convex Auth on the backend
 
-On the `src/convex/users.ts` file, you can use the `getCurrentUser` function to get the current user's data.
+Use `getCurrentUser` or `requireAccount` in `src/convex/accountData.ts` for server-side authorization.
 
 ## Using Convex Auth on the frontend
 

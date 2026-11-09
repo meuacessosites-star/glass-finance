@@ -1,40 +1,50 @@
-# Configuração necessária para autenticação e sincronização
+# Acesso e sincronização do Glass Finance
 
-O frontend e as funções Convex estão preparados para Google OAuth, email/senha, recuperação de senha e sincronização por conta. **O login e o banco só ficam operacionais após o deploy do Convex e a configuração dos segredos no deployment real.** Não coloque valores de segredo em `.env` enviado ao Git, no código, em mensagens do chat ou em variáveis públicas `VITE_*`.
+## Escopo de publicação: somente glass-finance
 
-## 1. Email e senha
+**Correção de vínculo de dados:** o painel Convex do projeto **glass-finance** mostra Production `blissful-capybara-905`, enquanto o bundle publicado anteriormente em Vercel apontava para o backend `ceaseless-mallard-554` de outro ambiente. Antes de qualquer deploy de produção, configure no projeto Vercel **glass-finance** a chave `CONVEX_DEPLOY_KEY` pertencente exclusivamente à produção `blissful-capybara-905` e `VITE_CONVEX_URL=https://blissful-capybara-905.convex.cloud`. O build agora falha explicitamente se o projeto ou as variáveis apontarem para o backend errado. **Não transfira, apague ou mescle dados de deployments sem auditoria e backup.** O painel do Convex de produção estava sem variáveis de autenticação; configure os provedores e a assinatura ali antes da publicação final. Não faça merge na `main` enquanto ambos os projetos Vercel compartilharem esse repositório.
 
-A confirmação de cadastro por email, login legado por código e redefinição de senha usam o serviço de email OTP já integrado pelo backend. Cadastre uma nova chave de API no ambiente Convex de produção, usando o dashboard Convex ou a CLI autenticada:
 
-```sh
-npx convex env set AUTH_EMAIL_API_KEY <SEGREDO_NOVO_DO_SERVICO_DE_EMAIL>
-npx convex env set VLY_APP_NAME "Glass Finance"
-```
+**Projeto correto na Vercel:** `glass-finance` (`prj_4yWAvFx79yXZHGrbipapN22o8mQP`). **Origem pública escolhida pelo proprietário:** `https://glass-finance-teal.vercel.app`. **ATENÇÃO:** o endereço `glass-finance-teal.vercel.app` é um **alias do projeto Vercel `glass-finance`**, confirmado em uma publicação de produção; há outro projeto Vercel distinto com nome `glass-finance-teal`, que não é o dono desse endereço. O projeto distinto também aponta para o mesmo repositório GitHub; por isso, atualizar a `main` pode publicar nos dois projetos. Evite fazer merge na `main` até separar as configurações de implantação; uma publicação deve ser direcionada exclusivamente ao projeto `glass-finance`. O Google OAuth e a variável Convex `SITE_URL` devem usar o endereço público `https://glass-finance-teal.vercel.app`, enquanto o retorno OAuth do Convex usa `https://blissful-capybara-905.convex.site/api/auth/callback/google`.
 
-A chave anterior estava embutida em código versionado. **Revogue-a/rotacione-a no serviço de email e use somente a nova chave como segredo do deployment.** A chave não deve ser adicionada a este repositório.
+## Configuração dos domínios do Google
 
-## 2. Login com Google
+No Google Cloud, no cliente OAuth do **Glass Finance**, use `https://glass-finance-teal.vercel.app` como origem JavaScript autorizada e `https://blissful-capybara-905.convex.site/api/auth/callback/google` como URI de redirecionamento autorizada. Se um cliente OAuth anterior foi configurado para `https://glass-finance-meuacessos-projects.vercel.app`, atualize o cliente existente em vez de criar outro. No Convex de produção, `SITE_URL` deve ser `https://glass-finance-teal.vercel.app`, e os segredos `AUTH_GOOGLE_ID` e `AUTH_GOOGLE_SECRET` precisam ser do mesmo cliente OAuth. Não publique antes de garantir o endpoint HTTPS real e testar com uma conta Google autorizada.
 
-No Google Cloud Console, crie/configure um OAuth Client ID do tipo Web. Adicione como URI de redirecionamento autorizado a URL do host de autenticação Convex com o caminho `/api/auth/callback/google` (por exemplo, `https://<DEPLOYMENT>.convex.site/api/auth/callback/google`). Adicione também o domínio publicado do app às origens JavaScript autorizadas quando solicitado pelo Google.
+## 1. Conectar o site e o Convex
 
-Configure os dois valores no deployment Convex **de produção**:
+A Vercel publica a aplicação pelo repositório. No projeto **glass-finance**, em **Settings → Environment Variables**, configure `CONVEX_DEPLOY_KEY` para o deployment de produção. O build de produção usa essa chave para publicar as funções e injeta `VITE_CONVEX_URL` no frontend. Em previews, defina uma `VITE_CONVEX_URL` de desenvolvimento que já contenha estas funções.
 
-```sh
-npx convex env set AUTH_GOOGLE_ID <CLIENT_ID>
-npx convex env set AUTH_GOOGLE_SECRET <CLIENT_SECRET>
-```
+Em **Convex Dashboard → Production → Settings → Environment Variables**, defina `SITE_URL` como a origem HTTPS pública do app, sem caminho nem barra final. Confira se `JWT_PRIVATE_KEY` e `JWKS` já existem. Para um deployment novo, a configuração inicial do Convex Auth pode ser feita com `npx @convex-dev/auth --prod`. Preserve as chaves de assinatura existentes. O próprio Convex fornece `CONVEX_SITE_URL` para o host HTTP do backend.
 
-O `CLIENT_SECRET` é segredo exclusivo do backend. Confira que o URI de callback do Google e o `CONVEX_SITE_URL` daquele deployment correspondem exatamente ao endereço usado em produção.
-Se o deployment usa um domínio customizado de autenticação, configure também `CUSTOM_AUTH_SITE_URL` no Convex e use esse domínio no URI de callback do Google, sem barra final.
+## 2. Ativar os provedores
 
-## 3. Deploy e validação
+| Opção | Configuração em produção |
+| --- | --- |
+| Google | Crie um cliente OAuth do tipo **Aplicativo da Web** no Google Cloud. Cadastre a URI exata `https://<deployment>.convex.site/api/auth/callback/google` e a origem pública do app. Salve `AUTH_GOOGLE_ID` e `AUTH_GOOGLE_SECRET` no Convex. Se usa `CUSTOM_AUTH_SITE_URL`, cadastre o callback nesse domínio. Para usuários externos, confira o público e o status de publicação no Google. |
+| E-mail via Freebuff | Configure `AUTH_EMAIL_API_KEY` com uma chave ativa do serviço já integrado. Rotacione qualquer chave antiga que tenha sido versionada. O nome do app pode ser configurado por `VLY_APP_NAME`. |
+| E-mail via Resend | Como alternativa ao Freebuff, verifique um domínio remetente no Resend. No Convex, defina `RESEND_API_KEY` e `AUTH_EMAIL_FROM`, por exemplo `Glass Finance <acesso@seu-dominio.com.br>`. Quando ambos estão configurados, as mensagens são enviadas pelo Resend. |
 
-Após configurar os segredos no projeto/deployment correto, aplique o schema e as funções de autenticação e sincronização com a CLI Convex autenticada; em um deployment de produção vinculado, use `npx convex deploy`. Em seguida publique uma nova compilação do frontend que aponta para esse mesmo deployment (`VITE_CONVEX_URL`). No ambiente atual desta tarefa não há sessão CLI Convex nem arquivos de configuração do deployment, por isso o backend não foi publicado e nenhum fluxo OAuth real foi exercitado.
+Os segredos de provedor pertencem somente ao backend. No projeto de produção, o build primeiro consulta o conjunto público de chaves de sessão e verifica se o retorno do Google aponta para o domínio do site. Com essas duas verificações aprovadas, a chave de deploy pode permanecer sem permissão para ler os segredos do Convex. Se falharem, uma credencial autorizada pode conferir os nomes das variáveis e validar a configuração inicial. No projeto `glass-finance`, quando a chave de deploy identifica diretamente o backend de produção `blissful-capybara-905`, o primeiro build preenche a origem pública se ausente e cria o par de assinatura somente se ambas as chaves estiverem ausentes. A gravação inicial não força substituições. Um par incompleto requer restaurar a chave correspondente. A configuração inicial exige pelo menos um provedor configurado. A tela de acesso identifica individualmente as opções disponíveis. A consulta pública `users:authMethods` retorna dois indicadores booleanos, `google` e `emailDelivery`. Eles indicam a presença da configuração. A entrega de um código e o consentimento do Google devem ser testados no domínio final.
 
-Validação manual obrigatória no site publicado: criar uma conta com email/senha, confirmar código, sair e entrar; redefinir senha; entrar com Google; criar um lançamento, aguardar o status “Dados sincronizados com sua conta”, entrar na mesma conta em outro dispositivo e confirmar que o registro aparece; editar nos dois dispositivos para verificar o tratamento de concorrência; exportar um backup e testar a exclusão somente depois de uma cópia segura.
+## 3. Cadastro e teste no domínio publicado
+
+1. Abra `/auth?modo=cadastro`, cadastre um e-mail que você controla e uma senha de 8 a 128 caracteres. Confirme o código de seis dígitos que chega por e-mail.
+2. Escolha um nome de usuário com 3 a 24 letras sem acento, números ou sublinhados. Maiúsculas e minúsculas representam o mesmo nome. A reserva ocorre no servidor após a autenticação. Contas existentes e novos acessos com o Google passam por essa etapa uma vez.
+3. Saia e entre com o e-mail e a senha. Repita usando o nome de usuário e a mesma senha. Em **Esqueci minha senha**, solicite outro código e defina uma nova senha. Uma conta criada apenas com Google pode continuar usando o botão Google.
+4. Use **Continuar com Google**, autorize o app em uma conta sua e confira o retorno à rota original. Verifique o nome escolhido na tela **Conta**.
+5. Crie um lançamento de teste e espere a confirmação de sincronização. Entre com a mesma conta em outro navegador e confira o lançamento. Uma segunda conta deve ter seus próprios registros.
+
+O Glass Finance usa o identificador permanente da conta para novos dados. Na primeira escolha do nome por uma conta antiga, o app seleciona o snapshot mais recentemente salvo por essa conta entre suas sessões anteriores. Históricos independentes de sessões antigas não são combinados. Os contatos salvos pelas sessões da própria conta continuam disponíveis.
+
+Em desenvolvimento, execute `npm run test:auth` para testar os fluxos de autenticação com o transporte de e-mail de teste. Para testar o restante do projeto, use `npm run typecheck`, `npm run test:billing` e `npm run build`.
 
 ## 4. Sincronização e conflitos
 
 Os snapshots são isolados pela identidade Convex autenticada e divididos em blocos. Revisões otimizadas por compare-and-swap impedem que uma sessão sobrescreva em silêncio uma revisão mais nova de outro dispositivo. Se houver conflito, o app bloqueia a gravação da sessão conflitante e informa que é necessário exportar o estado e recarregar. A rotina não faz merge campo a campo.
 
 Um snapshot tem limite de 12 MB por conta. O backend confirma as gravações ou retorna erro; o status no painel Conta exibe falha/conflito e oferece uma tentativa manual. Não declare sucesso de sincronização sem verificar o estado “Dados sincronizados com sua conta”. Use exportação periódica como cópia adicional: a nuvem não substitui backup independente.
+
+## Primeira publicação do banco de produção
+
+A versão Production `blissful-capybara-905` começa sem funções HTTP. A verificação de `/.well-known/jwks.json` e `/api/auth/callback/google` deve acontecer **depois** do primeiro `convex deploy`, nunca antes. A compilação do `glass-finance` agora valida escopo, credenciais, `SITE_URL` e o par `JWKS`/`JWT_PRIVATE_KEY`, publica as funções no Convex correto e só então testa os dois endpoints públicos. A publicação continua bloqueada enquanto faltar pelo menos um provedor de autenticação (credenciais OAuth Google ou serviço de envio de e-mail). Os segredos devem ser cadastrados no painel Convex Production; a chave de publicação permanece apenas na Vercel como Secret.

@@ -423,7 +423,7 @@ export default function Landing() {
               Entrar
             </Link>
             <Link
-              to="/auth"
+              to="/auth?modo=cadastro"
               className="flex items-center gap-1.5 rounded-full bg-[#2F6BFF] px-3.5 py-2.5 text-[13.5px] font-semibold text-white shadow-[0_8px_20px_-6px_rgba(47,107,255,0.6)] transition-colors hover:brightness-105 sm:px-4"
             >
               Começar grátis
@@ -455,7 +455,7 @@ export default function Landing() {
           </p>
           <div className="hero-enter hero-enter-4 mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
             <Link
-              to="/auth"
+              to="/auth?modo=cadastro"
               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto sm:px-7 sm:py-3.5 sm:text-[15px]"
             >
               Começar agora
@@ -616,7 +616,7 @@ export default function Landing() {
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
-                to="/auth"
+                to="/auth?modo=cadastro"
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] px-8 py-4 text-[15px] font-semibold text-white shadow-[0_14px_34px_-10px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 sm:w-auto"
               >
                 Começar grátis
