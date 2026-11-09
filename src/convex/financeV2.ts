@@ -174,7 +174,13 @@ export const activateFromLegacy = mutation({
     }
     const original = legacy as { profiles: Array<{ data: { transactions: unknown[] } }> };
     const metadata = { ...original, profiles: original.profiles.map(p => ({
-      ...p, data: { ...p.data, transactions: [] },
+      ...p, data: {
+        ...p.data,
+        transactions: [],
+        transactionOrder: p.data.transactions.map((row: unknown) =>
+          typeof row === "object" && row !== null && "id" in row ? String(row.id) : "",
+        ),
+      },
     })) };
     const metadataPayload = JSON.stringify(metadata);
     validateMetadata(metadataPayload);
