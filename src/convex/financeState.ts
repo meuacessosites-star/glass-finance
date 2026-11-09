@@ -46,6 +46,13 @@ export const saveMine = mutation({
   },
   handler: async (ctx, { payload, expectedRevision }) => {
     const userSubject = await getUserSubject(ctx);
+    // Legacy clients must not overwrite accounts that have switched to
+    // individual transaction records; they receive a safe revision conflict.
+    const normalizedState = await ctx.db.query("financeV2States")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (normalizedState) {
+      return { ok: false as const, conflict: true as const, revision: Number(normalizedState.legacyRevision) };
+    }
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       throw new Error("Revisão inválida");
     }
@@ -131,6 +138,10 @@ export const deleteMine = mutation({
       .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
       .collect();
     for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
+
+    const v2State = await ctx.db.query("financeV2States")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (v2State) await ctx.db.delete(v2State._id as Id<"financeV2States">);
 
     // Also remove the normalized migration copies and uploaded files when the
     // account owner explicitly requests permanent deletion. This is atomic with
