@@ -44,10 +44,11 @@ const inputClass =
 
 export default function AccountPage() {
   const convex = useConvex();
-  const { activeProfile, profiles, restoreTrashedTransaction, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
+  const { activeProfile, profiles, restoreTrashedTransaction, storageVersion, migrateFinanceStorage, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
   const [backupBusy,setBackupBusy]=useState(false);
+  const [migrationBusy,setMigrationBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
   const [pendingImport,setPendingImport]=useState<{raw:string;profiles:number;transactions:number;names:string}|null>(null);
@@ -76,6 +77,22 @@ export default function AccountPage() {
       toast.error(error instanceof Error ? error.message : "Falha ao criar backup completo.");
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  const handleMigrate = async () => {
+    if (migrationBusy || cloudSyncStatus !== "synced" || storageVersion === "v2") return;
+    if (!window.confirm(
+      "A migração só começa depois de sincronizar tudo. Faça e guarde um backup completo antes de continuar. " +
+      "O histórico antigo será mantido como segurança. Deseja iniciar a conferência e migração?"
+    )) return;
+    setMigrationBusy(true);
+    try {
+      await migrateFinanceStorage();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "A migração foi interrompida com segurança.");
+    } finally {
+      setMigrationBusy(false);
     }
   };
 
@@ -196,13 +213,38 @@ export default function AccountPage() {
           <div className={cn("h-full rounded-full", storageHealth.level === "critical" ? "bg-red-500" : storageHealth.level === "warning" ? "bg-amber-500" : "bg-primary")} style={{ width: `${storageHealth.usagePercent}%` }} />
         </div>
         <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
-          {storageHealth.usagePercent}% do limite atual de {formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.
+          {storageVersion === "v2"
+            ? "Histórico individual ativo. Este diagnóstico é uma estimativa local, não a quota do Convex."
+            : `${storageHealth.usagePercent}% do limite atual de ${formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.`}
           {storageHealth.level === "critical"
             ? " Atenção: exporte uma cópia e evite novos anexos grandes até concluir a migração."
             : storageHealth.level === "warning"
               ? " O histórico está crescendo; mantenha backups atualizados."
               : " O carregamento e o armazenamento ainda dependem do formato antigo."}
         </p>
+      </section>
+
+      <section className="glass rounded-3xl p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Histórico preparado para crescer</p>
+        {storageVersion === "v2" ? (
+          <p className="mt-2 text-[12.5px] leading-relaxed text-glass-sub">
+            O histórico individual está ativo. Novos lançamentos são armazenados separadamente e
+            sincronizados por revisão, sem regravar todos os registros em um único snapshot.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-glass-sub">
+              O banco ainda usa o formato antigo. Após baixar um backup completo, você pode
+              copiar e conferir suas transações antes de ativar o armazenamento individual.
+              Durante a migração, mantenha esta página aberta e não altere dados em outro dispositivo.
+            </p>
+            <button type="button" disabled={migrationBusy || backupBusy || cloudSyncStatus !== "synced"}
+              className="mt-3 w-full rounded-full bg-primary px-4 py-3 text-[13px] font-semibold text-white disabled:opacity-50"
+              onClick={() => void handleMigrate()}>
+              {migrationBusy ? "Preparando migração…" : "Migrar histórico com conferência"}
+            </button>
+          </>
+        )}
       </section>
 
       {/* Restauração após excluir um lançamento: o período de retenção é de 30 dias. */}
