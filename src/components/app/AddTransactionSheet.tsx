@@ -1,3 +1,5 @@
+import { useConvex } from "convex/react";
+import { uploadAttachmentToCloud } from "@/lib/cloud-attachments";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
@@ -75,6 +77,7 @@ export type PickedAttachment = {
   src: string;
   isImage: boolean;
   name: string;
+  previewSrc?: string;
 };
 
 /** Snapshot dos estados do formulário manual — usado também para pré-preencher
@@ -197,7 +200,8 @@ export function AddTransactionSheet({
   onSaved?: () => void;
 }) {
   const navigate = useNavigate();
-  const { categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
+  const convex = useConvex();
+  const { activeProfileId, categories, cards, addTransaction, updateTransaction, categoryById } = useAppStore();
   const overlay = useExclusiveOverlay({
     name: "add-transaction-sheet",
     open,
@@ -402,16 +406,18 @@ export function AddTransactionSheet({
         continue;
       }
       try {
-        const src = await compressAttachmentFile(file);
-        if (src.length >= 3_000_000) {
+        const previewSrc = await compressAttachmentFile(file);
+        if (previewSrc.length >= 3_000_000) {
           toast(`"${file.name}" continua grande demais`, {
             description: "Escolha um arquivo menor para manter o armazenamento otimizado.",
           });
           continue;
         }
+        const isImage = file.type.startsWith("image/");
+        const src = await uploadAttachmentToCloud(convex, previewSrc, activeProfileId, file.name, isImage);
         setAttachments((prev) => [
           ...prev,
-          { src, isImage: file.type.startsWith("image/"), name: file.name },
+          { src, previewSrc: isImage ? previewSrc : undefined, isImage, name: file.name },
         ]);
       } catch {
         toast(`Não foi possível ler "${file.name}"`);
@@ -1046,7 +1052,7 @@ export function AddTransactionSheet({
                       className="relative size-[68px] shrink-0 overflow-hidden rounded-2xl"
                     >
                       <img
-                        src={att.src}
+                        src={att.previewSrc ?? att.src}
                         alt={att.name}
                         className="size-full object-cover"
                       />
