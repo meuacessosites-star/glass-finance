@@ -69,10 +69,13 @@ const schema = defineSchema(
       fileName: v.string(),
       contentType: v.string(),
       byteSize: v.number(),
+      linked: v.boolean(), // becomes true only after a financial save commits
       createdAt: v.number(),
     })
       .index("by_storage_id", ["storageId"])
-      .index("by_owner_profile", ["userSubject", "profileId"]),
+      .index("by_owner_profile", ["userSubject", "profileId"])
+      .index("by_owner_linked", ["userSubject", "linked"])
+      .index("by_linked_created", ["linked", "createdAt"]),
 
     // Separately versioned metadata. Transaction history lives in financeTransactions
     // after a fully verified migration, and legacy snapshots remain untouched.
