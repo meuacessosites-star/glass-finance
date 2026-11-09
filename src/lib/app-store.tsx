@@ -957,6 +957,8 @@ type AppStoreValue = {
   cloudSyncStatus: "loading" | "synced" | "saving" | "error" | "conflict";
   retryCloudSync: () => void;
   deleteCloudData: () => Promise<void>;
+  storageVersion: "legacy" | "v2";
+  migrateFinanceStorage: () => Promise<void>;
   restoreTrashedTransaction: (profileId: string, transactionId: string) => void;
   activeProfileId: string;
   pinUsage: PinUsage;
@@ -1444,6 +1446,112 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setCloudSyncStatus("synced");
   }, [deleteMine]);
 
+  const migrateFinanceStorage = useCallback(async () => {
+    if (!cloudReady || !isAuthenticated || v2ModeRef.current ||
+        migrationRef.current || conflictRef.current || saveInFlightRef.current ||
+        localDirtyRef.current || pendingPayloadRef.current ||
+        cloudSyncStatus !== "synced" || !cloudSnapshot?.revision)
+      throw new Error("Sincronize os dados antes de iniciar a migração.");
+    migrationRef.current = true;
+    setMigrationInProgress(true);
+    try {
+      // Every source record stays in the legacy snapshot until the new
+      // transaction documents have been copied and verified.
+      const prepared = JSON.parse(JSON.stringify(latestStateRef.current)) as AppStoreState;
+      const cache = new Map<string, string>();
+      const upload = async (profileId: string, original: string, name: string) => {
+        if (!original.startsWith("data:")) return original;
+        const key = JSON.stringify([profileId, original]);
+        if (cache.has(key)) return cache.get(key)!;
+        const stored = await uploadAttachmentToCloud(
+          convex, original, profileId, name, isAttachmentImage(original),
+        );
+        cache.set(key, stored);
+        return stored;
+      };
+      for (const profile of prepared.profiles) {
+        setMigrationMessage(`Preparando comprovantes do perfil ${profile.name}…`);
+        for (const row of profile.data.transactions) {
+          if (!row.attachments?.length) continue;
+          row.attachments = await Promise.all(row.attachments.map(
+            (src, index) => upload(profile.id, src, `transacao-${row.id}-${index + 1}`),
+          ));
+        }
+        for (const row of profile.data.loanReceivables) {
+          if (!row.attachments?.length) continue;
+          row.attachments = await Promise.all(row.attachments.map(
+            (src, index) => upload(profile.id, src, `emprestimo-${row.id}-${index + 1}`),
+          ));
+        }
+        for (const entry of profile.data.trashedTransactions ?? []) {
+          if (!entry.transaction.attachments?.length) continue;
+          entry.transaction.attachments = await Promise.all(
+            entry.transaction.attachments.map(
+              (src, index) => upload(profile.id, src, `lixeira-${entry.transaction.id}-${index + 1}`),
+            ),
+          );
+        }
+      }
+      const preparedRaw = JSON.stringify(prepared);
+      let sourceRevision = revisionRef.current;
+      if (preparedRaw !== lastSyncedPayloadRef.current) {
+        setMigrationMessage("Registrando referências dos arquivos sem apagar o histórico…");
+        const saved = await saveMine({
+          payload: preparedRaw, expectedRevision: sourceRevision,
+        });
+        if (!saved.ok) {
+          conflictRef.current = true;
+          setCloudSyncStatus("conflict");
+          throw new Error("Os dados foram alterados em outro dispositivo. Nenhuma migração foi ativada.");
+        }
+        sourceRevision = saved.revision;
+        revisionRef.current = saved.revision;
+        lastSyncedPayloadRef.current = preparedRaw;
+        latestStateRef.current = prepared;
+        setState(prepared);
+      }
+      for (const profile of prepared.profiles) {
+        setMigrationMessage(`Conferindo histórico de ${profile.name}…`);
+        // Earlier interrupted runs may have produced copies from old revisions.
+        for (;;) {
+          const cleaned = await convex.mutation(api.transactionMigration.clearStaleBatch, {
+            profileId: profile.id, sourceRevision,
+          });
+          if (!cleaned.deleted) break;
+        }
+        const existing = await convex.query(api.transactionMigration.verifyProfile, {
+          profileId: profile.id, sourceRevision,
+        });
+        if (!existing.verified) {
+          const rows = profile.data.transactions;
+          for (let index = 0; index < rows.length; index += 5) {
+            setMigrationMessage(`Copiando ${profile.name}: ${Math.min(index + 5, rows.length)} de ${rows.length}…`);
+            await convex.mutation(api.transactionMigration.copyBatch, {
+              profileId: profile.id,
+              sourceRevision,
+              items: rows.slice(index, index + 5).map(transaction => ({
+                id: transaction.id, amount: transaction.amount,
+                date: transaction.date, payload: transaction,
+              })),
+            });
+          }
+        }
+        await convex.mutation(api.transactionMigration.confirmProfile, {
+          profileId: profile.id, sourceRevision,
+        });
+      }
+      setMigrationMessage("Ativando histórico individual após a conferência…");
+      await convex.mutation(api.financeV2.activateFromLegacy, { sourceRevision });
+      // Rehydrate from the verified normalized database, not from this tab.
+      window.location.reload();
+    } catch (error) {
+      setMigrationInProgress(false);
+      throw error;
+    } finally {
+      migrationRef.current = false;
+    }
+  }, [cloudReady, isAuthenticated, cloudSnapshot, cloudSyncStatus, convex, saveMine]);
+
   useEffect(() => {
     const reopen = (event: PageTransitionEvent) => { if (event.persisted) setState((current) => startPaymentNoticeSession(current)); };
     window.addEventListener("pageshow", reopen);
@@ -1512,6 +1620,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       cloudSyncStatus,
       retryCloudSync,
       deleteCloudData,
+      storageVersion,
+      migrateFinanceStorage,
       restoreTrashedTransaction: (profileId, transactionId) =>
         setState((current) => ({ ...current, profiles: restoreTrashedTransaction(current.profiles, profileId, transactionId) })),
       activeProfileId: state.activeProfileId,
@@ -1850,12 +1960,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
-  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData]);
+  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage]);
 
-  if (!cloudReady) {
+  if (!cloudReady || migrationInProgress) {
     return (
       <div role="status" className="flex min-h-[100dvh] items-center justify-center bg-[#e8eefb] px-6 text-center text-sm font-semibold text-slate-700 dark:bg-[#0a1122] dark:text-slate-200">
-        Conectando à sua conta e carregando dados sincronizados…
+        {migrationInProgress
+          ? migrationMessage
+          : cloudSyncStatus === "error"
+            ? "Não foi possível validar os dados na nuvem. Recarregue a página para tentar novamente."
+            : "Conectando à sua conta e carregando dados sincronizados…"}
       </div>
     );
   }
