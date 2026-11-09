@@ -110,7 +110,7 @@ export const saveMine = mutation({
         throw new Error("Registro ou perfil inválido");
       const row = op.payload as { id?: unknown; amount?: unknown; date?: unknown };
       if (row.id !== op.transactionId || typeof row.amount !== "number" ||
-          typeof row.date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(row.date))
+          typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date))
         throw new Error("Identificação, valor ou data inválida");
       const amountCents = monetaryCents(row.amount);
       const fields = {
