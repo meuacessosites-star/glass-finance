@@ -60,6 +60,20 @@ const schema = defineSchema(
     }).index("by_user_subject", ["userSubject"])
       .index("by_user_subject_revision", ["userSubject", "revision"]),
 
+    // Files are stored in Convex File Storage, not as base64 in financial JSON.
+    // Never delete objects automatically while their references may exist.
+    financeFiles: defineTable({
+      userSubject: v.string(),
+      profileId: v.string(),
+      storageId: v.id("_storage"),
+      fileName: v.string(),
+      contentType: v.string(),
+      byteSize: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_storage_id", ["storageId"])
+      .index("by_owner_profile", ["userSubject", "profileId"]),
+
     // Preparação da migração: registros separados, ainda sem mudar a leitura/escrita legada.
     // Nunca ativar esta tabela como fonte principal antes da conferência por perfil.
     financeTransactions: defineTable({
