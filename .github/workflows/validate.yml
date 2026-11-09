@@ -1,0 +1,27 @@
+name: Validate Glass Finance changes
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Financial and storage regression tests
+        run: npm run test:billing
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
