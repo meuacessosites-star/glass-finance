@@ -21,8 +21,7 @@ export const getMine = query({
 
     const chunks = await ctx.db
       .query("financeStateChunks")
-      .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
-      .filter((q) => q.eq(q.field("revision"), state.revision))
+      .withIndex("by_user_subject_revision", (q) => q.eq("userSubject", userSubject).eq("revision", state.revision))
       .collect();
     if (chunks.length !== state.chunkCount) {
       throw new Error("Os dados financeiros estão incompletos no banco; nenhum dado local será usado para substituí-los.");
@@ -80,8 +79,7 @@ export const saveMine = mutation({
     const oldChunks = existing
       ? await ctx.db
           .query("financeStateChunks")
-          .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
-          .filter((q) => q.eq(q.field("revision"), currentRevision))
+          .withIndex("by_user_subject_revision", (q) => q.eq("userSubject", userSubject).eq("revision", currentRevision))
           .collect()
       : [];
     for (const oldChunk of oldChunks) {

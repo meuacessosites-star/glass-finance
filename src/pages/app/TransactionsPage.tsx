@@ -362,15 +362,28 @@ export default function TransactionsPage() {
     .filter((transaction) => transaction.amount > 0)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
+  // Incrementally render the list on smaller devices. Totals and filters
+  // still operate on the FULL result, so no transactions disappear from sums.
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const visibleRows = useMemo(() => filtered.slice(0, visibleLimit), [filtered, visibleLimit]);
+  useEffect(() => { setVisibleLimit(50); }, [
+    activeProfileId, selectedMonth, periodMode, rangeStart, rangeEnd,
+    selectedMonths, scope, paymentStatus, selectedCategories, searchQuery,
+  ]);
+  useEffect(() => {
+    if (!navigationTarget) return;
+    const index = filtered.findIndex((row) => row.id === navigationTarget);
+    if (index >= 0 && index >= visibleLimit) setVisibleLimit(Math.ceil((index + 1) / 50) * 50);
+  }, [filtered, navigationTarget, visibleLimit]);
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filtered>();
-    for (const transaction of filtered) {
+    for (const transaction of visibleRows) {
       const key = dayLabel(transaction.date);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(transaction);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [visibleRows]);
 
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories((current) =>

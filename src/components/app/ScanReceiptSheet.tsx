@@ -19,7 +19,7 @@ import {
   draftPurchase,
 } from "@/lib/purchase-format";
 import type { ReceiptResult } from "@/convex/aiVision";
-import { compressAttachmentFile } from "@/lib/attachment-utils";
+import { useUploadAttachment } from "@/lib/cloud-attachments";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
@@ -77,6 +77,7 @@ export function ScanReceiptSheet({
     },
   });
 
+  const uploadAttachment = useUploadAttachment();
   const [step, setStep] = useState<Step>("source");
   const [images, setImages] = useState<string[]>([]);
   const [scanPhase, setScanPhase] = useState<ScanPhase>("reading");
@@ -401,6 +402,22 @@ export function ScanReceiptSheet({
         values = buildSafeFallbackPrefill(img);
       }
 
+      // The OCR still receives a data URL; only the saved attachment is moved
+      // into dedicated file storage. A temporary upload failure must not
+      // discard an otherwise valid scan or its original photo.
+      if (values.attachments?.length) {
+        try {
+          const stored = await uploadAttachment(file);
+          values = {
+            ...values,
+            attachments: values.attachments.map((attachment) =>
+              attachment.isImage ? { ...attachment, src: stored } : attachment),
+          };
+        } catch {
+          toast.warning("Não foi possível otimizar o anexo na nuvem. A imagem será mantida no formato anterior.");
+        }
+      }
+      if (runId !== runIdRef.current) return;
       openFormTimerRef.current = window.setTimeout(() => {
         openFormTimerRef.current = null;
         if (runId === runIdRef.current) openReviewForm(values);
@@ -454,7 +471,7 @@ export function ScanReceiptSheet({
     if (!file) return;
 
     try {
-      const src = await compressAttachmentFile(file);
+      const src = await uploadAttachment(file);
       openReviewForm({
         ...buildSafeFallbackPrefill(null),
         attachments: [
