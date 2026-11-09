@@ -906,6 +906,12 @@ function buildProfiles(raw: unknown): AppProfile[] {
 }
 
 function stateFromSnapshot(parsed: unknown): AppStoreState {
+  // Never replace a damaged cloud snapshot with an empty account: that could
+  // silently overwrite years of transactions at the next autosave.
+  const raw = parsed as { profiles?: unknown } | null;
+  if (!raw || !Array.isArray(raw.profiles) || raw.profiles.length === 0) {
+    throw new Error("O estado sincronizado está incompleto. Nenhum dado será substituído.");
+  }
   try {
     const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
     const activeProfileId =
@@ -922,8 +928,8 @@ function stateFromSnapshot(parsed: unknown): AppStoreState {
           ? "switch"
           : "open",
     };
-  } catch {
-    return createInitialState();
+  } catch (error) {
+    throw new Error("Não foi possível validar os dados sincronizados. Nenhuma substituição será feita.", { cause: error });
   }
 }
 
