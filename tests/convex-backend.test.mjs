@@ -158,3 +158,49 @@ test("committed receipt remains accessible after orphan cleanup", async () => {
   await t.mutation(internal.financeFiles.cleanupAbandonedUploads, {});
   expect(await alice.query(api.financeFiles.getMetadata, { storageId })).not.toBeNull();
 });
+
+test("push subscriptions require login and stay isolated between accounts", async () => {
+  const t = convexTest(schema, modules);
+  const alice = t.withIdentity({ subject: "alice" });
+  const bob = t.withIdentity({ subject: "bob" });
+  const endpoint = "https://fcm.googleapis.com/fcm/send/device-1";
+  const input = {
+    endpoint, profileId: "personal",
+    p256dh: Buffer.alloc(65, 1).toString("base64url"),
+    auth: Buffer.alloc(16, 2).toString("base64url"),
+    timeZone: "America/Recife",
+  };
+  await expect(t.mutation(api.pushNotifications.registerDevice, input)).rejects.toThrow();
+  await expect(alice.mutation(api.pushNotifications.registerDevice, {
+    ...input, endpoint: "https://localhost/internal",
+  })).rejects.toThrow();
+  expect((await alice.mutation(api.pushNotifications.registerDevice, input)).registered).toBe(true);
+  await expect(bob.mutation(api.pushNotifications.registerDevice, input)).rejects.toThrow();
+  await bob.mutation(api.pushNotifications.removeDevice, { endpoint });
+  const devices = await t.run(ctx => ctx.db.query("pushDevices").collect());
+  expect(devices).toHaveLength(1);
+  expect(devices[0].userSubject).toBe("alice");
+  await alice.mutation(api.pushNotifications.removeDevice, { endpoint });
+  expect(await t.run(ctx => ctx.db.query("pushDevices").collect())).toHaveLength(0);
+});
+
+test("private reminder schedules contain only dates and types; deleting account removes push data", async () => {
+  const t = convexTest(schema, modules);
+  const alice = t.withIdentity({ subject: "alice" });
+  const bob = t.withIdentity({ subject: "bob" });
+  const items = [
+    { key: "invoice:a:2026-12", date: "2026-12-15", kind: "invoice" },
+    { key: "review", date: "2026-11-09", kind: "review" },
+  ];
+  await alice.mutation(api.pushNotifications.syncSchedule, { profileId: "personal", items });
+  await expect(alice.mutation(api.pushNotifications.syncSchedule, {
+    profileId: "personal", items: [...items, items[0]],
+  })).rejects.toThrow();
+  await bob.mutation(api.pushNotifications.syncSchedule, { profileId: "personal", items: [] });
+  const all = await t.run(ctx => ctx.db.query("pushSchedules").collect());
+  expect(all).toHaveLength(2);
+  expect(all.find(item => item.userSubject === "alice").items).toEqual(items);
+  await alice.mutation(api.financeState.deleteMine, {});
+  expect((await t.run(ctx => ctx.db.query("pushSchedules").collect()))
+    .map(item => item.userSubject)).toEqual(["bob"]);
+});
