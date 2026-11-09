@@ -149,7 +149,7 @@ function NotificationInbox() {
     query: paymentQuery, phase: reminderPrefs.phase, kind: reminderPrefs.kind,
   }), [payments, paymentQuery, reminderPrefs.phase, reminderPrefs.kind]);
   const selectedPendingIds = pendingSelection.filter((id) =>
-    pending.some((n) => n.id === id),
+    filteredPending.some((n) => n.id === id),
   );
   const retentionRemovals =
     retentionDraft === null
@@ -198,7 +198,7 @@ function NotificationInbox() {
         : undefined,
     [current, linkedTransaction, categories, validCard],
   );
-  const selectionItems = selection?.mode === "approve" ? pending : approved;
+  const selectionItems = selection?.mode === "approve" ? filteredPending : filteredApproved;
   const selectedIds =
     selection?.ids.filter((id) => selectionItems.some((n) => n.id === id)) ??
     [];
@@ -521,8 +521,8 @@ function NotificationInbox() {
             <HomeAlertSettings />
             <button
               className={readAction}
-              disabled={payments.length === 0}
-              onClick={() => requestRead(payments.map((row) => row.id), true)}
+              disabled={filteredPayments.length === 0}
+              onClick={() => requestRead(filteredPayments.map((row) => row.id), true)}
             >
               <CheckCheck className="size-4" />
               <span>Marcar todos como lidos</span>
@@ -710,26 +710,26 @@ function NotificationInbox() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                {view !== "approved" && pending.length > 0 && (
+                {view !== "approved" && filteredPending.length > 0 && (
                   <button
                     className={`${action} notification-action--approve-soft`}
                     onClick={() => setSelection({ mode: "approve", ids: [] })}
                   >
                     <Check className="size-4" />
-                    Aprovar ({pending.length})
+                    Aprovar ({filteredPending.length})
                   </button>
                 )}
-                {approved.length > 0 && (
+                {filteredApproved.length > 0 && (
                   <button
                     className={restoreAction}
                     onClick={() => setSelection({ mode: "restore", ids: [] })}
                   >
                     <RotateCcw className="size-4" />
-                    Refazer ({approved.length})
+                    Refazer ({filteredApproved.length})
                   </button>
                 )}
               </div>
-              {view !== "approved" && pending.length > 0 && (
+              {view !== "approved" && filteredPending.length > 0 && (
                 <div className="notification-pending-selection space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12px] font-bold text-[#68438a]">
@@ -741,9 +741,9 @@ function NotificationInbox() {
                       className={neutralAction}
                       onClick={() =>
                         setPendingSelection(
-                          selectedPendingIds.length === pending.length
+                          selectedPendingIds.length === filteredPending.length
                             ? []
-                            : pending.map((n) => n.id),
+                            : filteredPending.map((n) => n.id),
                         )
                       }
                     >
