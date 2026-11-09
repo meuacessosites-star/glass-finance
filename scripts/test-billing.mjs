@@ -17,7 +17,7 @@ entries.push("card-invoice-summary.test");
 entries.push("notification-actions.test", "payment-notifications.test");
 entries.push("notification-history.test");
 entries.push("notification-redo.test");
-entries.push("notification-search.test");
+entries.push("notification-search.test", "reminder-filters.test");
 entries.push("home-alerts.test");
 entries.push("home-alert-preferences.test");
 entries.push("home-alert-rotation.test", "payment-notice-session.test");
