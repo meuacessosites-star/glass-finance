@@ -929,7 +929,7 @@ function stateFromSnapshot(parsed: unknown): AppStoreState {
           : "open",
     };
   } catch (error) {
-    throw new Error("Não foi possível validar os dados sincronizados. Nenhuma substituição será feita.", { cause: error });
+    throw new Error(`Não foi possível validar os dados sincronizados. Nenhuma substituição será feita. ${error instanceof Error ? error.message : ""}`);
   }
 }
 
