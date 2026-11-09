@@ -51,7 +51,7 @@ export default function AccountPage() {
   const migrationStatus = useQuery(api.transactionMigration.statusMine, {});
   const prepareNext = useMutation(api.transactionMigration.prepareNext);
   const [migrationRunning, setMigrationRunning] = useState<string | null>(null);
-  const [migrationProgress, setMigrationProgress] = useState<{profileId: string; migrated: number; total: number} | null>(null);
+  const [migrationProgress, setMigrationProgress] = useState<{profileId: string; revision: number; migrated: number; total: number} | null>(null);
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameValue, setUsernameValue] = useState("");
   const [savingUsername, setSavingUsername] = useState(false);
@@ -84,7 +84,7 @@ export default function AccountPage() {
       // expensive operation and permits resuming later without duplicates.
       for (let step = 0; step < 20; step += 1) {
         const result = await prepareNext({ profileId, expectedRevision: revision });
-        setMigrationProgress({ profileId, migrated: result.migrated, total: result.total });
+        setMigrationProgress({ profileId, revision: result.revision, migrated: result.migrated, total: result.total });
         if (result.completed) {
           completed = true;
           toast.success("Cópia conferida. O histórico original foi preservado.");
@@ -246,11 +246,13 @@ export default function AccountPage() {
               profileId: string; sourceRevision: number; currentRevision: number;
               migrated: number; total: number; completed: boolean;
             }) => item.profileId === profile.id);
-            const copied = migrationProgress?.profileId === profile.id
+            const matchingStatus = saved?.sourceRevision === sourceInfo?.revision ? saved : null;
+            const copied = migrationProgress?.profileId === profile.id &&
+              migrationProgress.revision === sourceInfo?.revision
               ? migrationProgress : null;
-            const migrated = saved?.completed ? saved.migrated : copied?.migrated ?? saved?.migrated ?? 0;
-            const total = copied?.total ?? saved?.total ?? profile.data.transactions.length;
-            const completed = Boolean(saved?.completed && saved.sourceRevision === sourceInfo?.revision);
+            const migrated = matchingStatus?.completed ? matchingStatus.migrated : copied?.migrated ?? matchingStatus?.migrated ?? 0;
+            const total = copied?.total ?? matchingStatus?.total ?? profile.data.transactions.length;
+            const completed = Boolean(matchingStatus?.completed);
             const running = migrationRunning === profile.id;
             return (
               <div key={profile.id} className="rounded-2xl border border-glass-ink/10 p-3">

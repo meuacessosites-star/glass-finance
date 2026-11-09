@@ -590,3 +590,26 @@ test("migration rejects duplicate IDs and financial wipe purges all staged recor
   assert.equal((await t.run(ctx => ctx.db.query("transactionEntries").collect())).length, 0);
   assert.equal((await t.run(ctx => ctx.db.query("transactionMigrationStates").collect())).length, 0);
 });
+
+test("account deletion removes staged financial rows but preserves another user's migration", async () => {
+  const { t, register } = fixture();
+  const first = await register("delete-mig-first@example.org", "first-password-123");
+  const second = await register("delete-mig-second@example.org", "second-password-123");
+  await first.mutation(api.users.claimUsername, { username: "delete_mig_first" });
+  await second.mutation(api.users.claimUsername, { username: "delete_mig_second" });
+  const payload = JSON.stringify({ profiles: [{ id: "profile-1", data: {
+    transactions: [{ id: "record-1", title: "Teste", date: "2026-11-09", amount: 42.11 }],
+  } }] });
+  await first.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
+  await second.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
+  await first.mutation(api.transactionMigration.prepareNext, { profileId: "profile-1", expectedRevision: 1 });
+  await second.mutation(api.transactionMigration.prepareNext, { profileId: "profile-1", expectedRevision: 1 });
+  assert.equal((await t.run(ctx => ctx.db.query("transactionEntries").collect())).length, 2);
+  await first.mutation(api.users.deleteMyAccount, {
+    email: "delete-mig-first@example.org", confirmation: "EXCLUIR MINHA CONTA",
+  });
+  const remaining = await t.run(ctx => ctx.db.query("transactionEntries").collect());
+  assert.equal(remaining.length, 1);
+  assert.equal((await second.query(api.transactionMigration.statusMine))[0].completed, true);
+  assert.equal((await second.query(api.financeState.getMine)).payload, payload);
+});
