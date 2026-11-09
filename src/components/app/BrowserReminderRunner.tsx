@@ -61,7 +61,9 @@ export function BrowserReminderRunner() {
       }
       const seen = new Set(Object.keys(values));
       const selection = reminders.filter(item => shouldSendBrowserReminder(item, today, seen)).slice(0, 3);
-      if (!selection.length) return;
+      const pendingKey = JSON.stringify([today, "pending-review"]);
+      const hasPending = notifications.some(item => item.status === "pending") && !seen.has(pendingKey);
+      if (!selection.length && !hasPending) return;
       const registration = await navigator.serviceWorker.getRegistration("/").catch(() => undefined);
       for (const item of selection) {
         if (cancelled) return;
@@ -70,7 +72,6 @@ export function BrowserReminderRunner() {
           try { localStorage.setItem(key, JSON.stringify(values)); } catch { /* optional */ }
         }
       }
-      const pendingKey = JSON.stringify([today, "pending-review"]);
       if (!cancelled && notifications.some(item => item.status === "pending") &&
           !seen.has(pendingKey) && registration) {
         await registration.showNotification("Lembrete do Glass Finance", {
