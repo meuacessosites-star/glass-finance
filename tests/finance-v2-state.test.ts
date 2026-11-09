@@ -46,3 +46,17 @@ test("duplicate financial IDs and corrupt metadata are rejected", () => {
   assert.throws(()=>transactionChanges(base([row("a",10),row("a",20)]),base([])));
   assert.throws(()=>metadataWithoutTransactions('{"profiles":[]}'));
 });
+
+test("normalized hydration preserves legacy array order even when pages arrive reversed", () => {
+  const ordered = [row("newest", 10), row("middle", 20), row("oldest", 30)];
+  const metadata = metadataWithoutTransactions(base(ordered));
+  const restored = JSON.parse(inflateTransactionPages(metadata, { a: [...ordered].reverse() }));
+  assert.deepEqual(restored.profiles[0].data.transactions, ordered);
+});
+
+test("normalized hydration fails closed when a paged record is missing", () => {
+  const ordered = [row("one", 10), row("two", 20)];
+  const metadata = metadataWithoutTransactions(base(ordered));
+  assert.throws(() => inflateTransactionPages(metadata, { a: [ordered[0]] }), /incompleto/);
+  assert.throws(() => inflateTransactionPages(metadata, { a: [...ordered, row("three", 30)] }), /incompleto/);
+});
