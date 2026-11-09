@@ -20,7 +20,7 @@ export function BrowserReminderRunner() {
     readPaymentNotificationIds, includeBorrowedCardInvoices, reminderPreferences,
   } = useAppStore();
   const [tick, setTick] = useState(0);
-  const [hasPushSubscription, setHasPushSubscription] = useState(false);
+  const [hasPushSubscription, setHasPushSubscription] = useState<boolean | null>(null);
   const today = localDateKey(new Date());
   const reminders = useMemo(
     () => getPaymentNotifications({
@@ -61,7 +61,7 @@ export function BrowserReminderRunner() {
     };
   }, [activeProfile?.id, reminderPreferences.browserEnabled]);
   useEffect(() => {
-    if (!reminderPreferences.browserEnabled || !activeProfile?.id || hasPushSubscription ||
+    if (!reminderPreferences.browserEnabled || !activeProfile?.id || hasPushSubscription !== false ||
         typeof Notification === "undefined" || Notification.permission !== "granted" ||
         document.visibilityState !== "visible") return;
     let cancelled = false;
