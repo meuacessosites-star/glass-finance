@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import schema from "../src/convex/schema";
 import { api } from "../src/convex/_generated/api";
 
-const modules = import.meta.glob("../src/convex/{financeState,financeV2,transactionMigration,financeFiles}.ts");
+const modules = import.meta.glob("../src/convex/**/*.{ts,js}");
 
 function makeSnapshot(transactions) {
   return JSON.stringify({
