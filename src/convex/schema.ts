@@ -43,6 +43,20 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }).index("by_user_key", ["userId", "key"]).index("by_user", ["userId"]),
 
+    // Files live in Convex File Storage, not inline in financial JSON.
+    // Storage metadata belongs to the authenticated account.
+    fileAssets: defineTable({
+      userId: v.id("users"),
+      storageId: v.id("_storage"),
+      fileName: v.string(),
+      mimeType: v.string(),
+      byteLength: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_created", ["userId", "createdAt"])
+      .index("by_storage_id", ["storageId"]),
+
     people: defineTable({
       userSubject: v.string(),
       name: v.string(),

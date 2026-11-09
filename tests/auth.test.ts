@@ -27,6 +27,7 @@ const modules = {
   "./financeState.ts": () => import("../src/convex/financeState"),
   "./people.ts": () => import("../src/convex/people"),
   "./userPreferences.ts": () => import("../src/convex/userPreferences"),
+  "./fileAssets.ts": () => import("../src/convex/fileAssets"),
 };
 
 function fixture() {
@@ -465,4 +466,36 @@ test("image storage size estimator distinguishes base64 payload sizes", async ()
   assert.equal(imageDataUrlBytes("data:image/webp;base64,AA=="), 1);
   assert.equal(imageDataUrlBytes("data:image/png;base64,AAA="), 2);
   assert.equal(imageDataUrlBytes("invalid"), Infinity);
+});
+
+test("file metadata is isolated by account and paginated without exposing files", async () => {
+  const { t, register } = fixture();
+  const one = await register("file-owner@example.org", "owner-password-123");
+  const two = await register("file-other@example.org", "other-password-123");
+  await one.mutation(api.users.claimUsername, { username: "file_owner" });
+  await two.mutation(api.users.claimUsername, { username: "file_other" });
+  const id = await t.run(async ctx => ctx.storage.store(new Blob(["tiny test image"], { type: "image/png" })));
+  const assetId = await one.mutation(api.fileAssets.registerUpload, { storageId: id, fileName: "test.png" });
+  const page = await one.query(api.fileAssets.listMine, { paginationOpts: { numItems: 10, cursor: null } });
+  assert.equal(page.page.length, 1);
+  assert.equal(page.page[0]._id, assetId);
+  const otherPage = await two.query(api.fileAssets.listMine, { paginationOpts: { numItems: 10, cursor: null } });
+  assert.equal(otherPage.page.length, 0);
+  await assert.rejects(two.query(api.fileAssets.getMine, { assetId }));
+  await assert.rejects(two.mutation(api.fileAssets.removeMine, { assetId }));
+  const ownFile = await one.query(api.fileAssets.getMine, { assetId });
+  assert.equal(ownFile.fileName, "test.png");
+  await one.mutation(api.fileAssets.removeMine, { assetId });
+  assert.equal((await one.query(api.fileAssets.listMine, { paginationOpts: { numItems: 10, cursor: null } })).page.length, 0);
+});
+
+test("permanent account deletion also removes separate file storage", async () => {
+  const { t, register } = fixture();
+  const owner = await register("with-files@example.org", "owner-password-123");
+  await owner.mutation(api.users.claimUsername, { username: "with_files" });
+  const id = await t.run(async ctx => ctx.storage.store(new Blob(["compressed image"], { type: "image/webp" })));
+  const assetId = await owner.mutation(api.fileAssets.registerUpload, { storageId: id, fileName: "avatar.webp" });
+  await owner.mutation(api.users.deleteMyAccount, { email: "with-files@example.org", confirmation: "EXCLUIR MINHA CONTA" });
+  assert.equal(await t.run(ctx => ctx.db.get(assetId)), null);
+  assert.equal(await t.run(ctx => ctx.storage.get(id)), null);
 });

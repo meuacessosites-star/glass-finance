@@ -304,6 +304,12 @@ export const deleteMyAccount = mutation({
     for (const preference of await ctx.db.query("userPreferences")
       .withIndex("by_user", q => q.eq("userId", user._id)).collect())
       await ctx.db.delete(preference._id);
+    // Deleting an account also removes its owned files, not just metadata.
+    for (const asset of await ctx.db.query("fileAssets")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect()) {
+      await ctx.storage.delete(asset.storageId);
+      await ctx.db.delete(asset._id);
+    }
     for (const account of await ctx.db.query("authAccounts").withIndex("userIdAndProvider", q => q.eq("userId", user._id)).collect()) {
       for (const code of await ctx.db.query("authVerificationCodes").withIndex("accountId", q => q.eq("accountId", account._id)).collect())
         await ctx.db.delete(code._id);
