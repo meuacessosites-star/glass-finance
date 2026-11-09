@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Bell, BellOff } from "lucide-react";
@@ -11,14 +11,24 @@ export function BrowserReminderSettings() {
   const registerDevice = useMutation(api.pushNotifications.registerDevice);
   const removeDevice = useMutation(api.pushNotifications.removeDevice);
   const [busy, setBusy] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState(false);
   const supported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
   const permission = supported ? Notification.permission : "unsupported";
-  const enabled = reminderPreferences.browserEnabled && permission === "granted";
+  const enabled = hasSubscription && reminderPreferences.browserEnabled && permission === "granted";
   const pushReady = Boolean(publicKey);
+  useEffect(() => {
+    if (!supported) return;
+    let active = true;
+    void navigator.serviceWorker.getRegistration("/")
+      .then(registration => registration?.pushManager.getSubscription())
+      .then(subscription => { if (active) setHasSubscription(Boolean(subscription)); })
+      .catch(() => { if (active) setHasSubscription(false); });
+    return () => { active = false; };
+  }, [supported, activeProfile?.id]);
 
   const toggle = async () => {
     if (busy) return;
-    if (reminderPreferences.browserEnabled) {
+    if (enabled) {
       setBusy(true);
       try {
         const worker = await navigator.serviceWorker.getRegistration("/");
@@ -28,6 +38,7 @@ export function BrowserReminderSettings() {
           await sub.unsubscribe();
         }
         setReminderPreferences({ ...reminderPreferences, browserEnabled: false });
+        setHasSubscription(false);
         toast.success("Notificações push desativadas neste aparelho");
       } catch {
         toast.error("Não foi possível remover a inscrição. Tente novamente.");
@@ -67,6 +78,7 @@ export function BrowserReminderSettings() {
         auth: details.keys.auth,
         timeZone: deviceTimeZone,
       });
+      setHasSubscription(true);
       setReminderPreferences({ ...reminderPreferences, browserEnabled: true });
       toast.success("Push ativado neste aparelho", {
         description: "O Convex poderá enviar lembretes mesmo com o aplicativo fechado, se o navegador permitir.",
