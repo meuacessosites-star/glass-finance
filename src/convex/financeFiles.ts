@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
@@ -71,3 +71,26 @@ export const getMetadata = query({
 // Files are intentionally NOT deleted when a transaction is changed or removed.
 // This makes undo and backup recovery possible; cleanup must first prove no
 // references remain in transactions, loans, backups, or old snapshots.
+
+/**
+ * Daily, bounded deletion of uploads never committed to an account record.
+ * Linked files (including receipts in deleted entries / backups) are never
+ * automatically removed. The grace period accommodates failed saves.
+ */
+export const cleanupAbandonedUploads = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const pending = await ctx.db.query("financeFiles")
+      .withIndex("by_linked_created", q => q.eq("linked", false))
+      .order("asc").take(25);
+    let deleted = 0;
+    for (const item of pending) {
+      if (item.createdAt >= cutoff) break;
+      await ctx.storage.delete(item.storageId as Id<"_storage">);
+      await ctx.db.delete(item._id as Id<"financeFiles">);
+      deleted++;
+    }
+    return { deleted };
+  },
+});
