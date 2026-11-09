@@ -3,7 +3,7 @@ import { inspectBackup } from "@/lib/backup-validation";
 import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import "@/components/app/planning.css";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Copy,
   Download,
@@ -42,7 +42,7 @@ const inputClass =
 
 export default function AccountPage() {
   const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
-  const storageHealth = estimateStorageHealth(profiles);
+  const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
