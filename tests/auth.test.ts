@@ -458,3 +458,11 @@ test("UI preferences persist per account and are removed with account deletion",
   await owner.mutation(api.users.deleteMyAccount, { email: "pref-owner@example.org", confirmation: "EXCLUIR MINHA CONTA" });
   assert.equal(await other.query(api.userPreferences.getMine, { key }), null);
 });
+
+test("image storage size estimator distinguishes base64 payload sizes", async () => {
+  const { imageDataUrlBytes } = await import("../src/lib/image-compression");
+  assert.equal(imageDataUrlBytes("data:image/jpeg;base64,AAAA"), 3);
+  assert.equal(imageDataUrlBytes("data:image/webp;base64,AA=="), 1);
+  assert.equal(imageDataUrlBytes("data:image/png;base64,AAA="), 2);
+  assert.equal(imageDataUrlBytes("invalid"), Infinity);
+});

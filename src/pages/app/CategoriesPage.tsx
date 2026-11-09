@@ -17,6 +17,7 @@ import {
 import { CategoryColorPicker } from "@/components/app/CategoryColorPicker";
 import { useAppStore } from "@/lib/app-store";
 import { normalizeSearchText } from "@/lib/transaction-view";
+import { compressUploadImage } from "@/lib/image-compression";
 import { cn } from "@/lib/utils";
 
 const PALETTE = [
@@ -37,7 +38,7 @@ const PALETTE = [
 const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[15px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint";
 const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
-const MAX_CATEGORY_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_CATEGORY_IMAGE_BYTES = 25 * 1024 * 1024;
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -131,18 +132,16 @@ export default function CategoriesPage() {
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      toast("Escolha um arquivo de imagem");
+      toast.error("Escolha uma imagem válida.");
       return;
     }
     if (file.size > MAX_CATEGORY_IMAGE_BYTES) {
-      toast("A imagem deve ter no máximo 2 MB");
+      toast.error("Escolha uma imagem com até 25 MB para compactação automática.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setImage(reader.result);
-    };
-    reader.readAsDataURL(file);
+    void compressUploadImage(file, { use: "icon", maxDimension: 640 })
+      .then(setImage)
+      .catch(() => toast.error("Não foi possível compactar essa imagem. Tente outra foto."));
   };
 
   const handleSave = () => {
