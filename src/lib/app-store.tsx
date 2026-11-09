@@ -18,7 +18,7 @@ import { sanitizeLoanValueMode, type LoanValueMode } from "./loan-value-display"
 import { sanitizeCategoryLimits, updateCategoryLimit, type CategoryLimits } from "./report-budgets";
 import { CATEGORY_CATALOG_VERSION, expandCategoryCatalog } from "./category-catalog";
 import { sanitizeCardBrand, type CardBrand } from "./card-appearance";
-import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, type TransactionDeletion } from "./transaction-deletion";
+import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, restoreTrashedTransaction, sanitizeTransactionTrash, type TrashedTransaction, type TransactionDeletion } from "./transaction-deletion";
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
@@ -214,6 +214,7 @@ export type ProfileData = {
   categoryCatalogVersion?: number;
   cards: AppCard[];
   transactions: Transaction[];
+  trashedTransactions?: TrashedTransaction[];
   loanReceivables: LoanReceivable[];
   people: AppPerson[];
   reserves: AppReserve[];
@@ -848,6 +849,8 @@ function buildProfiles(raw: unknown): AppProfile[] {
           ...expandCategoryCatalog(sanitizeCategories(nested.categories), nested.categoryCatalogVersion),
           cards: profileCards,
           transactions: sanitizeTransactions(nested.transactions, profileCards),
+          ...(sanitizeTransactionTrash(nested.trashedTransactions).length
+            ? { trashedTransactions: sanitizeTransactionTrash(nested.trashedTransactions) } : {}),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
           people: sanitizePeople(nested.people),
           reserves: sanitizeReserves(nested.reserves),
@@ -951,6 +954,7 @@ type AppStoreValue = {
   cloudSyncStatus: "loading" | "synced" | "saving" | "error" | "conflict";
   retryCloudSync: () => void;
   deleteCloudData: () => Promise<void>;
+  restoreTrashedTransaction: (profileId: string, transactionId: string) => void;
   activeProfileId: string;
   pinUsage: PinUsage;
   activeProfile: AppProfile | undefined;
@@ -1394,6 +1398,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       cloudSyncStatus,
       retryCloudSync,
       deleteCloudData,
+      restoreTrashedTransaction: (profileId, transactionId) =>
+        setState((current) => ({ ...current, profiles: restoreTrashedTransaction(current.profiles, profileId, transactionId) })),
       activeProfileId: state.activeProfileId,
       pinUsage: state.pinUsage,
       activeProfile: active,
