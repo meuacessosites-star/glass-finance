@@ -1,3 +1,4 @@
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -102,7 +103,7 @@ export const saveMine = mutation({
       const existing = await ctx.db.query("financeTransactions")
         .withIndex("by_owner_profile_transaction", q => q.eq("ownerTransactionKey", key)).unique();
       if (op.type === "delete") {
-        if (existing) await ctx.db.delete(existing._id);
+        if (existing) await ctx.db.delete(existing._id as Id<"financeTransactions">);
         continue;
       }
       if (!activeProfiles.has(op.profileId) || !op.payload ||
@@ -125,12 +126,12 @@ export const saveMine = mutation({
         sourceRevision: current + 1,
         updatedAt: Date.now(),
       };
-      if (existing) await ctx.db.patch(existing._id, fields);
+      if (existing) await ctx.db.patch(existing._id as Id<"financeTransactions">, fields);
       else await ctx.db.insert("financeTransactions", fields);
     }
     const revision = current + 1;
     const updatedAt = Date.now();
-    await ctx.db.patch(state._id, { revision, updatedAt, metadataPayload });
+    await ctx.db.patch(state._id as Id<"financeV2States">, { revision, updatedAt, metadataPayload });
     return { ok: true as const, revision, updatedAt };
   },
 });
