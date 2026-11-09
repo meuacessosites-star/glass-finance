@@ -1,3 +1,6 @@
+import { useConvex, type ConvexReactClient } from "convex/react";
+import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges } from "./finance-v2-state";
+import { uploadAttachmentToCloud, isAttachmentImage } from "./cloud-attachments";
 import {sanitizeFinancingPaymentMethod,type FinancingPaymentMethod} from './financing-payment-method';
 import { inspectBackup } from "./backup-validation";
 import { financingFlowRows } from './financing-plan';
@@ -1171,6 +1174,50 @@ type AppStoreValue = {
 };
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
+
+/**
+ * Read normalized history in bounded pages. The revision is checked once
+ * again after paging so a concurrent edit cannot silently create an
+ * incomplete account snapshot.
+ */
+async function loadNormalizedAccount(
+  convex: ConvexReactClient,
+  metadataPayload: string,
+  revision: number,
+): Promise<AppStoreState> {
+  const metadata = JSON.parse(metadataPayload) as { profiles?: Array<{ id: string }> };
+  if (!Array.isArray(metadata.profiles) || !metadata.profiles.length)
+    throw new Error("Metadados financeiros incompletos");
+  const pages: Record<string, Array<Record<string, unknown> & { id: string }>> = {};
+  for (const profile of metadata.profiles) {
+    const rows: Array<Record<string, unknown> & { id: string }> = [];
+    let cursor: string | undefined;
+    const seen = new Set<string>();
+    while (true) {
+      const result = await convex.query(api.financeV2.listProfilePage, {
+        profileId: profile.id, ...(cursor ? { cursor } : {}),
+      });
+      for (const raw of result.page) {
+        const row = raw as { id?: unknown } & Record<string, unknown>;
+        if (!row || typeof row.id !== "string" || !row.id || seen.has(row.id))
+          throw new Error("Transação duplicada ou inválida no histórico");
+        seen.add(row.id);
+        rows.push(row as Record<string, unknown> & { id: string });
+      }
+      if (result.isDone) break;
+      if (!result.continueCursor || cursor === result.continueCursor)
+        throw new Error("Paginação do histórico interrompida");
+      cursor = result.continueCursor;
+    }
+    pages[profile.id] = rows;
+  }
+  const fresh = await convex.query(api.financeV2.getMine, {});
+  if (!fresh || fresh.revision !== revision)
+    throw new Error("O histórico mudou durante a leitura; recarregue para sincronizar");
+  return startPaymentNoticeSession(stateFromSnapshot(
+    JSON.parse(inflateTransactionPages(metadataPayload, pages)),
+  ));
+}
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
