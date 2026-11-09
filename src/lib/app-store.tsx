@@ -1327,7 +1327,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!cloudReady || !v2ModeRef.current || migrationRef.current ||
         !v2Snapshot || v2Snapshot.revision <= revisionRef.current) return;
-    if (localDirtyRef.current || saveInFlightRef.current) {
+    // Own writes can appear in the subscription before their mutation promise
+    // resolves. Wait for that promise to decide success/conflict, not the UI.
+    if (saveInFlightRef.current) return;
+    if (localDirtyRef.current) {
       conflictRef.current = true;
       pendingPayloadRef.current = null;
       setCloudSyncStatus("conflict");
