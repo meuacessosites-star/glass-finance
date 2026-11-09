@@ -45,6 +45,8 @@ export function filterPaymentReminders(
     if (options.kind !== "all" && item.kind !== options.kind) return false;
     const text = normalizeSearchText([
       item.title, item.kind, item.date, shortDate(item.date),
+      `${item.date.slice(8, 10)}/${item.date.slice(5, 7)}/${item.date.slice(0, 4)}`,
+      `${item.date.slice(5, 7)}/${item.date.slice(0, 4)}`,
       formatCurrency(Math.abs(item.amount)), Math.abs(item.amount).toFixed(2),
       item.phase, item.receiving ? "receber recebimento" : "pagar pagamento",
     ].join(" "));
