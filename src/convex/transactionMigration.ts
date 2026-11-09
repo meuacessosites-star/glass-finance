@@ -39,7 +39,7 @@ export const copyBatch = mutation({
           transaction.payload.id !== transaction.id ||
           transaction.payload.amount !== transaction.amount ||
           transaction.payload.date !== transaction.date ||
-          !/^\\d{4}-\\d{2}-\\d{2}$/.test(transaction.date))
+          !/^\d{4}-\d{2}-\d{2}$/.test(transaction.date))
         throw new Error("Transação inválida ou duplicada no lote");
       ids.add(transaction.id);
       const amountCents = cents(transaction.amount);
