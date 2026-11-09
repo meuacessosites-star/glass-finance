@@ -31,6 +31,22 @@ export const copyBatch = mutation({
       .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
     if (!state || state.revision !== args.sourceRevision)
       throw new Error("Snapshot mudou. Reinicie a conferência antes de copiar.");
+    // Read the authoritative legacy revision in the same database transaction.
+    // The browser may only request copies of records that actually exist.
+    const sourceChunks = await ctx.db.query("financeStateChunks")
+      .withIndex("by_user_subject_revision", q => q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("revision"), args.sourceRevision)).collect();
+    if (sourceChunks.length !== state.chunkCount)
+      throw new Error("Snapshot original incompleto; migração interrompida");
+    const original = JSON.parse(
+      sourceChunks.sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex))
+        .map(c => String(c.payload)).join(""),
+    ) as { profiles?: Array<{ id: string; data?: { transactions?: Array<{ id: string; amount: number; date: string }> } }> };
+    const profile = original.profiles?.find(p => p.id === args.profileId);
+    if (!profile || !Array.isArray(profile.data?.transactions))
+      throw new Error("Perfil de origem não encontrado");
+    const legacyRows = new Map(profile.data.transactions.map(t => [t.id, t]));
+
     const ids = new Set<string>();
     let copied = 0;
     for (const transaction of args.items) {
@@ -41,6 +57,13 @@ export const copyBatch = mutation({
           transaction.payload.date !== transaction.date ||
           !/^\d{4}-\d{2}-\d{2}$/.test(transaction.date))
         throw new Error("Transação inválida ou duplicada no lote");
+      const sourceRow = legacyRows.get(transaction.id);
+      if (!sourceRow ||
+          JSON.stringify(sourceRow) !== JSON.stringify(transaction.payload) ||
+          sourceRow.amount !== transaction.amount || sourceRow.date !== transaction.date)
+        throw new Error("O registro enviado não corresponde ao snapshot original");
+      if (new TextEncoder().encode(JSON.stringify(transaction.payload)).byteLength > 900_000)
+        throw new Error("Anexo antigo muito grande. Transfira-o para armazenamento de arquivos antes da migração");
       ids.add(transaction.id);
       const amountCents = cents(transaction.amount);
       const existing = await ctx.db.query("financeTransactions")
