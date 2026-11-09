@@ -1,3 +1,4 @@
+import { linkReferencedFiles } from "./financeFileRefs";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
@@ -94,6 +95,7 @@ export const saveMine = mutation({
         new TextEncoder().encode(JSON.stringify(operations)).byteLength > MAX_CHANGE_BATCH_BYTES)
       throw new Error("Lote muito grande para salvar com segurança");
     const activeProfiles = validateMetadata(metadataPayload);
+    await linkReferencedFiles(ctx, userSubject, JSON.parse(metadataPayload));
     const seen = new Set<string>();
     for (const op of operations) {
       const key = ownerTransactionKey(userSubject, op.profileId, op.transactionId);
@@ -113,6 +115,7 @@ export const saveMine = mutation({
       if (row.id !== op.transactionId || typeof row.amount !== "number" ||
           typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date))
         throw new Error("Identificação, valor ou data inválida");
+      await linkReferencedFiles(ctx, userSubject, op.payload, op.profileId);
       const amountCents = monetaryCents(row.amount);
       const fields = {
         userSubject,
@@ -184,6 +187,7 @@ export const activateFromLegacy = mutation({
     })) };
     const metadataPayload = JSON.stringify(metadata);
     validateMetadata(metadataPayload);
+    await linkReferencedFiles(ctx, userSubject, metadata);
     const updatedAt = Date.now();
     await ctx.db.insert("financeV2States", {
       userSubject, revision: 1, metadataPayload, legacyRevision: sourceRevision, updatedAt,
