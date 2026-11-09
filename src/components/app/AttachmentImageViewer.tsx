@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadAttachment } from "@/lib/attachment-utils";
+import { isImageAttachment, useAttachmentSource } from "@/lib/cloud-attachments";
 
 const LIGHTBOX_MIN_ZOOM = 1;
 const LIGHTBOX_MAX_ZOOM = 3;
@@ -72,7 +73,7 @@ export function AttachmentImageViewer({
   onClose: () => void;
 }) {
   const imageAttachments = attachments.flatMap((src, index) =>
-    src.startsWith("data:image") ? [{ src, index }] : [],
+    isImageAttachment(src) ? [{ src, index }] : [],
   );
   const [lightboxIndex, setLightboxIndex] = useState(() =>
     Math.max(
@@ -105,7 +106,7 @@ export function AttachmentImageViewer({
   } | null>(null);
   const currentImage =
     imageAttachments[Math.min(lightboxIndex, imageAttachments.length - 1)];
-  const lightboxSrc = currentImage?.src;
+  const { src: lightboxSrc } = useAttachmentSource(currentImage?.src ?? "");
   const resetLightboxViewport = () => {
     activePointersRef.current.clear();
     pinchRef.current = null;
@@ -318,7 +319,7 @@ export function AttachmentImageViewer({
     setDownloading(true);
     try {
       await downloadAttachment(
-        currentImage.src,
+        lightboxSrc ?? currentImage.src,
         `anexo-${currentImage.index + 1}`,
       );
     } catch {

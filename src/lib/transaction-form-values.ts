@@ -1,4 +1,5 @@
 import type { TransactionFormValues } from "@/components/app/AddTransactionSheet";
+import { isImageAttachment } from "@/lib/cloud-attachments";
 import { normalizePaymentMethod } from "@/components/app/PaymentMethodSelector";
 import type { Transaction } from "./mock-data";
 
@@ -23,8 +24,8 @@ export function transactionToFormValues(
     draftDisplay: transaction.draftDisplay ?? "hidden",
     attachments: (transaction.attachments ?? []).map((src, index) => ({
       src,
-      isImage: src.startsWith("data:image"),
-      name: src.startsWith("data:image")
+      isImage: isImageAttachment(src),
+      name: isImageAttachment(src)
         ? `Imagem ${index + 1}`
         : `Arquivo ${index + 1}`,
     })),
