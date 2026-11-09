@@ -1,3 +1,6 @@
+import { useConvex } from "convex/react";
+import { isAttachmentImage } from "@/lib/cloud-attachments";
+import { CloudAttachmentImage } from "./CloudAttachmentImage";
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { useState } from "react";
 import {
@@ -78,6 +81,7 @@ export function LoanDetailsDialog({
   onReminder?: () => void;
   showActions?: boolean;
 }) {
+  const convex = useConvex();
   const formatCurrency = usePrivateCurrency();
   const [expandedAttachment, setExpandedAttachment] = useState<number | null>(
     null,
@@ -94,7 +98,7 @@ export function LoanDetailsDialog({
   const status = getLoanRepaymentStatus(item, today);
   const download = async (src: string, index: number) => {
     try {
-      await downloadAttachment(src, `anexo-emprestimo-${index + 1}`);
+      await downloadAttachment(src, `anexo-emprestimo-${index + 1}`, convex);
     } catch {
       toast.error("Não foi possível baixar este anexo");
     }
@@ -392,7 +396,7 @@ export function LoanDetailsDialog({
                         onClick={() => setExpandedAttachment(index)}
                         className="block w-full cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
-                        <img
+                        <CloudAttachmentImage
                           src={src}
                           alt={`Anexo ${index + 1}`}
                           className="max-h-72 w-full rounded-xl object-contain"

@@ -1,3 +1,4 @@
+import { linkReferencedFiles } from "./financeFileRefs";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
@@ -46,6 +47,13 @@ export const saveMine = mutation({
   },
   handler: async (ctx, { payload, expectedRevision }) => {
     const userSubject = await getUserSubject(ctx);
+    // Legacy clients must not overwrite accounts that have switched to
+    // individual transaction records; they receive a safe revision conflict.
+    const normalizedState = await ctx.db.query("financeV2States")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (normalizedState) {
+      return { ok: false as const, conflict: true as const, revision: Number(normalizedState.legacyRevision) };
+    }
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       throw new Error("Revisão inválida");
     }
@@ -70,6 +78,8 @@ export const saveMine = mutation({
     if (expectedRevision !== currentRevision) {
       return { ok: false as const, conflict: true as const, revision: currentRevision };
     }
+
+    await linkReferencedFiles(ctx, userSubject, parsed);
 
     const revision = currentRevision + 1;
     const updatedAt = Date.now();
@@ -131,6 +141,42 @@ export const deleteMine = mutation({
       .withIndex("by_user_subject", (q) => q.eq("userSubject", userSubject))
       .collect();
     for (const chunk of chunks) await ctx.db.delete(chunk._id as Id<"financeStateChunks">);
+
+    const v2State = await ctx.db.query("financeV2States")
+      .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
+    if (v2State) await ctx.db.delete(v2State._id as Id<"financeV2States">);
+
+    // Also remove the normalized migration copies and uploaded files when the
+    // account owner explicitly requests permanent deletion. This is atomic with
+    // the legacy state deletion: an oversized operation fails without partial
+    // database deletion, rather than silently retaining private financial data.
+    const transactions = await ctx.db.query("financeTransactions")
+      .withIndex("by_owner", q => q.eq("userSubject", userSubject)).collect();
+    for (const entry of transactions) {
+      await ctx.db.delete(entry._id as Id<"financeTransactions">);
+    }
+    const migrations = await ctx.db.query("financeMigrationProgress")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const entry of migrations) {
+      await ctx.db.delete(entry._id as Id<"financeMigrationProgress">);
+    }
+    const files = await ctx.db.query("financeFiles")
+      .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const file of files) {
+      await ctx.storage.delete(file.storageId as Id<"_storage">);
+      await ctx.db.delete(file._id as Id<"financeFiles">);
+    }
+
+    const pushDevices = await ctx.db.query("pushDevices")
+      .withIndex("by_user", q => q.eq("userSubject", userSubject)).collect();
+    for (const device of pushDevices) {
+      await ctx.db.delete(device._id as Id<"pushDevices">);
+    }
+    const pushSchedules = await ctx.db.query("pushSchedules")
+      .withIndex("by_user_profile", q => q.eq("userSubject", userSubject)).collect();
+    for (const schedule of pushSchedules) {
+      await ctx.db.delete(schedule._id as Id<"pushSchedules">);
+    }
 
     const people = await ctx.db
       .query("people")

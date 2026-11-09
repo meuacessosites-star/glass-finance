@@ -1,3 +1,5 @@
+import { PushScheduleSync } from "@/components/app/PushScheduleSync";
+import { BrowserReminderRunner } from "@/components/app/BrowserReminderRunner";
 import { preloadRoute } from '@/lib/route-preload';
 import { BalancePrivacyProvider } from "@/components/app/BalancePrivacy";
 import { Suspense, useEffect, useState } from "react";
@@ -79,6 +81,8 @@ function DashboardShell() {
             </div>
           </main>
 
+          <BrowserReminderRunner />
+          <PushScheduleSync />
           {!isTransactionEdit && <DueTodayAlerts />}
           {!isTransactionEdit && (
             <BottomNav

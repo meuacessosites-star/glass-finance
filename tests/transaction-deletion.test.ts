@@ -6,6 +6,9 @@ import {
   applyTransactionDeletion,
   captureTransactionDeletion,
   restoreTransactionDeletion,
+  restoreTrashedTransaction,
+  sanitizeTransactionTrash,
+  TRASH_RETENTION_MS,
 } from "../src/lib/transaction-deletion";
 import { getHomeBalance } from "../src/lib/home-balance";
 
@@ -215,4 +218,30 @@ test("undo immediately restores the balances calculated from Transactions", () =
     getHomeBalance(restored[0].data, "2026-10", "monthly").balance,
     750,
   );
+});
+
+test("trash survives an app save, stays scoped to a profile, and can be restored", () => {
+  const a = profile("a", [row("a", -25), row("b", 100)]);
+  const b = profile("b", [row("a", 200)]);
+  const deletion = captureTransactionDeletion(a.data, "a", ["a"])!;
+  const removed = applyTransactionDeletion([a, b], deletion);
+  assert.equal(removed[0].data.trashedTransactions?.length, 1);
+  assert.equal(removed[1].data.trashedTransactions, undefined);
+  const restored = restoreTrashedTransaction(removed, "a", "a");
+  assert.deepEqual(restored, [a, b]);
+});
+
+test("expired trash is not restored after the 30-day retention window", () => {
+  const entry = {
+    transaction: row("old"),
+    deletedAt: 1000,
+    originalOrder: ["old"],
+  };
+  assert.equal(sanitizeTransactionTrash([entry], 1000 + TRASH_RETENTION_MS - 1).length, 1);
+  assert.equal(sanitizeTransactionTrash([entry], 1000 + TRASH_RETENTION_MS).length, 0);
+});
+
+test("invalid or duplicated trash entries cannot alter restored transactions", () => {
+  const entry = { transaction: row("single"), deletedAt: 100, originalOrder: ["single"] };
+  assert.equal(sanitizeTransactionTrash([entry, entry, { ...entry, deletedAt: -5 }], 200).length, 1);
 });

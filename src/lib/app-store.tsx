@@ -1,3 +1,7 @@
+import { DEFAULT_REMINDER_PREFERENCES, sanitizeReminderPreferences, type ReminderPreferences } from "./reminder-filters";
+import { useConvex, type ConvexReactClient } from "convex/react";
+import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges, splitTransactionBatches, applyTransactionBatch } from "./finance-v2-state";
+import { uploadAttachmentToCloud, isAttachmentImage } from "./cloud-attachments";
 import {sanitizeFinancingPaymentMethod,type FinancingPaymentMethod} from './financing-payment-method';
 import { inspectBackup } from "./backup-validation";
 import { financingFlowRows } from './financing-plan';
@@ -18,7 +22,7 @@ import { sanitizeLoanValueMode, type LoanValueMode } from "./loan-value-display"
 import { sanitizeCategoryLimits, updateCategoryLimit, type CategoryLimits } from "./report-budgets";
 import { CATEGORY_CATALOG_VERSION, expandCategoryCatalog } from "./category-catalog";
 import { sanitizeCardBrand, type CardBrand } from "./card-appearance";
-import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, type TransactionDeletion } from "./transaction-deletion";
+import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactionDeletion, restoreTrashedTransaction, sanitizeTransactionTrash, type TrashedTransaction, type TransactionDeletion } from "./transaction-deletion";
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
@@ -214,6 +218,7 @@ export type ProfileData = {
   categoryCatalogVersion?: number;
   cards: AppCard[];
   transactions: Transaction[];
+  trashedTransactions?: TrashedTransaction[];
   loanReceivables: LoanReceivable[];
   people: AppPerson[];
   reserves: AppReserve[];
@@ -229,6 +234,7 @@ export type ProfileData = {
   ignoredNotificationCount?: number;
   ignoredNotificationDate?: string;
   notificationRetentionDays?: number;
+  reminderPreferences?: ReminderPreferences;
   readPaymentNotificationIds?: string[];
   financings: AppFinancing[];
   /** true = parcelas dos financiamentos aparecem junto com as transações. */
@@ -287,6 +293,7 @@ function defaultData(): ProfileData {
     ignoredNotificationCount: 0,
     ignoredNotificationDate: localDateKey(),
     notificationRetentionDays: 7,
+    reminderPreferences: { ...DEFAULT_REMINDER_PREFERENCES },
     readPaymentNotificationIds: [],
     financings: [],
     financingsInFlow: false,
@@ -848,6 +855,8 @@ function buildProfiles(raw: unknown): AppProfile[] {
           ...expandCategoryCatalog(sanitizeCategories(nested.categories), nested.categoryCatalogVersion),
           cards: profileCards,
           transactions: sanitizeTransactions(nested.transactions, profileCards),
+          ...(sanitizeTransactionTrash(nested.trashedTransactions).length
+            ? { trashedTransactions: sanitizeTransactionTrash(nested.trashedTransactions) } : {}),
           loanReceivables: sanitizeLoanReceivables(nested.loanReceivables),
           people: sanitizePeople(nested.people),
           reserves: sanitizeReserves(nested.reserves),
@@ -866,6 +875,7 @@ function buildProfiles(raw: unknown): AppProfile[] {
           readPaymentNotificationIds: sanitizeReadNotificationIds(nested.readPaymentNotificationIds),
           ignoredNotificationDate: sanitizeDueDate(nested.ignoredNotificationDate),
           notificationRetentionDays: sanitizeNotificationRetention(nested.notificationRetentionDays),
+          reminderPreferences: sanitizeReminderPreferences(nested.reminderPreferences),
           financings: sanitizeFinancings(nested.financings),
           financingsInFlow:
             typeof nested.financingsInFlow === "boolean"
@@ -906,6 +916,12 @@ function buildProfiles(raw: unknown): AppProfile[] {
 }
 
 function stateFromSnapshot(parsed: unknown): AppStoreState {
+  // Never replace a damaged cloud snapshot with an empty account: that could
+  // silently overwrite years of transactions at the next autosave.
+  const raw = parsed as { profiles?: unknown } | null;
+  if (!raw || !Array.isArray(raw.profiles) || raw.profiles.length === 0) {
+    throw new Error("O estado sincronizado está incompleto. Nenhum dado será substituído.");
+  }
   try {
     const profiles = buildProfiles(parsed).map((profile) => ({ ...profile, data: maintainNotificationHistory(profile.data) }));
     const activeProfileId =
@@ -922,8 +938,8 @@ function stateFromSnapshot(parsed: unknown): AppStoreState {
           ? "switch"
           : "open",
     };
-  } catch {
-    return createInitialState();
+  } catch (error) {
+    throw new Error(`Não foi possível validar os dados sincronizados. Nenhuma substituição será feita. ${error instanceof Error ? error.message : ""}`);
   }
 }
 
@@ -945,6 +961,9 @@ type AppStoreValue = {
   cloudSyncStatus: "loading" | "synced" | "saving" | "error" | "conflict";
   retryCloudSync: () => void;
   deleteCloudData: () => Promise<void>;
+  storageVersion: "legacy" | "v2";
+  migrateFinanceStorage: () => Promise<void>;
+  restoreTrashedTransaction: (profileId: string, transactionId: string) => void;
   activeProfileId: string;
   pinUsage: PinUsage;
   activeProfile: AppProfile | undefined;
@@ -1035,6 +1054,8 @@ type AppStoreValue = {
   ignoredNotificationCount: number;
   notificationRetentionDays: number;
   setNotificationRetentionDays: (days: number) => void;
+  reminderPreferences: ReminderPreferences;
+  setReminderPreferences: (preferences: ReminderPreferences) => void;
   readPaymentNotificationIds: string[];
   approveNotification: (id: string, input?: NotificationTransactionInput) => void;
   approveLoanNotification: (id: string, input: LoanCreationInput) => void;
@@ -1162,17 +1183,70 @@ type AppStoreValue = {
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
 
+/**
+ * Read normalized history in bounded pages. The revision is checked once
+ * again after paging so a concurrent edit cannot silently create an
+ * incomplete account snapshot.
+ */
+async function loadNormalizedAccount(
+  convex: ConvexReactClient,
+  metadataPayload: string,
+  revision: number,
+): Promise<AppStoreState> {
+  const metadata = JSON.parse(metadataPayload) as { profiles?: Array<{ id: string }> };
+  if (!Array.isArray(metadata.profiles) || !metadata.profiles.length)
+    throw new Error("Metadados financeiros incompletos");
+  const pages: Record<string, Array<Record<string, unknown> & { id: string }>> = {};
+  for (const profile of metadata.profiles) {
+    const rows: Array<Record<string, unknown> & { id: string }> = [];
+    let cursor: string | undefined;
+    const seen = new Set<string>();
+    while (true) {
+      const result = await convex.query(api.financeV2.listProfilePage, {
+        profileId: profile.id, ...(cursor ? { cursor } : {}),
+      });
+      for (const raw of result.page) {
+        const row = raw as { id?: unknown } & Record<string, unknown>;
+        if (!row || typeof row.id !== "string" || !row.id || seen.has(row.id))
+          throw new Error("Transação duplicada ou inválida no histórico");
+        seen.add(row.id);
+        rows.push(row as Record<string, unknown> & { id: string });
+      }
+      if (result.isDone) break;
+      if (!result.continueCursor || cursor === result.continueCursor)
+        throw new Error("Paginação do histórico interrompida");
+      cursor = result.continueCursor;
+    }
+    pages[profile.id] = rows;
+  }
+  const fresh = await convex.query(api.financeV2.getMine, {});
+  if (!fresh || fresh.revision !== revision)
+    throw new Error("O histórico mudou durante a leitura; recarregue para sincronizar");
+  return startPaymentNoticeSession(stateFromSnapshot(
+    JSON.parse(inflateTransactionPages(metadataPayload, pages)),
+  ));
+}
+
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
+  const convex = useConvex();
   const userId = user?._id ? String(user._id) : null;
-  const cloudSnapshot = useQuery(
-    api.financeState.getMine,
+  const v2Snapshot = useQuery(
+    api.financeV2.getMine,
     !authLoading && isAuthenticated ? {} : "skip",
   );
+  const cloudSnapshot = useQuery(
+    api.financeState.getMine,
+    !authLoading && isAuthenticated && v2Snapshot === null ? {} : "skip",
+  );
   const saveMine = useMutation(api.financeState.saveMine);
+  const saveMineV2 = useMutation(api.financeV2.saveMine);
   const deleteMine = useMutation(api.financeState.deleteMine);
   const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(createInitialState()));
   const [cloudReady, setCloudReady] = useState(false);
+  const [storageVersion, setStorageVersion] = useState<"legacy" | "v2">("legacy");
+  const [migrationInProgress, setMigrationInProgress] = useState(false);
+  const [migrationMessage, setMigrationMessage] = useState("Preparando armazenamento…");
   const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>("loading");
   const hydratedUserRef = useRef<string | null>(null);
   const revisionRef = useRef(0);
@@ -1183,31 +1257,53 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const saveInFlightRef = useRef(false);
   const localDirtyRef = useRef(false);
   const conflictRef = useRef(false);
+  const v2ModeRef = useRef(false);
+  const migrationRef = useRef(false);
 
   useEffect(() => {
     latestStateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !userId || cloudSnapshot === undefined) return;
+    if (authLoading || !isAuthenticated || !userId || v2Snapshot === undefined) return;
+    if (v2Snapshot === null && cloudSnapshot === undefined) return;
     if (hydratedUserRef.current === userId) return;
-    hydratedUserRef.current = userId;
-    revisionRef.current = cloudSnapshot?.revision ?? 0;
-    lastSyncedPayloadRef.current = cloudSnapshot?.payload ?? "";
-    localDirtyRef.current = false;
-    conflictRef.current = false;
-    const nextState = cloudSnapshot?.payload
-      ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
-      : createInitialState();
-    // Hydration is an intentional one-time replacement after the user-scoped
-    // Convex query resolves; no local browser data is imported into the account.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(startPaymentNoticeSession(nextState));
-    setCloudSyncStatus("synced");
-    setCloudReady(true);
-  }, [authLoading, isAuthenticated, userId, cloudSnapshot]);
+    let cancelled = false;
+    const hydrate = async () => {
+      try {
+        const nextState = v2Snapshot
+          ? await loadNormalizedAccount(convex, v2Snapshot.metadataPayload, v2Snapshot.revision)
+          : startPaymentNoticeSession(
+              cloudSnapshot?.payload
+                ? stateFromSnapshot(JSON.parse(cloudSnapshot.payload))
+                : createInitialState(),
+            );
+        if (cancelled) return;
+        hydratedUserRef.current = userId;
+        v2ModeRef.current = Boolean(v2Snapshot);
+        setStorageVersion(v2Snapshot ? "v2" : "legacy");
+        revisionRef.current = v2Snapshot?.revision ?? cloudSnapshot?.revision ?? 0;
+        lastSyncedPayloadRef.current = v2Snapshot
+          ? JSON.stringify(nextState)
+          : cloudSnapshot?.payload ?? "";
+        localDirtyRef.current = false;
+        conflictRef.current = false;
+        pendingPayloadRef.current = null;
+        setState(nextState);
+        setCloudSyncStatus("synced");
+        setCloudReady(true);
+      } catch {
+        if (cancelled) return;
+        // A bad remote response must never be interpreted as an empty account.
+        setCloudSyncStatus("error");
+      }
+    };
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated, userId, v2Snapshot, cloudSnapshot, convex]);
 
   useEffect(() => {
+    if (v2ModeRef.current) return;
     if (!cloudReady || !cloudSnapshot || cloudSnapshot.revision <= revisionRef.current) return;
     if (cloudSnapshot.payload === lastSyncedPayloadRef.current) {
       revisionRef.current = cloudSnapshot.revision;
@@ -1234,8 +1330,39 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setCloudSyncStatus("synced");
   }, [cloudReady, cloudSnapshot]);
 
+  useEffect(() => {
+    if (!cloudReady || !v2ModeRef.current || migrationRef.current ||
+        !v2Snapshot || v2Snapshot.revision <= revisionRef.current) return;
+    // Own writes can appear in the subscription before their mutation promise
+    // resolves. Wait for that promise to decide success/conflict, not the UI.
+    if (saveInFlightRef.current) return;
+    if (localDirtyRef.current) {
+      conflictRef.current = true;
+      pendingPayloadRef.current = null;
+      setCloudSyncStatus("conflict");
+      toast.error("O histórico foi alterado em outro dispositivo. Exporte um backup antes de recarregar.");
+      return;
+    }
+    let cancelled = false;
+    void loadNormalizedAccount(convex, v2Snapshot.metadataPayload, v2Snapshot.revision)
+      .then(nextState => {
+        if (cancelled) return;
+        revisionRef.current = v2Snapshot.revision;
+        lastSyncedPayloadRef.current = JSON.stringify(nextState);
+        setState(nextState);
+        setCloudSyncStatus("synced");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCloudSyncStatus("error");
+          toast.error("Não foi possível conferir o histórico remoto. Os dados locais foram preservados.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [cloudReady, v2Snapshot, convex]);
+
   const drainSaveQueue = useCallback(async () => {
-    if (saveInFlightRef.current || conflictRef.current) return;
+    if (saveInFlightRef.current || conflictRef.current || migrationRef.current) return;
     saveInFlightRef.current = true;
     try {
       while (pendingPayloadRef.current && !conflictRef.current) {
@@ -1244,16 +1371,41 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         inFlightPayloadRef.current = payload;
         setCloudSyncStatus("saving");
         try {
-          const result = await saveMine({ payload, expectedRevision: revisionRef.current });
-          if (!result.ok) {
+          // Large imports and multi-select edits are committed in bounded
+          // revisions instead of failing at the 30-record mutation ceiling.
+          // Each acknowledged revision becomes an explicit recovery checkpoint.
+          const changes = v2ModeRef.current
+            ? transactionChanges(lastSyncedPayloadRef.current, payload)
+            : [];
+          const batches = v2ModeRef.current
+            ? splitTransactionBatches(changes)
+            : [];
+          const pieces = batches.length ? batches : [[]];
+          let result: { ok: boolean; revision: number } = { ok: false, revision: revisionRef.current };
+          let checkpoint = lastSyncedPayloadRef.current;
+          for (let index = 0; index < pieces.length; index++) {
+            const intermediate = v2ModeRef.current
+              ? applyTransactionBatch(checkpoint, payload, pieces[index], index === pieces.length - 1)
+              : payload;
+            result = v2ModeRef.current
+              ? await saveMineV2({
+                  expectedRevision: revisionRef.current,
+                  metadataPayload: metadataWithoutTransactions(intermediate),
+                  operations: pieces[index],
+                })
+              : await saveMine({ payload, expectedRevision: revisionRef.current });
+            if (!result.ok) break;
+            revisionRef.current = result.revision;
+            checkpoint = intermediate;
+            lastSyncedPayloadRef.current = checkpoint;
+          }
+          if (!result?.ok) {
             conflictRef.current = true;
             localDirtyRef.current = true;
             setCloudSyncStatus("conflict");
             toast.error("Outra sessão salvou dados mais recentes. Nenhum dado remoto foi sobrescrito; exporte um backup antes de atualizar esta página.");
             break;
           }
-          revisionRef.current = result.revision;
-          lastSyncedPayloadRef.current = payload;
           const latestPayload = JSON.stringify(latestStateRef.current);
           localDirtyRef.current = latestPayload !== payload;
           if (localDirtyRef.current) pendingPayloadRef.current = latestPayload;
@@ -1271,10 +1423,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       saveInFlightRef.current = false;
     }
-  }, [saveMine]);
+  }, [saveMine, saveMineV2]);
 
   useEffect(() => {
-    if (!cloudReady || !userId || conflictRef.current) return;
+    if (!cloudReady || !userId || conflictRef.current || migrationRef.current) return;
     const payload = JSON.stringify(state);
     if (payload === lastSyncedPayloadRef.current) {
       localDirtyRef.current = false;
@@ -1312,6 +1464,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       throw error;
     }
     revisionRef.current = 0;
+    v2ModeRef.current = false;
+    setStorageVersion("legacy");
     lastSyncedPayloadRef.current = "";
     pendingPayloadRef.current = null;
     localDirtyRef.current = false;
@@ -1319,6 +1473,112 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setState(startPaymentNoticeSession(createInitialState()));
     setCloudSyncStatus("synced");
   }, [deleteMine]);
+
+  const migrateFinanceStorage = useCallback(async () => {
+    if (!cloudReady || !isAuthenticated || v2ModeRef.current ||
+        migrationRef.current || conflictRef.current || saveInFlightRef.current ||
+        localDirtyRef.current || pendingPayloadRef.current ||
+        cloudSyncStatus !== "synced" || !cloudSnapshot?.revision)
+      throw new Error("Sincronize os dados antes de iniciar a migração.");
+    migrationRef.current = true;
+    setMigrationInProgress(true);
+    try {
+      // Every source record stays in the legacy snapshot until the new
+      // transaction documents have been copied and verified.
+      const prepared = JSON.parse(JSON.stringify(latestStateRef.current)) as AppStoreState;
+      const cache = new Map<string, string>();
+      const upload = async (profileId: string, original: string, name: string) => {
+        if (!original.startsWith("data:")) return original;
+        const key = JSON.stringify([profileId, original]);
+        if (cache.has(key)) return cache.get(key)!;
+        const stored = await uploadAttachmentToCloud(
+          convex, original, profileId, name, isAttachmentImage(original),
+        );
+        cache.set(key, stored);
+        return stored;
+      };
+      for (const profile of prepared.profiles) {
+        setMigrationMessage(`Preparando comprovantes do perfil ${profile.name}…`);
+        for (const row of profile.data.transactions) {
+          if (!row.attachments?.length) continue;
+          row.attachments = await Promise.all(row.attachments.map(
+            (src, index) => upload(profile.id, src, `transacao-${row.id}-${index + 1}`),
+          ));
+        }
+        for (const row of profile.data.loanReceivables) {
+          if (!row.attachments?.length) continue;
+          row.attachments = await Promise.all(row.attachments.map(
+            (src, index) => upload(profile.id, src, `emprestimo-${row.id}-${index + 1}`),
+          ));
+        }
+        for (const entry of profile.data.trashedTransactions ?? []) {
+          if (!entry.transaction.attachments?.length) continue;
+          entry.transaction.attachments = await Promise.all(
+            entry.transaction.attachments.map(
+              (src, index) => upload(profile.id, src, `lixeira-${entry.transaction.id}-${index + 1}`),
+            ),
+          );
+        }
+      }
+      const preparedRaw = JSON.stringify(prepared);
+      let sourceRevision = revisionRef.current;
+      if (preparedRaw !== lastSyncedPayloadRef.current) {
+        setMigrationMessage("Registrando referências dos arquivos sem apagar o histórico…");
+        const saved = await saveMine({
+          payload: preparedRaw, expectedRevision: sourceRevision,
+        });
+        if (!saved.ok) {
+          conflictRef.current = true;
+          setCloudSyncStatus("conflict");
+          throw new Error("Os dados foram alterados em outro dispositivo. Nenhuma migração foi ativada.");
+        }
+        sourceRevision = saved.revision;
+        revisionRef.current = saved.revision;
+        lastSyncedPayloadRef.current = preparedRaw;
+        latestStateRef.current = prepared;
+        setState(prepared);
+      }
+      for (const profile of prepared.profiles) {
+        setMigrationMessage(`Conferindo histórico de ${profile.name}…`);
+        // Earlier interrupted runs may have produced copies from old revisions.
+        for (;;) {
+          const cleaned = await convex.mutation(api.transactionMigration.clearStaleBatch, {
+            profileId: profile.id, sourceRevision,
+          });
+          if (!cleaned.deleted) break;
+        }
+        const existing = await convex.query(api.transactionMigration.verifyProfile, {
+          profileId: profile.id, sourceRevision,
+        });
+        if (!existing.verified) {
+          const rows = profile.data.transactions;
+          for (let index = 0; index < rows.length; index += 5) {
+            setMigrationMessage(`Copiando ${profile.name}: ${Math.min(index + 5, rows.length)} de ${rows.length}…`);
+            await convex.mutation(api.transactionMigration.copyBatch, {
+              profileId: profile.id,
+              sourceRevision,
+              items: rows.slice(index, index + 5).map(transaction => ({
+                id: transaction.id, amount: transaction.amount,
+                date: transaction.date, payload: transaction,
+              })),
+            });
+          }
+        }
+        await convex.mutation(api.transactionMigration.confirmProfile, {
+          profileId: profile.id, sourceRevision,
+        });
+      }
+      setMigrationMessage("Ativando histórico individual após a conferência…");
+      await convex.mutation(api.financeV2.activateFromLegacy, { sourceRevision });
+      // Rehydrate from the verified normalized database, not from this tab.
+      window.location.reload();
+    } catch (error) {
+      setMigrationInProgress(false);
+      throw error;
+    } finally {
+      migrationRef.current = false;
+    }
+  }, [cloudReady, isAuthenticated, cloudSnapshot, cloudSyncStatus, convex, saveMine]);
 
   useEffect(() => {
     const reopen = (event: PageTransitionEvent) => { if (event.persisted) setState((current) => startPaymentNoticeSession(current)); };
@@ -1388,6 +1648,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       cloudSyncStatus,
       retryCloudSync,
       deleteCloudData,
+      storageVersion,
+      migrateFinanceStorage,
+      restoreTrashedTransaction: (profileId, transactionId) =>
+        setState((current) => ({ ...current, profiles: restoreTrashedTransaction(current.profiles, profileId, transactionId) })),
       activeProfileId: state.activeProfileId,
       pinUsage: state.pinUsage,
       activeProfile: active,
@@ -1418,6 +1682,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       notifications: activeData.notifications,
       ignoredNotificationCount: ignoredCountToday(activeData),
       notificationRetentionDays: sanitizeNotificationRetention(activeData.notificationRetentionDays),
+      reminderPreferences: sanitizeReminderPreferences(activeData.reminderPreferences),
+      setReminderPreferences: (preferences) => patchActiveData((data) => ({
+        ...data, reminderPreferences: sanitizeReminderPreferences(preferences),
+      })),
       setNotificationRetentionDays: (days) => patchActiveData((data) => setNotificationRetention(data, days)),
       readPaymentNotificationIds: activeData.readPaymentNotificationIds ?? [],
       financings: activeData.financings,
@@ -1724,12 +1992,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
-  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData]);
+  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage]);
 
-  if (!cloudReady) {
+  if (!cloudReady || migrationInProgress) {
     return (
       <div role="status" className="flex min-h-[100dvh] items-center justify-center bg-[#e8eefb] px-6 text-center text-sm font-semibold text-slate-700 dark:bg-[#0a1122] dark:text-slate-200">
-        Conectando à sua conta e carregando dados sincronizados…
+        {migrationInProgress
+          ? migrationMessage
+          : cloudSyncStatus === "error"
+            ? "Não foi possível validar os dados na nuvem. Recarregue a página para tentar novamente."
+            : "Conectando à sua conta e carregando dados sincronizados…"}
       </div>
     );
   }

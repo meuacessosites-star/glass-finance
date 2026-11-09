@@ -1,0 +1,46 @@
+name: Verify against isolated Convex preview backend
+
+# Run manually only. A Preview Deploy Key creates a separate empty backend;
+# this workflow must never use the live glass-finance production deploy key.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Reject missing or production credentials
+        shell: bash
+        run: |
+          if [[ -z "$CONVEX_DEPLOY_KEY" ]]; then
+            echo "Missing repository secret CONVEX_PREVIEW_DEPLOY_KEY."
+            exit 1
+          fi
+          if [[ "$CONVEX_DEPLOY_KEY" != preview:* ]]; then
+            echo "Refusing non-preview key: production changes are forbidden."
+            exit 1
+          fi
+      - name: Deploy real Convex functions to fresh isolated preview backend
+        shell: bash
+        run: |
+          npx convex deploy --preview-create "glass-finance-validation-${GITHUB_RUN_ID}" --typecheck enable
+      - name: Local financial, backend, TypeScript and build checks
+        shell: bash
+        run: |
+          npm run test:billing
+          npm install --no-save convex-test vitest @edge-runtime/vm
+          npx vitest run --config vitest.convex.config.mjs
+          npm run typecheck
+          npm run build

@@ -1,8 +1,11 @@
+import { useConvex } from "convex/react";
+import { buildPortableBackup, backupFile, readBackupFile } from "@/lib/portable-backup";
 import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
+import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import "@/components/app/planning.css";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Copy,
   Download,
@@ -40,28 +43,57 @@ const inputClass =
   "glass glass-soft w-full rounded-2xl px-4 py-3 text-[14px] font-semibold text-glass-ink outline-none placeholder:font-medium placeholder:text-glass-faint focus:ring-2 focus:ring-primary/30";
 
 export default function AccountPage() {
-  const { activeProfile, profiles, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
+  const convex = useConvex();
+  const { activeProfile, profiles, restoreTrashedTransaction, storageVersion, migrateFinanceStorage, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
+  const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
+  const [backupBusy,setBackupBusy]=useState(false);
+  const [migrationBusy,setMigrationBusy]=useState(false);
   const [shareCode, setShareCode] = useState("");
   const [importText, setImportText] = useState("");
   const [pendingImport,setPendingImport]=useState<{raw:string;profiles:number;transactions:number;names:string}|null>(null);
   const [lastBackup,setLastBackup]=useState(()=>{try{return localStorage.getItem('granascan:last-backup')??''}catch{return ''}});
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleDownload = () => {
-    const json = exportState();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `granascan-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-    const stamp = new Date().toLocaleString("pt-BR");
-    setLastBackup(stamp);
-    toast("Backup exportado", {
-      description: "Download solicitado. Confira se o arquivo foi salvo no dispositivo.",
-    });
+  const handleDownload = async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const json = await buildPortableBackup(convex, exportState());
+      const { blob, extension } = await backupFile(json);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `glass-finance-backup-${new Date().toISOString().slice(0, 10)}${extension}`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const stamp = new Date().toLocaleString("pt-BR");
+      setLastBackup(stamp);
+      try { localStorage.setItem("granascan:last-backup", stamp); } catch { /* optional */ }
+      toast("Backup completo solicitado", {
+        description: "Inclui os anexos acessíveis desta conta. Confira se o arquivo foi salvo.",
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao criar backup completo.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleMigrate = async () => {
+    if (migrationBusy || cloudSyncStatus !== "synced" || storageVersion === "v2") return;
+    if (!window.confirm(
+      "A migração só começa depois de sincronizar tudo. Faça e guarde um backup completo antes de continuar. " +
+      "O histórico antigo será mantido como segurança. Deseja iniciar a conferência e migração?"
+    )) return;
+    setMigrationBusy(true);
+    try {
+      await migrateFinanceStorage();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "A migração foi interrompida com segurança.");
+    } finally {
+      setMigrationBusy(false);
+    }
   };
 
   const handleDeleteCloudData = async () => {
@@ -92,14 +124,22 @@ export default function AccountPage() {
     catch{toast.error('Não foi possível gerar o PDF. Tente novamente.');}
     finally{setPdfBusy(false);}
   };
-  const handleGenerateCode = () => {
-    const encoded = encodeB64(exportState());
-    if (!encoded) {
-      toast("Não foi possível gerar o código");
-      return;
+  const handleGenerateCode = async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const complete = await buildPortableBackup(convex, exportState());
+      // The share field is intentionally small; large histories should use a local backup file.
+      if (complete.length > 200_000) throw new Error("Dados muito grandes para código. Use o backup em arquivo.");
+      const encoded = encodeB64(complete);
+      if (!encoded) throw new Error("Não foi possível gerar o código");
+      setShareCode(CODE_PREFIX + encoded);
+      toast("Código de compartilhamento gerado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar o código.");
+    } finally {
+      setBackupBusy(false);
     }
-    setShareCode(CODE_PREFIX + encoded);
-    toast("Código de compartilhamento gerado");
   };
 
   const handleCopyCode = async () => {
@@ -135,13 +175,13 @@ export default function AccountPage() {
     }
   };
 
-  const handleFile = (file: File | undefined) => {
+  const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    if(file.size>20_000_000){toast.error("O limite de leitura é 20 MB.");return;}
-    const reader = new FileReader();
-    reader.onerror=()=>toast.error("Não foi possível ler o arquivo. Tente novamente.");
-    reader.onload = () => doImport(String(reader.result ?? ""));
-    reader.readAsText(file);
+    try {
+      doImport(await readBackupFile(file));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível ler o backup.");
+    }
   };
 
   return (
@@ -157,6 +197,97 @@ export default function AccountPage() {
         {(cloudSyncStatus === "error" || cloudSyncStatus === "conflict") && <button type="button" onClick={retryCloudSync} className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white">Tentar sincronizar</button>}
       </div>
 
+      {/* Diagnóstico local: limites do formato antigo, não quota do plano Convex. */}
+      <section className="glass rounded-3xl p-4" aria-label="Armazenamento dos dados">
+        <p className="text-[15px] font-semibold text-glass-ink">Armazenamento e histórico</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
+          Estimativa dos dados carregados neste dispositivo. Não representa o espaço total da sua conta no Convex.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-glass-sub">
+          <div>Transações <strong className="block text-glass-ink">{storageHealth.transactionCount.toLocaleString("pt-BR")}</strong></div>
+          <div>Anexos <strong className="block text-glass-ink">{storageHealth.attachmentCount.toLocaleString("pt-BR")}</strong></div>
+          <div>Dados estimados <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.totalJsonBytes)}</strong></div>
+          <div>Anexos embutidos <strong className="block text-glass-ink">{formatStorageBytes(storageHealth.inlineAttachmentBytes)}</strong></div>
+        </div>
+        {storageVersion === "legacy" ? (
+          <>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10" role="progressbar" aria-label="Uso estimado do limite atual de snapshot" aria-valuenow={storageHealth.usagePercent} aria-valuemin={0} aria-valuemax={100}>
+              <div className={cn("h-full rounded-full", storageHealth.level === "critical" ? "bg-red-500" : storageHealth.level === "warning" ? "bg-amber-500" : "bg-primary")} style={{ width: `${storageHealth.usagePercent}%` }} />
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">
+              {storageHealth.usagePercent}% do limite atual de {formatStorageBytes(LEGACY_SNAPSHOT_LIMIT_BYTES)} por snapshot.
+              {storageHealth.level === "critical"
+                ? " Atenção: exporte uma cópia e evite novos anexos grandes até concluir a migração."
+                : storageHealth.level === "warning"
+                  ? " O histórico está crescendo; mantenha backups atualizados."
+                  : " O carregamento e o armazenamento ainda dependem do formato antigo."}
+            </p>
+          </>
+        ) : (
+          <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+            Histórico individual ativo. O tamanho acima é uma estimativa local de informações
+            carregadas, não o consumo total de arquivos e documentos no Convex.
+          </p>
+        )}
+      </section>
+
+      <section className="glass rounded-3xl p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Histórico preparado para crescer</p>
+        {storageVersion === "v2" ? (
+          <p className="mt-2 text-[12.5px] leading-relaxed text-glass-sub">
+            O histórico individual está ativo. Novos lançamentos são armazenados separadamente e
+            sincronizados por revisão, sem regravar todos os registros em um único snapshot.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-glass-sub">
+              O banco ainda usa o formato antigo. Após baixar um backup completo, você pode
+              copiar e conferir suas transações antes de ativar o armazenamento individual.
+              Durante a migração, mantenha esta página aberta e não altere dados em outro dispositivo.
+            </p>
+            {import.meta.env.VITE_ENABLE_FINANCE_MIGRATION === "true" ? (
+            <button type="button" disabled={migrationBusy || backupBusy || cloudSyncStatus !== "synced"}
+              className="mt-3 w-full rounded-full bg-primary px-4 py-3 text-[13px] font-semibold text-white disabled:opacity-50"
+              onClick={() => void handleMigrate()}>
+              {migrationBusy ? "Preparando migração…" : "Migrar histórico com conferência"}
+            </button>
+            ) : (
+              <p className="mt-3 text-[12px] leading-relaxed text-glass-sub">
+                Migração temporariamente indisponível enquanto os testes do banco de dados
+                e de recuperação são concluídos.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Restauração após excluir um lançamento: o período de retenção é de 30 dias. */}
+      <section className="glass rounded-3xl p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Lixeira de transações</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Lançamentos apagados ficam disponíveis para recuperação por até 30 dias.
+          A exclusão não remove automaticamente comprovantes ainda vinculados a backups.
+        </p>
+        {profiles.every(profile => !profile.data.trashedTransactions?.length)
+          ? <p className="mt-3 text-[12px] text-glass-faint">Nenhum lançamento recuperável.</p>
+          : <div className="mt-3 max-h-60 space-y-2 overflow-y-auto">
+              {profiles.flatMap(profile => (profile.data.trashedTransactions ?? []).map(entry => ({
+                entry, profileId: profile.id, profileName: profile.name,
+              }))).map(({ entry, profileId, profileName }) => (
+                <div key={`${profileId}:${entry.transaction.id}`} className="flex items-center gap-2 rounded-2xl bg-black/5 p-3 dark:bg-white/5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-glass-ink">{entry.transaction.title}</p>
+                    <p className="text-[11px] text-glass-sub">{profileName} · Excluída em {new Date(entry.deletedAt).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  <button type="button" className="rounded-full bg-primary px-3 py-2 text-[12px] font-semibold text-white" onClick={() => {
+                    restoreTrashedTransaction(profileId, entry.transaction.id);
+                    toast.success("Lançamento restaurado. Aguarde a sincronização.");
+                  }}>Restaurar</button>
+                </div>
+              ))}
+            </div>}
+      </section>
+
       {/* Export */}
       <div className="glass rounded-3xl p-4">
         <div className="flex items-center gap-3">
@@ -170,17 +301,18 @@ export default function AccountPage() {
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-glass-sub">
               Baixe os dados desta conta: perfis, transações, cartões, reservas, metas,
               financiamentos, empréstimos e notificações. Contatos armazenados apenas
-              no serviço conectado e anexos externos não são copiados por este arquivo.
+              no serviço conectado não são copiados; anexos salvos neste aplicativo são incluídos no backup completo.
             </p>
           </div>
         </div>
         <button
           type="button"
-          onClick={handleDownload}
+          onClick={() => void handleDownload()}
+          disabled={backupBusy}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
         >
           <FileJson className="size-4" />
-          Baixar backup (.json)
+          {backupBusy ? "Preparando backup…" : "Baixar backup completo"}
         </button>
         <button type="button" disabled={pdfBusy||!activeProfile} onClick={()=>void handlePdf()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#7b45b5] py-3 text-[14px] font-semibold text-white disabled:opacity-50"><FileText className="size-4"/>{pdfBusy?'Gerando relatório…':'Baixar relatório (.pdf)'}</button>
         <p className="mt-2 text-[12px] leading-relaxed text-glass-sub">PDF de {activeProfile?.name}: resumo do mês, transações de todos os períodos, cartões, empréstimos, reservas, metas e cronogramas. Inclui valores completos mesmo com o olhinho fechado, sem PINs ou fotos. É para consulta; somente o JSON permite restaurar os dados.</p>
@@ -208,7 +340,7 @@ export default function AccountPage() {
         {!shareCode ? (
           <button
             type="button"
-            onClick={handleGenerateCode}
+            onClick={() => void handleGenerateCode()}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#AF52DE] py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(175,82,222,0.6)] transition-colors hover:brightness-105 active:scale-[0.98]"
           >
             <Link2 className="size-4" />
@@ -283,9 +415,9 @@ export default function AccountPage() {
         <input
           ref={fileRef}
           type="file"
-          accept="application/json,.json"
+          accept="application/json,.json,.gz,application/gzip"
           className="hidden"
-          onChange={(e) => {handleFile(e.target.files?.[0]);e.target.value=""}}
+          onChange={(e) => {void handleFile(e.target.files?.[0]);e.target.value=""}}
         />
         <button
           type="button"
@@ -293,7 +425,7 @@ export default function AccountPage() {
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-black/5 py-3 text-[14px] font-semibold text-glass-ink transition-colors hover:bg-black/10 active:scale-[0.98]"
         >
           <FileJson className="size-4" />
-          Enviar arquivo .json
+          Enviar backup (.json ou .gz)
         </button>
       </div>
 

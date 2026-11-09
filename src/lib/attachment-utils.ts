@@ -1,3 +1,6 @@
+import type { ConvexReactClient } from "convex/react";
+import { cloudAttachmentUrl, cloudFileStorageId } from "./cloud-attachments";
+import { api } from "@/convex/_generated/api";
 import { imageToDataUrl } from "./receipt-scan";
 
 const GZIP_DATA_URL_PREFIX = "data:application/x-granascan-gzip;";
@@ -83,10 +86,30 @@ export function isCompressedAttachment(src: string): boolean {
 export async function downloadAttachment(
   src: string,
   fallbackName: string,
+  client?: ConvexReactClient,
 ): Promise<void> {
-  let url = src;
+  let url = client ? await cloudAttachmentUrl(client, src) : src;
   let revoke = false;
   let filename = fallbackName;
+
+  if (client && cloudFileStorageId(src)) {
+    const metadata = await client.query(api.financeFiles.getMetadata, {
+      storageId: cloudFileStorageId(src)!,
+    });
+    if (!metadata) throw new Error("Anexo indisponível");
+    filename = metadata.name || fallbackName;
+    if (src.endsWith(":gzip")) {
+      if (typeof DecompressionStream === "undefined")
+        throw new Error("decompression-unsupported");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("download-failed");
+      const restored = await new Response(
+        response.body!.pipeThrough(new DecompressionStream("gzip")),
+      ).blob();
+      url = URL.createObjectURL(new Blob([restored], { type: metadata.contentType }));
+      revoke = true;
+    }
+  }
 
   if (isCompressedAttachment(src)) {
     if (typeof DecompressionStream === "undefined") {

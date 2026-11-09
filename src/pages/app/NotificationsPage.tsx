@@ -1,3 +1,5 @@
+import { filterInboxMessages, filterPaymentReminders, type ReminderFilter, type ReminderKind } from "@/lib/reminder-filters";
+import { BrowserReminderSettings } from "@/components/app/BrowserReminderSettings";
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import {
   NOTIFICATION_RETENTION_OPTIONS,
@@ -55,7 +57,6 @@ import {
   isCreditCardExpense,
 } from "@/lib/card-billing";
 import { notificationRecord } from "@/lib/notification-actions";
-import { searchApprovedNotifications } from "@/lib/notification-search";
 import { hideHomePaymentAlerts } from "@/lib/home-alert-session";
 import {
   getPaymentNotifications,
@@ -111,6 +112,8 @@ function NotificationInbox() {
   const [retentionDraft, setRetentionDraft] = useState<number | null>(null);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
   const [approvedQuery, setApprovedQuery] = useState("");
+  const [inboxQuery, setInboxQuery] = useState("");
+  const [paymentQuery, setPaymentQuery] = useState("");
   const [queue, setQueue] = useState<string[]>([]);
   const [review, setReview] = useState<
     "transaction" | "loan" | "loan-edit" | null
@@ -126,9 +129,11 @@ function NotificationInbox() {
   } | null>(null);
   const pending = notifications.filter((n) => n.status === "pending");
   const approved = notifications.filter((n) => n.status === "approved");
-  const filteredApproved = useMemo(() => searchApprovedNotifications({
-    notifications, transactions, loanReceivables, categories, cards,
-  }, approvedQuery), [notifications, transactions, loanReceivables, categories, cards, approvedQuery]);
+  const inboxData = { notifications, transactions, loanReceivables, categories, cards };
+  const filteredApproved = useMemo(() => filterInboxMessages(inboxData, "approved", approvedQuery),
+    [notifications, transactions, loanReceivables, categories, cards, approvedQuery]);
+  const filteredPending = useMemo(() => filterInboxMessages(inboxData, "pending", inboxQuery),
+    [notifications, transactions, loanReceivables, categories, cards, inboxQuery]);
   const payments = getPaymentNotifications(
     {
       cards,
@@ -139,8 +144,12 @@ function NotificationInbox() {
     },
     today,
   );
+  const reminderPrefs = store.reminderPreferences;
+  const filteredPayments = useMemo(() => filterPaymentReminders(payments, {
+    query: paymentQuery, phase: reminderPrefs.phase, kind: reminderPrefs.kind,
+  }), [payments, paymentQuery, reminderPrefs.phase, reminderPrefs.kind]);
   const selectedPendingIds = pendingSelection.filter((id) =>
-    pending.some((n) => n.id === id),
+    filteredPending.some((n) => n.id === id),
   );
   const retentionRemovals =
     retentionDraft === null
@@ -189,7 +198,7 @@ function NotificationInbox() {
         : undefined,
     [current, linkedTransaction, categories, validCard],
   );
-  const selectionItems = selection?.mode === "approve" ? pending : approved;
+  const selectionItems = selection?.mode === "approve" ? filteredPending : filteredApproved;
   const selectedIds =
     selection?.ids.filter((id) => selectionItems.some((n) => n.id === id)) ??
     [];
@@ -512,8 +521,8 @@ function NotificationInbox() {
             <HomeAlertSettings />
             <button
               className={readAction}
-              disabled={payments.length === 0}
-              onClick={() => requestRead(payments.map((row) => row.id), true)}
+              disabled={filteredPayments.length === 0}
+              onClick={() => requestRead(filteredPayments.map((row) => row.id), true)}
             >
               <CheckCheck className="size-4" />
               <span>Marcar todos como lidos</span>
@@ -521,6 +530,53 @@ function NotificationInbox() {
           </>
         )}
       </div>
+      {(view === "overview" || view === "payments") && (
+        <section className="glass space-y-3 rounded-3xl p-4" aria-label="Filtrar lembretes">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[14px] font-bold text-glass-ink">Filtrar lembretes</h2>
+            <BrowserReminderSettings />
+          </div>
+          <label className="block">
+            <span className="sr-only">Buscar avisos por nome, data ou valor</span>
+            <input type="search" value={paymentQuery} onChange={(event) => setPaymentQuery(event.target.value)}
+              placeholder="Buscar conta, valor ou vencimento…"
+              className="glass glass-soft min-h-11 w-full rounded-2xl px-3 text-[15px] text-glass-ink outline-none" />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[12px] font-semibold text-glass-sub">
+              Situação
+              <select aria-label="Filtrar situação" value={reminderPrefs.phase} onChange={(event) =>
+                  store.setReminderPreferences({ ...reminderPrefs, phase: event.target.value as ReminderFilter })
+                } className="glass glass-soft mt-1 min-h-11 w-full rounded-xl px-2 text-[13px] text-glass-ink">
+                <option value="all">Todas</option>
+                <option value="overdue">Em atraso</option>
+                <option value="today">Vencem hoje</option>
+                <option value="upcoming">Próximas datas</option>
+              </select>
+            </label>
+            <label className="text-[12px] font-semibold text-glass-sub">
+              Tipo
+              <select aria-label="Filtrar tipo" value={reminderPrefs.kind} onChange={(event) =>
+                  store.setReminderPreferences({ ...reminderPrefs, kind: event.target.value as ReminderKind })
+                } className="glass glass-soft mt-1 min-h-11 w-full rounded-xl px-2 text-[13px] text-glass-ink">
+                <option value="all">Todos</option>
+                <option value="invoice">Faturas</option>
+                <option value="transaction">Contas</option>
+                <option value="loan">Recebimentos</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p role="status" className="text-[12px] text-glass-sub">{filteredPayments.length} {filteredPayments.length === 1 ? "aviso encontrado" : "avisos encontrados"}</p>
+            {(reminderPrefs.phase !== "all" || reminderPrefs.kind !== "all" || paymentQuery) && (
+              <button type="button" className={neutralAction} onClick={() => {
+                store.setReminderPreferences({ ...reminderPrefs, phase: "all", kind: "all" });
+                setPaymentQuery("");
+              }}>Limpar filtros</button>
+            )}
+          </div>
+        </section>
+      )}
       {(view === "overview" || view === "payments") && (
         <section className="space-y-3" aria-label="Avisos de pagamento">
           <h2 className="text-[16px] font-bold text-glass-ink">
@@ -532,18 +588,18 @@ function NotificationInbox() {
             continuar pendente volta a aparecer. O aviso deixa de voltar quando
             o pagamento ou recebimento for efetivado no registro.
           </p>
-          {payments.length ? (
-            (view === "payments" ? payments : payments.slice(0, 3)).map(
+          {filteredPayments.length ? (
+            (view === "payments" ? filteredPayments : filteredPayments.slice(0, 3)).map(
               renderPayment,
             )
           ) : (
             <p className="glass rounded-2xl p-4 text-[13px] text-glass-sub">
-              Nenhum aviso de pagamento não lido.
+              {payments.length ? "Nenhum aviso corresponde aos filtros selecionados." : "Nenhum aviso de pagamento não lido."}
             </p>
           )}
-          {view === "overview" && payments.length > 3 && (
+          {view === "overview" && filteredPayments.length > 3 && (
             <button className={action} onClick={() => setView("payments")}>
-              Ver todos os {payments.length} avisos
+              Ver todos os {filteredPayments.length} avisos
               <ChevronRight className="size-4" />
             </button>
           )}
@@ -611,6 +667,19 @@ function NotificationInbox() {
             </div>
           ) : (
             <>
+              {view !== "approved" && (
+                <div className="space-y-2">
+                  <label className="glass flex min-h-11 items-center gap-2 rounded-2xl px-3">
+                    <Search className="size-4 shrink-0 text-glass-sub" aria-hidden="true" />
+                    <input type="search" value={inboxQuery}
+                      onChange={(event) => setInboxQuery(event.target.value)}
+                      placeholder="Buscar mensagens pendentes…"
+                      aria-label="Buscar mensagens pendentes"
+                      className="h-11 w-full min-w-0 bg-transparent text-[15px] text-glass-ink outline-none" />
+                  </label>
+                  <p role="status" className={muted}>{filteredPending.length} {filteredPending.length === 1 ? "mensagem pendente" : "mensagens pendentes"}</p>
+                </div>
+              )}
               {view === "approved" && (
                 <div className="space-y-2">
                   <div className="glass flex min-h-11 items-center gap-2 rounded-2xl px-3 focus-within:ring-2 focus-within:ring-emerald-600/40">
@@ -641,26 +710,26 @@ function NotificationInbox() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                {view !== "approved" && pending.length > 0 && (
+                {view !== "approved" && filteredPending.length > 0 && (
                   <button
                     className={`${action} notification-action--approve-soft`}
                     onClick={() => setSelection({ mode: "approve", ids: [] })}
                   >
                     <Check className="size-4" />
-                    Aprovar ({pending.length})
+                    Aprovar ({filteredPending.length})
                   </button>
                 )}
-                {approved.length > 0 && (
+                {filteredApproved.length > 0 && (
                   <button
                     className={restoreAction}
                     onClick={() => setSelection({ mode: "restore", ids: [] })}
                   >
                     <RotateCcw className="size-4" />
-                    Refazer ({approved.length})
+                    Refazer ({filteredApproved.length})
                   </button>
                 )}
               </div>
-              {view !== "approved" && pending.length > 0 && (
+              {view !== "approved" && filteredPending.length > 0 && (
                 <div className="notification-pending-selection space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12px] font-bold text-[#68438a]">
@@ -672,9 +741,9 @@ function NotificationInbox() {
                       className={neutralAction}
                       onClick={() =>
                         setPendingSelection(
-                          selectedPendingIds.length === pending.length
+                          selectedPendingIds.length === filteredPending.length
                             ? []
-                            : pending.map((n) => n.id),
+                            : filteredPending.map((n) => n.id),
                         )
                       }
                     >
@@ -709,20 +778,20 @@ function NotificationInbox() {
               {(view === "approved"
                 ? filteredApproved
                 : view === "overview"
-                  ? pending.slice(0, 3)
-                  : pending
+                  ? filteredPending.slice(0, 3)
+                  : filteredPending
               ).map(renderMessage)}
-              {(view === "approved" ? filteredApproved.length : pending.length) ===
+              {(view === "approved" ? filteredApproved.length : filteredPending.length) ===
                 0 && (
                 <p className="glass rounded-2xl p-5 text-[13px] text-glass-sub">
                   {view === "approved"
                     ? approvedQuery.trim()
                       ? `Nenhuma mensagem aprovada encontrada para “${approvedQuery.trim()}”.`
                       : "Nenhuma mensagem aprovada."
-                    : "Nenhuma mensagem pendente de revisão."}
+                    : inboxQuery.trim() ? "Nenhuma mensagem pendente corresponde à busca." : "Nenhuma mensagem pendente de revisão."}
                 </p>
               )}
-              {view === "overview" && pending.length > 3 && (
+              {view === "overview" && filteredPending.length > 3 && (
                 <button className={action} onClick={() => setView("pending")}>
                   Ver todas as pendentes
                   <ChevronRight className="size-4" />

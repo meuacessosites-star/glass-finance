@@ -1,3 +1,6 @@
+import { useConvex } from "convex/react";
+import { isAttachmentImage } from "@/lib/cloud-attachments";
+import { CloudAttachmentImage } from "./CloudAttachmentImage";
 import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { AttachmentImageViewer } from "./AttachmentImageViewer";
 import {
@@ -63,6 +66,7 @@ export function TransactionDetailsSheet({
   onClose: () => void;
   onEdit?: () => void;
 }) {
+  const convex = useConvex();
   const formatCurrency = usePrivateCurrency();
   const { categoryById, cards, loanReceivables, updateTransaction } =
     useAppStore();
@@ -168,13 +172,13 @@ export function TransactionDetailsSheet({
   };
 
   const openLightbox = (attachmentIndex: number) => {
-    if (attachments[attachmentIndex]?.startsWith("data:image"))
+    if (isAttachmentImage(attachments[attachmentIndex] ?? ""))
       setLightboxIndex(attachmentIndex);
   };
 
   const handleAttachmentDownload = async (src: string, index: number) => {
     try {
-      await downloadAttachment(src, `anexo-${index + 1}`);
+      await downloadAttachment(src, `anexo-${index + 1}`, convex);
     } catch {
       toast.error("Não foi possível baixar este anexo");
     }
@@ -563,7 +567,7 @@ export function TransactionDetailsSheet({
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     {attachments.map((src, i) =>
-                      src.startsWith("data:image") ? (
+                      isAttachmentImage(src) ? (
                         <button
                           key={i}
                           type="button"
@@ -571,7 +575,7 @@ export function TransactionDetailsSheet({
                           onClick={() => openLightbox(i)}
                           className="group relative aspect-square overflow-hidden rounded-2xl transition-transform active:scale-95"
                         >
-                          <img
+                          <CloudAttachmentImage
                             src={src}
                             alt={`Anexo ${i + 1}`}
                             className="size-full object-cover"

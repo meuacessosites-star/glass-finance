@@ -1,5 +1,5 @@
 export function inspectBackup(raw:string){
- if(raw.length>20_000_000)throw new Error('Arquivo muito grande. O limite de leitura é 20 MB.');
+ if(raw.length>60_000_000)throw new Error('Arquivo muito grande. O limite de leitura é 60 MB.');
  const data=JSON.parse(raw);
  if(!data||!Array.isArray(data.profiles)||!data.profiles.length)throw new Error('Este arquivo não contém perfis do GranaScan. Use um backup exportado pela aba Conta.');
  const ids=new Set<string>();
