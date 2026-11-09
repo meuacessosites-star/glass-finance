@@ -109,7 +109,8 @@ export const verifyProfile = query({
     }
     const copied = await ctx.db.query("financeTransactions")
       .withIndex("by_owner_profile", q =>
-        q.eq("userSubject", userSubject).eq("profileId", profileId)).collect();
+        q.eq("userSubject", userSubject))
+      .filter(q => q.eq(q.field("profileId"), profileId)).collect();
     let copiedCents = 0;
     const copiedIds = new Set<string>();
     for (const item of copied) {
