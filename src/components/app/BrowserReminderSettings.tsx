@@ -41,6 +41,23 @@ export function BrowserReminderSettings() {
     }
   };
 
+  const testAlert = async () => {
+    if (!enabled || !supported) return;
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      if (!registration) throw new Error("Sem permissão de notificação");
+      await registration.showNotification("Teste do Glass Finance", {
+        body: "Os lembretes estão autorizados neste navegador. Nenhum valor financeiro é mostrado na tela bloqueada.",
+        icon: "/favicon.png",
+        tag: "glass-finance-test",
+        data: { url: "/dashboard/notificacoes" },
+      });
+      toast.success("Notificação de teste enviada ao aparelho");
+    } catch {
+      toast.error("O navegador não conseguiu apresentar o teste de notificação.");
+    }
+  };
+
   return (
     <div className="space-y-1">
       <button type="button" disabled={busy}
@@ -50,6 +67,12 @@ export function BrowserReminderSettings() {
         {enabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
         {busy ? "Ativando…" : enabled ? "Desativar alertas" : "Ativar lembretes"}
       </button>
+      {enabled && (
+        <button type="button" onClick={() => void testAlert()}
+          className="rounded-xl px-3 py-2 text-[12px] font-semibold text-primary underline underline-offset-2">
+          Enviar notificação de teste
+        </button>
+      )}
       <p className="max-w-[290px] text-[11px] leading-relaxed text-glass-sub">
         {permission === "denied"
           ? "O navegador bloqueou avisos. Libere a permissão nas configurações do site."
