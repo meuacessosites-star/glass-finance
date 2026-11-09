@@ -1,24 +1,41 @@
 import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/app-store";
 
 export function BrowserReminderSettings() {
-  const { reminderPreferences, setReminderPreferences } = useAppStore();
+  const { reminderPreferences, setReminderPreferences, activeProfile } = useAppStore();
+  const publicKey = useQuery(api.pushNotifications.getPublicKey, {});
+  const registerDevice = useMutation(api.pushNotifications.registerDevice);
+  const removeDevice = useMutation(api.pushNotifications.removeDevice);
   const [busy, setBusy] = useState(false);
   const supported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
   const permission = supported ? Notification.permission : "unsupported";
   const enabled = reminderPreferences.browserEnabled && permission === "granted";
+  const pushReady = Boolean(publicKey);
 
   const toggle = async () => {
     if (busy) return;
     if (reminderPreferences.browserEnabled) {
-      setReminderPreferences({ ...reminderPreferences, browserEnabled: false });
-      toast("Alertas do navegador desativados para este perfil");
+      setBusy(true);
+      try {
+        const worker = await navigator.serviceWorker.getRegistration("/");
+        const sub = await worker?.pushManager.getSubscription();
+        if (sub) {
+          await removeDevice({ endpoint: sub.endpoint });
+          await sub.unsubscribe();
+        }
+        setReminderPreferences({ ...reminderPreferences, browserEnabled: false });
+        toast.success("Notificações push desativadas neste aparelho");
+      } catch {
+        toast.error("Não foi possível remover a inscrição. Tente novamente.");
+      } finally { setBusy(false); }
       return;
     }
-    if (!supported) {
-      toast.error("Este navegador não permite notificações. Em alguns celulares, é necessário instalar o app na tela inicial.");
+    if (!supported || !("PushManager" in window) || !pushReady || !activeProfile) {
+      toast.error(pushReady ? "Este navegador não permite notificações push. Tente instalar o aplicativo na tela inicial." : "O servidor push ainda não foi configurado.");
       return;
     }
     setBusy(true);
@@ -29,10 +46,30 @@ export function BrowserReminderSettings() {
         toast.error("Permissão não concedida. Autorize as notificações nas configurações do navegador.");
         return;
       }
-      await navigator.serviceWorker.register("/reminder-sw.js", { scope: "/" });
+      const worker = await navigator.serviceWorker.register("/reminder-sw.js", { scope: "/" });
+      const existing = await worker.pushManager.getSubscription();
+      const decoded = publicKey.replace(/-/g, "+").replace(/_/g, "/");
+      const pad = decoded + "=".repeat((4 - decoded.length % 4) % 4);
+      const binary = atob(pad);
+      const applicationServerKey = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) applicationServerKey[i] = binary.charCodeAt(i);
+      const subscription = existing ?? await worker.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+      const details = subscription.toJSON();
+      if (!details.keys?.p256dh || !details.keys.auth) throw new Error("Chaves push ausentes");
+      const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      await registerDevice({
+        profileId: activeProfile.id,
+        endpoint: subscription.endpoint,
+        p256dh: details.keys.p256dh,
+        auth: details.keys.auth,
+        timeZone: deviceTimeZone,
+      });
       setReminderPreferences({ ...reminderPreferences, browserEnabled: true });
-      toast.success("Lembretes ativados neste navegador", {
-        description: "Avisos aparecem ao abrir ou usar o aplicativo. Envio com o app fechado depende de notificações push.",
+      toast.success("Push ativado neste aparelho", {
+        description: "O Convex poderá enviar lembretes mesmo com o aplicativo fechado, se o navegador permitir.",
       });
     } catch {
       toast.error("Não foi possível ativar os lembretes neste aparelho.");
@@ -78,7 +115,9 @@ export function BrowserReminderSettings() {
           ? "O navegador bloqueou avisos. Libere a permissão nas configurações do site."
           : !supported
             ? "Notificações não disponíveis neste navegador."
-            : "Receba lembretes no aparelho quando usar ou reabrir o app. Com o app fechado, o envio depende de push."}
+            : !pushReady
+              ? "Push indisponível: configure as chaves VAPID no Convex e recarregue."
+              : "Push diário às 9h no fuso do aparelho, inclusive com o app fechado quando o navegador permitir."}
       </p>
     </div>
   );
