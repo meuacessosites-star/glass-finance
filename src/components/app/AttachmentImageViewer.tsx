@@ -1,3 +1,6 @@
+import { useConvex, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { cloudFileStorageId, isAttachmentImage } from "@/lib/cloud-attachments";
 import {
   useEffect,
   useRef,
@@ -71,8 +74,9 @@ export function AttachmentImageViewer({
   initialAttachmentIndex: number;
   onClose: () => void;
 }) {
+  const convex = useConvex();
   const imageAttachments = attachments.flatMap((src, index) =>
-    src.startsWith("data:image") ? [{ src, index }] : [],
+    isAttachmentImage(src) ? [{ src, index }] : [],
   );
   const [lightboxIndex, setLightboxIndex] = useState(() =>
     Math.max(
@@ -105,7 +109,9 @@ export function AttachmentImageViewer({
   } | null>(null);
   const currentImage =
     imageAttachments[Math.min(lightboxIndex, imageAttachments.length - 1)];
-  const lightboxSrc = currentImage?.src;
+  const storageId = cloudFileStorageId(currentImage?.src ?? "");
+  const remoteUrl = useQuery(api.financeFiles.getDownloadUrl, storageId ? { storageId } : "skip");
+  const lightboxSrc = storageId ? (remoteUrl ?? undefined) : currentImage?.src;
   const resetLightboxViewport = () => {
     activePointersRef.current.clear();
     pinchRef.current = null;
@@ -320,6 +326,7 @@ export function AttachmentImageViewer({
       await downloadAttachment(
         currentImage.src,
         `anexo-${currentImage.index + 1}`,
+        convex,
       );
     } catch {
       toast.error("Não foi possível baixar esta imagem");
