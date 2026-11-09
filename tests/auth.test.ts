@@ -28,6 +28,7 @@ const modules = {
   "./people.ts": () => import("../src/convex/people"),
   "./userPreferences.ts": () => import("../src/convex/userPreferences"),
   "./fileAssets.ts": () => import("../src/convex/fileAssets"),
+  "./transactionMigration.ts": () => import("../src/convex/transactionMigration"),
 };
 
 function fixture() {
@@ -498,4 +499,94 @@ test("permanent account deletion also removes separate file storage", async () =
   await owner.mutation(api.users.deleteMyAccount, { email: "with-files@example.org", confirmation: "EXCLUIR MINHA CONTA" });
   assert.equal(await t.run(ctx => ctx.db.get(assetId)), null);
   assert.equal(await t.run(ctx => ctx.storage.get(id)), null);
+});
+
+test("migration copies individual transactions in resumable batches and checks cents", async () => {
+  const { t, register } = fixture();
+  const owner = await register("migration-owner@example.org", "secret-owner-123");
+  const other = await register("migration-other@example.org", "secret-other-123");
+  await owner.mutation(api.users.claimUsername, { username: "mig_owner" });
+  await other.mutation(api.users.claimUsername, { username: "mig_other" });
+  const transactions = Array.from({ length: 29 }, (_, i) => ({
+    id: "row-" + i, date: "2026-10-" + String(i % 28 + 1).padStart(2, "0"),
+    title: "Compra " + i, amount: i % 2 ? -1.25 : 2.35, attachments: [],
+  }));
+  const payload = JSON.stringify({ profiles: [{ id: "profile-main", data: { transactions } }] });
+  const saved = await owner.mutation(api.financeState.saveMine, { expectedRevision: 0, payload });
+  assert.equal(saved.ok, true);
+  assert.equal((await owner.query(api.transactionMigration.sourceInfo)).revision, 1);
+  assert.deepEqual(await owner.query(api.transactionMigration.statusMine), []);
+  await assert.rejects(other.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 1,
+  }));
+  await assert.rejects(owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 0,
+  }), /mudou/i);
+  const first = await owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 1,
+  });
+  assert.deepEqual({ completed: first.completed, migrated: first.migrated, total: first.total },
+    { completed: false, migrated: 12, total: 29 });
+  let state = await owner.query(api.transactionMigration.statusMine);
+  assert.equal(state[0].completed, false);
+  let result = await owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 1,
+  });
+  assert.equal(result.migrated, 24);
+  result = await owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 1,
+  });
+  assert.equal(result.completed, true);
+  assert.equal(result.migrated, 29);
+  // Duplicate retries cannot introduce repeated financial records.
+  const again = await owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "profile-main", expectedRevision: 1,
+  });
+  assert.equal(again.migrated, 29);
+  const page = await owner.query(api.transactionMigration.listPrepared, {
+    profileId: "profile-main", paginationOpts: { numItems: 10, cursor: null },
+  });
+  assert.equal(page.page.length, 10);
+  assert.equal((await other.query(api.transactionMigration.statusMine)).length, 0);
+  await assert.rejects(other.query(api.transactionMigration.listPrepared, {
+    profileId: "profile-main", paginationOpts: { numItems: 10, cursor: null },
+  }));
+  assert.equal((await t.run(ctx => ctx.db.query("transactionEntries").collect())).length, 29);
+  assert.equal((await owner.query(api.financeState.getMine)).payload, payload);
+  // A later financial edit makes the prepared copy non-authoritative.
+  const changed = JSON.stringify({ profiles: [{ id: "profile-main", data: {
+    transactions: [...transactions, { id: "row-new", date: "2026-11-09", title: "Nova", amount: 1.05 }],
+  } }] });
+  await owner.mutation(api.financeState.saveMine, { expectedRevision: 1, payload: changed });
+  state = await owner.query(api.transactionMigration.statusMine);
+  assert.equal(state[0].completed, false);
+  await assert.rejects(owner.query(api.transactionMigration.listPrepared, {
+    profileId: "profile-main", paginationOpts: { numItems: 10, cursor: null },
+  }));
+  // Source account and financial data stay untouched by stale migration.
+  assert.equal((await owner.query(api.financeState.getMine)).payload, changed);
+});
+
+test("migration rejects duplicate IDs and financial wipe purges all staged records", async () => {
+  const { t, register } = fixture();
+  const owner = await register("mig-wipe@example.org", "secret-owner-123");
+  await owner.mutation(api.users.claimUsername, { username: "mig_wipe" });
+  const bad = JSON.stringify({ profiles: [{ id: "p", data: { transactions: [
+    { id: "duplicate", date: "2026-11-01", amount: 1 },
+    { id: "duplicate", date: "2026-11-02", amount: 2 },
+  ] } }] });
+  await owner.mutation(api.financeState.saveMine, { expectedRevision: 0, payload: bad });
+  await assert.rejects(owner.mutation(api.transactionMigration.prepareNext, {
+    profileId: "p", expectedRevision: 1,
+  }), /duplicada/i);
+  assert.equal((await t.run(ctx => ctx.db.query("transactionEntries").collect())).length, 0);
+  const good = JSON.stringify({ profiles: [{ id: "p", data: {
+    transactions: [{ id: "valid", date: "2026-11-09", amount: 12.34 }],
+  } }] });
+  await owner.mutation(api.financeState.saveMine, { expectedRevision: 1, payload: good });
+  await owner.mutation(api.transactionMigration.prepareNext, { profileId: "p", expectedRevision: 2 });
+  assert.equal((await owner.query(api.transactionMigration.statusMine))[0].completed, true);
+  await owner.mutation(api.financeState.deleteMine, {});
+  assert.equal((await t.run(ctx => ctx.db.query("transactionEntries").collect())).length, 0);
+  assert.equal((await t.run(ctx => ctx.db.query("transactionMigrationStates").collect())).length, 0);
 });

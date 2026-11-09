@@ -301,6 +301,13 @@ export const deleteMyAccount = mutation({
         await ctx.db.delete(state._id);
     }
     for (const person of await accountPeople(ctx, user._id)) await ctx.db.delete(person._id);
+    // Transaction migration records are account-owned and must not survive deletion.
+    for (const entry of await ctx.db.query("transactionEntries")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect())
+      await ctx.db.delete(entry._id);
+    for (const checkpoint of await ctx.db.query("transactionMigrationStates")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect())
+      await ctx.db.delete(checkpoint._id);
     for (const preference of await ctx.db.query("userPreferences")
       .withIndex("by_user", q => q.eq("userId", user._id)).collect())
       await ctx.db.delete(preference._id);

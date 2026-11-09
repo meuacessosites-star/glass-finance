@@ -145,6 +145,14 @@ export const deleteMine = mutation({
     }
     const people = await accountPeople(ctx, user._id);
     for (const person of people) await ctx.db.delete(person._id as Id<"people">);
+    // An explicit wipe must also invalidate staged copies. Nothing may be
+    // restored from a migration after the owner deletes financial data.
+    for (const entry of await ctx.db.query("transactionEntries")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect())
+      await ctx.db.delete(entry._id);
+    for (const checkpoint of await ctx.db.query("transactionMigrationStates")
+      .withIndex("by_user", q => q.eq("userId", user._id)).collect())
+      await ctx.db.delete(checkpoint._id);
     return { deleted: true, revision };
   },
 });

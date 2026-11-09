@@ -98,6 +98,16 @@ export const prepareNext = mutation({
   },
 });
 
+export const sourceInfo = query({
+  args: {},
+  handler: async ctx => {
+    const user = await requireAccount(ctx);
+    const state = await ctx.db.query("financeStates")
+      .withIndex("by_user_subject", q => q.eq("userSubject", user.financeSubject ?? user._id)).unique();
+    return { revision: state?.revision ?? 0, hasSnapshot: Boolean(state?.chunkCount) };
+  },
+});
+
 export const statusMine = query({
   args: {},
   handler: async ctx => {
