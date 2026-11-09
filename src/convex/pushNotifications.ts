@@ -151,12 +151,12 @@ export const reserveDailyPush = internalMutation({
       updatedAt: number;
       items: Array<{key: string; date: string; kind: "invoice" | "loan" | "transaction" | "review"}>;
     } | null;
-    if (!schedule || Date.now() - schedule.updatedAt > 45 * 86400000) return null;
+    if (!schedule || Date.now() - schedule.updatedAt > 120 * 86400000) return null;
     const dayNumber = Date.parse(local.date + "T12:00:00Z");
     const due = schedule.items.filter(item => {
       const distance = Math.round((Date.parse(item.date + "T12:00:00Z") - dayNumber) / 86400000);
       return item.kind === "review"
-        ? distance === 0
+        ? distance >= -7 && distance <= 0
         : distance >= -7 && distance <= 1;
     });
     if (due.length === 0) return null;
