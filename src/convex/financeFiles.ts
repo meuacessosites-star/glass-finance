@@ -86,7 +86,7 @@ export const cleanupAbandonedUploads = internalMutation({
       .order("asc").take(25);
     let deleted = 0;
     for (const item of pending) {
-      if (item.createdAt >= cutoff) break;
+      if (Number(item.createdAt) >= cutoff) break;
       await ctx.storage.delete(item.storageId as Id<"_storage">);
       await ctx.db.delete(item._id as Id<"financeFiles">);
       deleted++;
