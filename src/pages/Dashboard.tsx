@@ -83,7 +83,7 @@ function DashboardShell() {
 
           <BrowserReminderRunner />
           <PushScheduleSync />
-          {!isTransactionEdit && <DueTodayAlerts />}
+          {!isTransactionEdit && import.meta.env.VITE_SCREENSHOT_MODE !== "true" && <DueTodayAlerts />}
           {!isTransactionEdit && (
             <BottomNav
               addOpen={addOpen}
