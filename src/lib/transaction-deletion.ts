@@ -61,9 +61,21 @@ export function applyTransactionDeletion(
           ...profile,
           data: {
             ...profile.data,
-            transactions: profile.data.transactions.filter(
-              (item) => !ids.has(item.id),
-            ),
+            transactions: profile.data.transactions
+              .filter((item) => !ids.has(item.id))
+              .map((item) => {
+                if (item.recurrence !== "recorrente" || item.recurrenceSourceId) return item;
+                // A deleted instance must not reappear when a later month is
+                // opened. Persist its date on the originating series.
+                const deletedDates = deletion.transactions
+                  .filter((row) => row.recurrenceSourceId === item.id)
+                  .map((row) => row.date);
+                if (!deletedDates.length) return item;
+                return {
+                  ...item,
+                  recurrenceSkippedDates: [...new Set([...(item.recurrenceSkippedDates ?? []), ...deletedDates])],
+                };
+              }),
             trashedTransactions: [
               ...(profile.data.trashedTransactions ?? []).filter(entry => !ids.has(entry.transaction.id)),
               ...deletion.transactions.map((transaction) => ({
@@ -101,7 +113,21 @@ export function restoreTransactionDeletion(
       transactions.splice(insertion, 0, item);
     }
     const { trashedTransactions: _priorTrash, ...restData } = profile.data;
-    const nextData = { ...restData, transactions, ...(trash?.length ? { trashedTransactions: trash } : {}) };
+    // Undo also clears skipped dates so the original recurrence remains
+    // consistent if the restored instance is deleted or edited later.
+    const restoredDates = new Map<string, Set<string>>();
+    for (const row of deletion.transactions) {
+      if (!row.recurrenceSourceId) continue;
+      const dates = restoredDates.get(row.recurrenceSourceId) ?? new Set<string>();
+      dates.add(row.date);
+      restoredDates.set(row.recurrenceSourceId, dates);
+    }
+    const restored = transactions.map((row) => {
+      const restoredFor = restoredDates.get(row.id);
+      if (!restoredFor || !row.recurrenceSkippedDates?.length) return row;
+      return { ...row, recurrenceSkippedDates: row.recurrenceSkippedDates.filter((date) => !restoredFor.has(date)) };
+    });
+    const nextData = { ...restData, transactions: restored, ...(trash?.length ? { trashedTransactions: trash } : {}) };
     return { ...profile, data: nextData };
   });
 }
