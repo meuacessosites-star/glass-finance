@@ -8,7 +8,7 @@
         android:shortcutLongLabel="@string/shortcut_monitor_full">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.glassfinance.mobile.preview"
+            android:targetPackage="com.glassfinance.app"
             android:targetClass="com.glassfinance.monitor.MonitorActivity" />
     </shortcut>
 </shortcuts>
