@@ -50,3 +50,12 @@ A distribuição pode ser feita diretamente pelo APK de teste gerado no GitHub A
 
 O PWA instalado pelo navegador nunca poderá receber a permissão nativa
 `NotificationListenerService` apenas por alteração de código web.
+
+
+## Interface da versão 0.3.0
+
+A tela inicial de botões cinza foi removida. Ao tocar no ícone **Glass Finance**, o APK agora abre imediatamente o **site oficial** via Custom Tabs do navegador Android, preservando o fluxo de login no navegador (inclusive login Google). É necessário acesso à internet. Isso não embute o site ou remove totalmente a barra do navegador: um app Android visualmente 100% idêntico sem barra exige TWA com associação digital do domínio ou outra integração autenticada, que dependeria de alterar o site. **Nada foi alterado no site em produção.**
+
+Para consultar o monitor nativo experimental, pressione e segure o ícone do APK na tela inicial e use o atalho **Monitor financeiro** (dependendo do launcher Android, o atalho poderá não aparecer). Nele há uma página com visual reorganizado e a permissão opcional. O monitor ainda não envia informações para o site nem cria transações.
+
+O identificador do APK v0.3.0 é `com.glassfinance.mobile.preview`, separado do APK experimental anterior, para evitar sobrescrever versões de teste anteriores. O APK vem com assinatura de teste do ambiente de compilação e pode exigir remoção do próprio APK de teste em futuras atualizações; não desinstale o PWA do Glass Finance.
