@@ -1597,7 +1597,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [cloudReady, isAuthenticated, cloudSnapshot, cloudSyncStatus, convex, saveMine]);
 
   const ensureRecurringThrough = useCallback((month: string) => {
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
     setState((previous) => {
       const profiles = previous.profiles.map((profile) => {
         if (profile.id !== previous.activeProfileId) return profile;
@@ -1679,7 +1679,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     ];
     const deleteWithUndo = (ids: string[]) => {
       if (!active) return undefined;
-      const deletion = captureTransactionDeletion(activeData, active.id, ids);
+      const deletedSeries = new Set(activeData.transactions
+        .filter((row) => ids.includes(row.id) && row.recurrence === "recorrente" && !row.recurrenceSourceId)
+        .map((row) => row.id));
+      // Deleting the original entry deletes its series; deleting a single
+      // occurrence only suppresses that date (in the deletion helper).
+      const expandedIds = activeData.transactions
+        .filter((row) => ids.includes(row.id) || (row.recurrenceSourceId && deletedSeries.has(row.recurrenceSourceId)))
+        .map((row) => row.id);
+      const deletion = captureTransactionDeletion(activeData, active.id, expandedIds);
       if (!deletion) return undefined;
       setState((s) => ({ ...s, profiles: applyTransactionDeletion(s.profiles, deletion) }));
       return deletion;
