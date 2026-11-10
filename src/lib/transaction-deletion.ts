@@ -69,7 +69,11 @@ export function applyTransactionDeletion(
                 // opened. Persist its date on the originating series.
                 const deletedDates = deletion.transactions
                   .filter((row) => row.recurrenceSourceId === item.id)
-                  .map((row) => row.date);
+                  .map((row) => {
+                    const prefix = `recurrence:${item.id}:`;
+                    // Preserve the scheduled date even after moving one entry.
+                    return row.id.startsWith(prefix) ? row.id.slice(prefix.length) : row.date;
+                  });
                 if (!deletedDates.length) return item;
                 return {
                   ...item,
@@ -119,7 +123,8 @@ export function restoreTransactionDeletion(
     for (const row of deletion.transactions) {
       if (!row.recurrenceSourceId) continue;
       const dates = restoredDates.get(row.recurrenceSourceId) ?? new Set<string>();
-      dates.add(row.date);
+      const prefix = `recurrence:${row.recurrenceSourceId}:`;
+      dates.add(row.id.startsWith(prefix) ? row.id.slice(prefix.length) : row.date);
       restoredDates.set(row.recurrenceSourceId, dates);
     }
     const restored = transactions.map((row) => {
