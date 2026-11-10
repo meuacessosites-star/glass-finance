@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = await mkdtemp(path.join(tmpdir(), "granascan-billing-"));
 const entries = ["card-billing.test", "card-installments.test", "transaction-status.test", "transaction-ledgers.test", "previous-month-debts.test", "navigation-pending.test", "payment-updates.test", "loan-repayments.test", "home-balance.test", "transaction-deletion.test", "loan-view.test", "card-loans.test", "loan-record-actions.test", "loan-history.test", "record-order.test", "loan-value-display.test", "report-view.test", "category-catalog.test", "card-appearance.test"];
+entries.push("recurring-transactions.test");
 entries.push("card-invoice-view.test");
 entries.push("card-menu-flows.test");
 entries.push("card-invoice-interactions.test");
