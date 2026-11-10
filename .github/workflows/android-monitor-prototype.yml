@@ -2,7 +2,7 @@ name: Android monitor isolated prototype
 
 on:
   push:
-    branches: [experiment/android-financial-notification-monitor, experiment/glass-finance-shareable-android]
+    branches: [experiment/android-financial-notification-monitor, experiment/glass-finance-shareable-android, experiment/glass-finance-play-internal-aab]
     paths:
       - "android-notification-monitor/**"
       - ".github/workflows/android-monitor-prototype.yml"
@@ -30,16 +30,16 @@ jobs:
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -x "$SDKMANAGER"
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.7"
+          gradle-version: "8.11.1"
       - name: Compile Android and run parser tests
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:bundleRelease
       - name: Save prototype APK for controlled testing
         uses: actions/upload-artifact@v4
         with:
-          name: glass-finance-android-apk-pessoal
-          path: android-notification-monitor/app/build/outputs/apk/debug/app-debug.apk
+          name: glass-finance-play-unsigned-aab
+          path: android-notification-monitor/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
           if-no-files-found: error
