@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendRecurringThrough, recurringOccurrenceId } from "../src/lib/recurring-transactions";
+import { appendRecurringThrough, recurringOccurrenceId, stopRecurringEntries } from "../src/lib/recurring-transactions";
 import { captureTransactionDeletion, applyTransactionDeletion, restoreTransactionDeletion } from "../src/lib/transaction-deletion";
 import type { Transaction } from "../src/lib/mock-data";
 import type { AppProfile, ProfileData } from "../src/lib/app-store";
@@ -87,4 +87,23 @@ test("deleting a recurring occurrence prevents its return and undo restores it",
   const restored=restoreTransactionDeletion(deleted,deletion);
   assert.equal(restored[0].data.transactions.length,3);
   assert.equal(restored[0].data.transactions[0].recurrenceSkippedDates?.length,0);
+});
+
+test("stopping recurrence removes future pending rows but keeps paid history", () => {
+  const generated = appendRecurringThrough([tx()], "2027-03");
+  const withSettledFuture = generated.map((row) =>
+    row.date === "2027-01-10" ? { ...row, paymentStatus: "paid" as const, paymentDate: "2027-01-10" } : row
+  );
+  const stopped = stopRecurringEntries(withSettledFuture, generated[1].id, "2026-12-15");
+  assert.equal(stopped.find((x) => x.id === "rent")?.recurrenceEndDate, "2026-12-15");
+  assert.deepEqual(stopped.map((x) => x.date), ["2026-11-10", "2026-12-10", "2027-01-10"]);
+  assert.equal(stopped[2].paymentStatus, "paid");
+  assert.equal(appendRecurringThrough(stopped, "2028-12"), stopped);
+});
+
+test("stopping a recurrence twice cannot extend an earlier end date", () => {
+  const original = tx({recurrenceEndDate:"2026-11-14"});
+  const result=stopRecurringEntries([original],"rent","2026-12-20");
+  assert.equal(result[0], original);
+  assert.equal(result[0].recurrenceEndDate,"2026-11-14");
 });
