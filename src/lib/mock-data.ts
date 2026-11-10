@@ -81,6 +81,8 @@ export type Transaction = {
   frequencyInterval?: number;
   /** ID da série original. Presente somente nas ocorrências já geradas. */
   recurrenceSourceId?: string;
+  /** Esta ocorrência foi editada individualmente e não deve ser sobrescrita pela série. */
+  recurrenceCustomized?: boolean;
   /** Último dia em que a série recorrente ainda pode gerar ocorrências. */
   recurrenceEndDate?: string;
   /** Datas de ocorrências apagadas, para não recriá-las depois. */
