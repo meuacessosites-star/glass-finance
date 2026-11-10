@@ -2,7 +2,7 @@ name: Android monitor isolated prototype
 
 on:
   push:
-    branches: [experiment/android-financial-notification-monitor]
+    branches: [experiment/android-financial-notification-monitor, experiment/glass-finance-shareable-android]
     paths:
       - "android-notification-monitor/**"
       - ".github/workflows/android-monitor-prototype.yml"
@@ -39,7 +39,7 @@ jobs:
       - name: Save prototype APK for controlled testing
         uses: actions/upload-artifact@v4
         with:
-          name: glass-finance-android-monitor-prototype
+          name: glass-finance-android-apk-pessoal
           path: android-notification-monitor/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+          retention-days: 30
           if-no-files-found: error
