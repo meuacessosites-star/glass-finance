@@ -7,6 +7,6 @@ const crons = cronJobs();
 crons.daily("remove old unlinked uploads", { hourUTC: 5 }, internal.financeFiles.cleanupAbandonedUploads);
 
 // Deliver a single discreet daily reminder at 09:00 in each device's time zone.
-crons.hourly("dispatch due financial reminders", internal.pushDelivery.dispatchDue);
+crons.hourly("dispatch due financial reminders", internal.pushDelivery.dispatchDue, {});
 
 export default crons;
