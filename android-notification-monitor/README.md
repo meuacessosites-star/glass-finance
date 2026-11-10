@@ -1,8 +1,8 @@
-# Glass Finance — monitor experimental Android
+# Glass Finance — APK pessoal com monitor experimental
 
 **Status: protótipo isolado, não integrado ao Glass Finance em produção.**
 
-Este projeto testa a leitura **local** de avisos financeiros em um aparelho Android.
+Este APK compartilhável oferece um botão **Abrir Glass Finance** (abre o site oficial no navegador seguro do Android) e testa a leitura **local** de avisos financeiros. Não incorpora todos os arquivos do site nem oferece uso offline.
 É um aplicativo separado apenas durante a fase experimental: **não modifica** o
 PWA, login, Convex, banco de dados, saldos, contas, histórico ou transações do site.
 
@@ -45,6 +45,8 @@ manualmente, em aparelho de teste próprio, antes de instalar em um celular prin
 4. Confirmar que o site consegue visualizar, aprovar e rejeitar uma sugestão sem
    criar transações duplicadas.
 5. Somente depois de aprovação e testes, avaliar inclusão no produto.
+
+A distribuição pode ser feita diretamente pelo APK de teste gerado no GitHub Actions. É um APK debug de avaliação, não um pacote de lançamento assinado com chave privada; não é recomendado para distribuição pública ampla. Revise os avisos de segurança do Android e instale apenas builds próprios e confiáveis.
 
 O PWA instalado pelo navegador nunca poderá receber a permissão nativa
 `NotificationListenerService` apenas por alteração de código web.
