@@ -3,7 +3,7 @@
     <!-- No INTERNET, contacts, SMS, or storage permissions. This prototype stays offline. -->
     <application
         android:allowBackup="false"
-        android:label="Glass Monitor (Teste)"
+        android:label="Glass Finance"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
