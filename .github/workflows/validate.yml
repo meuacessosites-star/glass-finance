@@ -2,7 +2,7 @@ name: Validate Glass Finance changes
 
 on:
   push:
-    branches: [feat/convex-transactions-migration-safe]
+    branches: [main, feat/convex-transactions-migration-safe]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -29,5 +29,7 @@ jobs:
           npx vitest run --config vitest.convex.config.mjs
       - name: TypeScript
         run: npm run typecheck
+      - name: Convex functions TypeScript (same project config used by deploy)
+        run: npm run typecheck:convex
       - name: Production build
         run: npm run build
