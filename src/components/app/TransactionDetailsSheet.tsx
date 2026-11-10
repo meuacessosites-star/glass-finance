@@ -68,7 +68,7 @@ export function TransactionDetailsSheet({
 }) {
   const convex = useConvex();
   const formatCurrency = usePrivateCurrency();
-  const { categoryById, cards, loanReceivables, updateTransaction } =
+  const { categoryById, cards, loanReceivables, updateTransaction, stopRecurringSeries } =
     useAppStore();
   const today = useLocalDate();
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
@@ -546,6 +546,33 @@ export function TransactionDetailsSheet({
                   )
                 )}
               </div>
+
+              {transaction.recurrence === "recorrente" && (
+                <div className="mt-4 rounded-2xl border border-violet-200/70 bg-violet-50/70 px-3.5 py-3 dark:border-violet-500/30 dark:bg-violet-500/10">
+                  <p className="text-[12px] font-semibold text-glass-ink">
+                    {transaction.recurrenceEndDate ? "Recorrência desativada" : "Recorrência ativa"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-glass-sub">
+                    {transaction.recurrenceEndDate
+                      ? `Novas ocorrências interrompidas em ${shortDate(transaction.recurrenceEndDate)}.`
+                      : "Aparece automaticamente nos próximos períodos enquanto estiver ativa."}
+                  </p>
+                  {!transaction.recurrenceEndDate && (
+                    <button
+                      type="button"
+                      className="mt-2 min-h-10 rounded-xl border border-violet-300/60 bg-white/70 px-3 text-[12px] font-semibold text-violet-800 dark:border-violet-400/40 dark:bg-white/10 dark:text-violet-100"
+                      onClick={() => {
+                        if (!window.confirm("Desativar as próximas repetições desta transação? Os lançamentos anteriores serão preservados.")) return;
+                        stopRecurringSeries(transaction.id);
+                        toast.success("Próximas repetições desativadas.");
+                        onClose();
+                      }}
+                    >
+                      Desativar próximas repetições
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Draft / notes */}
               {transaction.note && (
