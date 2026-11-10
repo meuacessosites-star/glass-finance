@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No INTERNET, contacts, SMS, or storage permissions. This prototype stays offline. -->
+    <!-- The dashboard opens in the user's default trusted browser.
+         The isolated notification monitor itself has no Internet permission. -->
     <application
         android:allowBackup="false"
-        android:label="Glass Finance"
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_glass"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
@@ -13,8 +15,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
-        <!-- Android binds only after the person explicitly authorizes notification access. -->
+        <activity
+            android:name=".MonitorActivity"
+            android:exported="true"
+            android:label="@string/shortcut_monitor_full" />
         <service
             android:name=".FinancialNotificationListener"
             android:label="Glass Monitor: alertas financeiros"
