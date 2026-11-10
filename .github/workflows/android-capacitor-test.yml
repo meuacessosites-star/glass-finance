@@ -1,0 +1,69 @@
+name: Glass Finance Capacitor Android - prova de conceito
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/glass-finance-capacitor-native]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'capacitor.config.ts'
+      - 'scripts/prepare-capacitor-android.mjs'
+      - '.github/workflows/android-capacitor-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install web application and Capacitor 8
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false @capacitor/core@8 @capacitor/cli@8 @capacitor/android@8 @capacitor/app@8 @capacitor/browser@8
+      - name: Validate types (including Capacitor APIs)
+        run: npm run typecheck
+      - name: Compile the ORIGINAL Glass Finance frontend
+        run: npm run build
+        env:
+          # Public backend endpoint: same Convex production data that the website uses.
+          VITE_CONVEX_URL: https://blissful-capybara-905.convex.cloud
+      - name: Create native Android container and embed local web assets
+        run: |
+          npx cap add android
+          npx cap sync android
+          node scripts/prepare-capacitor-android.mjs
+          test -f android/app/src/main/assets/public/index.html
+      - name: Build separate debug APK and unsigned Play release AAB
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug :app:bundleRelease
+      - name: Upload APK for isolated installation tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: glass-finance-capacitor-preview-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload unsigned AAB (DO NOT submit to Play before signing and testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: glass-finance-capacitor-unsigned-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14
+          if-no-files-found: error
