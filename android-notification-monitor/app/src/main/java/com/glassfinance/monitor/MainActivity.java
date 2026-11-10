@@ -5,6 +5,8 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.net.Uri;
+import androidx.browser.customtabs.CustomTabsIntent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -32,14 +34,19 @@ public final class MainActivity extends Activity {
         column.setPadding(padding, padding, padding, padding);
 
         TextView heading = new TextView(this);
-        heading.setText("Glass Finance — Monitor experimental");
+        heading.setText("Glass Finance");
         heading.setTextSize(22);
         column.addView(heading);
 
         TextView description = new TextView(this);
-        description.setText("Teste local, sem conexão com o site. O Android permite autorizar a leitura de notificações. Apenas avisos reconhecidos de aplicativos bancários entram no histórico; não são enviados para a internet.");
+        description.setText("Abra sua conta do Glass Finance com segurança. O monitor de notificações é opcional e, nesta versão, funciona somente neste celular. Ainda não envia avisos para sua conta.");
         description.setPadding(0, padding / 2, 0, padding / 2);
         column.addView(description);
+
+        Button openApp = new Button(this);
+        openApp.setText("Abrir Glass Finance");
+        openApp.setOnClickListener(v -> openGlassFinance());
+        column.addView(openApp);
 
         status = new TextView(this);
         column.addView(status);
@@ -87,6 +94,21 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refresh();
+    }
+
+    private void openGlassFinance() {
+        Uri site = Uri.parse("https://glass-finance-teal.vercel.app/");
+        try {
+            // Chrome Custom Tabs uses the user's trusted browser session instead of
+            // embedding Google sign-in inside a restricted Android WebView.
+            new CustomTabsIntent.Builder().build().launchUrl(this, site);
+        } catch (Exception tabError) {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, site));
+            } catch (Exception browserError) {
+                status.setText("Não foi possível abrir o site. Instale ou configure um navegador.");
+            }
+        }
     }
 
     private void refresh() {
