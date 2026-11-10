@@ -433,6 +433,16 @@ export default function AccountPage() {
         A importação substitui os dados desta conta pelos do arquivo ou código.
         Faça um backup antes se quiser preservar o que está salvo.
       </p>
+      <div className="glass rounded-3xl p-4">
+        <p className="text-[15px] font-semibold text-glass-ink">Privacidade e proteção de dados</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
+          Veja como suas informações são utilizadas e saiba como solicitar a exclusão da conta de login.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3 text-[13px] font-medium">
+          <a className="text-primary underline underline-offset-4" href="/privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>
+          <a className="text-primary underline underline-offset-4" href="/exclusao-de-dados.html" target="_blank" rel="noopener noreferrer">Exclusão de dados e conta</a>
+        </div>
+      </div>
       <div className="glass rounded-3xl border border-red-500/20 p-4">
         <p className="text-[15px] font-semibold text-glass-ink">Excluir dados financeiros da nuvem</p>
         <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">Apaga perfis, lançamentos, cartões, anexos e contatos financeiros vinculados a esta conta. A conta de login não é excluída.</p>
