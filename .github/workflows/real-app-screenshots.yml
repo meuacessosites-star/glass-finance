@@ -1,0 +1,43 @@
+name: Real Glass Finance UI screenshots (demo data)
+on:
+  push:
+    branches: [experiment/real-ui-playstore-screenshots]
+    paths:
+      - 'src/**'
+      - 'scripts/capture-playstore-screenshots.mjs'
+      - '.github/workflows/real-app-screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Typecheck real UI with screenshot-only demo mode
+        run: npm run typecheck
+      - name: Build isolated screenshot preview
+        run: npm run build
+        env:
+          VITE_SCREENSHOT_MODE: 'true'
+          VITE_CONVEX_URL: 'https://screenshot-test.convex.cloud'
+      - name: Capture real interface
+        run: node scripts/capture-playstore-screenshots.mjs
+      - name: Save screenshot images
+        uses: actions/upload-artifact@v4
+        with:
+          name: glass-finance-telas-reais-demonstracao
+          path: playstore-screenshots/*.png
+          retention-days: 30
+          if-no-files-found: error
