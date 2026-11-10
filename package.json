@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "format": "prettier --write .",
     "preview": "vite preview",
-    "test:billing": "node scripts/test-billing.mjs"
+    "test:billing": "node scripts/test-billing.mjs",
+    "typecheck:convex": "tsc --project src/convex/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

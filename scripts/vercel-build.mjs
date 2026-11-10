@@ -1,6 +1,25 @@
 import { spawnSync } from "node:child_process";
 
 const isProduction = process.env.VERCEL_ENV === "production";
+
+// Validate the Convex backend *before* attempting to publish it.
+// The frontend's `tsc -b` does not check the separate Convex tsconfig.
+if (isProduction) {
+  console.log("Preflight: validando TypeScript do backend Convex antes de publicar...");
+  const preflight = spawnSync("npm", ["run", "typecheck:convex"], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (preflight.error) {
+    console.error("Não foi possível validar as funções Convex:", preflight.error.message);
+    process.exit(1);
+  }
+  if (preflight.status !== 0) {
+    console.error("Publicação bloqueada: corrija os erros do backend antes de atualizar o Convex Production.");
+    process.exit(preflight.status ?? 1);
+  }
+}
+
 const executable = isProduction ? "npx" : "npm";
 const args = isProduction
   ? [
