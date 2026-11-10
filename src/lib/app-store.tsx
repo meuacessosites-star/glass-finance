@@ -2012,7 +2012,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             const nextMonth = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
             const target = [...priorChildren.map((row) => row.date.slice(0, 7)), nextMonth]
               .sort()
-              .at(-1) ?? nextMonth;
+              .slice(-1)[0] ?? nextMonth;
             resultingTransactions = transactions.filter((row) =>
               row.recurrenceSourceId !== id ||
               row.paymentStatus === "paid" ||
