@@ -188,9 +188,9 @@ export const verifyProfile = query({
 /** Records a successful, read-only reconciliation as an activation prerequisite. */
 export const confirmProfile = mutation({
   args: { profileId: v.string(), sourceRevision: v.number() },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ verified: true; count: number }> => {
     const userSubject = await owner(ctx);
-    const check = await ctx.runQuery(api.transactionMigration.verifyProfile, args);
+    const check: { verified: boolean; expectedCount?: number; copiedCount?: number; expectedAmountCents?: number; copiedAmountCents?: number } = await ctx.runQuery(api.transactionMigration.verifyProfile, args);
     if (!check.verified || check.expectedCount === undefined ||
         check.expectedAmountCents === undefined || check.copiedCount === undefined ||
         check.copiedAmountCents === undefined)
