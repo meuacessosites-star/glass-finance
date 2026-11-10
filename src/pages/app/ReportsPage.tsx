@@ -83,7 +83,7 @@ export default function ReportsPage() {
     [chosenMonths, currentMonth],
   );
   useEffect(() => {
-    const latestMonth = [...months].sort().at(-1);
+    const latestMonth = [...months].sort().slice(-1)[0];
     if (latestMonth) ensureRecurringThrough(latestMonth);
   }, [months, ensureRecurringThrough]);
 
