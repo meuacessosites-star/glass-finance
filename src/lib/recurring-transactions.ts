@@ -94,3 +94,28 @@ export function appendRecurringThrough(transactions: Transaction[], throughMonth
   }
   return created.length ? [...transactions, ...created] : transactions;
 }
+
+/** Pause all future occurrences of the series without erasing paid history. */
+export function stopRecurringEntries(transactions: Transaction[], entryId: string, today: string): Transaction[] {
+  if (dayToTime(today) === null) return transactions;
+  const selected = transactions.find((row) => row.id === entryId);
+  const sourceId = selected?.recurrenceSourceId ?? entryId;
+  const source = transactions.find((row) => row.id === sourceId);
+  if (!source || source.recurrence !== "recorrente" || source.recurrenceSourceId) return transactions;
+  const cutoff = source.recurrenceEndDate && source.recurrenceEndDate < today
+    ? source.recurrenceEndDate
+    : today;
+  let changed = false;
+  const result = transactions.flatMap((row) => {
+    if (row.recurrenceSourceId === sourceId && row.date > cutoff && row.paymentStatus !== "paid") {
+      changed = true;
+      return [];
+    }
+    if (row.id === sourceId && row.recurrenceEndDate !== cutoff) {
+      changed = true;
+      return [{ ...row, recurrenceEndDate: cutoff }];
+    }
+    return [row];
+  });
+  return changed ? result : transactions;
+}
