@@ -71,6 +71,7 @@ export default function TransactionsPage() {
     activeProfile,
     categories,
     visibleTransactions,
+    ensureRecurringThrough,
     loanReceivables,
     cards,
     setTransactionPaymentStatus,
@@ -144,6 +145,14 @@ export default function TransactionsPage() {
       : monthOptions.includes(currentMonthKey)
         ? currentMonthKey
         : monthOptions[0] ?? currentMonthKey;
+  useEffect(() => {
+    const target = [...selectedMonths, selectedMonth, rangeStart?.slice(0, 7), rangeEnd?.slice(0, 7)]
+      .filter((item): item is string => Boolean(item && /^\\d{4}-(0[1-9]|1[0-2])$/.test(item)))
+      .sort()
+      .slice(-1)[0];
+    if (target) ensureRecurringThrough(target);
+  }, [selectedMonth, selectedMonths, rangeStart, rangeEnd, ensureRecurringThrough]);
+
   const activeRangeStart = periodMode === "custom" && rangeStart ? rangeStart : null;
   const activeRangeEnd = periodMode === "custom" && rangeStart ? rangeEnd ?? rangeStart : null;
   const selectedPeriodLabel = activeRangeStart && activeRangeEnd

@@ -1,6 +1,6 @@
 import { AmountVisibility, BalancePrivacyToggle, useStoredBalancePrivacy } from "@/components/app/BalancePrivacy";
 import { formatPrivateAmount } from "@/lib/balance-privacy";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowUpRight,
@@ -44,9 +44,14 @@ export default function HomePage() {
     setHomeBalanceMode,
     notifications,
     visibleTransactions,
+    ensureRecurringThrough,
     readPaymentNotificationIds,
     includeBorrowedCardInvoices,
   } = useAppStore();
+
+  useEffect(() => {
+    ensureRecurringThrough(selectedMonth);
+  }, [selectedMonth, ensureRecurringThrough]);
 
   const calculation = getHomeBalance(
     { transactions, loanReceivables },

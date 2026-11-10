@@ -26,6 +26,7 @@ import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactio
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
+import { appendRecurringThrough, stopRecurringEntries } from "./recurring-transactions";
 import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
@@ -693,6 +694,14 @@ export function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transac
               Math.max(1, Math.round(t.currentInstallment)),
             )
           : undefined;
+      const recurrenceSourceId = typeof t.recurrenceSourceId === "string" && t.recurrenceSourceId.trim()
+        ? t.recurrenceSourceId.trim().slice(0, 200) : undefined;
+      const recurrenceEndDate = typeof t.recurrenceEndDate === "string" && sanitizeDueDate(t.recurrenceEndDate)
+        ? t.recurrenceEndDate : undefined;
+      const recurrenceSkippedDates = Array.isArray(t.recurrenceSkippedDates)
+        ? [...new Set(t.recurrenceSkippedDates.filter((day): day is string =>
+            typeof day === "string" && Boolean(sanitizeDueDate(day))))].slice(0, 20000)
+        : undefined;
       const normalizedDate =
         typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(t.date)
           ? t.date.slice(0, 10)
@@ -764,6 +773,10 @@ export function sanitizeTransactions(v: unknown, cards: AppCard[] = []): Transac
       recurrence,
       frequency,
       frequencyInterval,
+      recurrenceSourceId,
+      recurrenceCustomized: recurrenceSourceId && t.recurrenceCustomized === true ? true : undefined,
+      recurrenceEndDate,
+      recurrenceSkippedDates,
       installments,
       currentInstallment,
       paymentMethod:
@@ -1127,6 +1140,10 @@ type AppStoreValue = {
     draftDisplay?: "hidden" | "multipleMedia";
   }) => void;
   setTransactionPaymentStatus: (id: string, status: "paid" | "pending") => void;
+  /** Gera as próximas ocorrências conforme os meses acessados, sem duplicar históricos. */
+  ensureRecurringThrough: (month: string) => void;
+  /** Encerra a série após a data indicada, mantendo o histórico de pagamentos. */
+  stopRecurringSeries: (id: string) => void;
   updateTransaction: (
     id: string,
     patch: Partial<
@@ -1580,6 +1597,32 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [cloudReady, isAuthenticated, cloudSnapshot, cloudSyncStatus, convex, saveMine]);
 
+  const ensureRecurringThrough = useCallback((month: string) => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+    setState((previous) => {
+      const profiles = previous.profiles.map((profile) => {
+        if (profile.id !== previous.activeProfileId) return profile;
+        const expanded = appendRecurringThrough(profile.data.transactions, month);
+        return expanded === profile.data.transactions
+          ? profile
+          : { ...profile, data: { ...profile.data, transactions: expanded } };
+      });
+      return profiles.every((profile, index) => profile === previous.profiles[index])
+        ? previous
+        : { ...previous, profiles };
+    });
+  }, []);
+
+  // An existing recurrence must reach the next month even when the user
+  // has not created a new transaction during this session.
+  useEffect(() => {
+    if (!cloudReady) return;
+    const now = localDateKey();
+    const [year, month] = now.slice(0, 7).split("-").map(Number);
+    const next = new Date(Date.UTC(year, month, 1));
+    ensureRecurringThrough(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+  }, [cloudReady, ensureRecurringThrough]);
+
   useEffect(() => {
     const reopen = (event: PageTransitionEvent) => { if (event.persisted) setState((current) => startPaymentNoticeSession(current)); };
     window.addEventListener("pageshow", reopen);
@@ -1637,7 +1680,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     ];
     const deleteWithUndo = (ids: string[]) => {
       if (!active) return undefined;
-      const deletion = captureTransactionDeletion(activeData, active.id, ids);
+      const deletedSeries = new Set(activeData.transactions
+        .filter((row) => ids.includes(row.id) && row.recurrence === "recorrente" && !row.recurrenceSourceId)
+        .map((row) => row.id));
+      // Deleting the original entry deletes its series; deleting a single
+      // occurrence only suppresses that date (in the deletion helper).
+      const expandedIds = activeData.transactions
+        .filter((row) => ids.includes(row.id) || (row.recurrenceSourceId && deletedSeries.has(row.recurrenceSourceId)))
+        .map((row) => row.id);
+      const deletion = captureTransactionDeletion(activeData, active.id, expandedIds);
       if (!deletion) return undefined;
       setState((s) => ({ ...s, profiles: applyTransactionDeletion(s.profiles, deletion) }));
       return deletion;
@@ -1660,6 +1711,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       transactions: regularTransactions,
       loanTransactions,
       visibleTransactions,
+      ensureRecurringThrough,
+      stopRecurringSeries: (id) => patchActiveData((data) => {
+        const stopped = stopRecurringEntries(data.transactions, id, localDateKey());
+        return stopped === data.transactions
+          ? data
+          : { ...data, transactions: stopped };
+      }),
       loanReceivables: activeData.loanReceivables,
       people: activeData.people,
       reserves: activeData.reserves,
@@ -1891,7 +1949,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             cardDisplayMode: data.cardDisplayMode ?? "last4",
           };
           const cards = openUnpaidPurchaseInvoices(d, transaction).cards;
-          return { ...d, cards, transactions: [transaction, ...d.transactions] };
+          return {
+            ...d,
+            cards,
+            transactions: appendRecurringThrough([transaction, ...d.transactions], localDateKey().slice(0, 7)),
+          };
         }),
       setTransactionPaymentStatus: (id, status) =>
         patchActiveData((d) => setTransactionPaymentState(d, id, status)),
@@ -1919,9 +1981,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               paymentDate: nextPaymentDate,
               showPaymentDateOnCard: nextShowPaymentDateOnCard,
               cardDisplayMode: nextCardDisplayMode,
+              recurrenceCustomized: transaction.recurrenceSourceId ? true : transaction.recurrenceCustomized,
             };
           });
           const updated = transactions.find((transaction) => transaction.id === id);
+          let resultingTransactions = transactions;
+          // An edit to a recurring source changes unpaid future instances.
+          // Preserve already paid occurrences and individually customized rows.
+          // If recurrence is switched off, remove unpaid generated instances.
+          if (!previous?.recurrenceSourceId &&
+              (previous?.recurrence === "recorrente" || updated?.recurrence === "recorrente")) {
+            const priorChildren = d.transactions.filter((row) => row.recurrenceSourceId === id);
+            const now = localDateKey().slice(0, 7);
+            const [year, month] = now.split("-").map(Number);
+            const next = new Date(Date.UTC(year, month, 1));
+            const nextMonth = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+            const target = [...priorChildren.map((row) => row.date.slice(0, 7)), nextMonth]
+              .sort()
+              .slice(-1)[0] ?? nextMonth;
+            resultingTransactions = transactions.filter((row) =>
+              row.recurrenceSourceId !== id ||
+              row.paymentStatus === "paid" ||
+              row.recurrenceCustomized === true
+            );
+            if (updated?.recurrence === "recorrente") {
+              resultingTransactions = appendRecurringThrough(resultingTransactions, target);
+            }
+          }
           const previousCard = d.cards.find((card) => card.id === previous?.cardId);
           const updatedCard = d.cards.find((card) => card.id === updated?.cardId);
           const movedPendingPurchase = previous && updated && isCreditCardExpense(updated) && updated.paymentStatus === "pending" &&
@@ -1931,7 +2017,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           const cards = movedPendingPurchase && updatedCard
             ? openUnpaidPurchaseInvoices(d, updated).cards
             : d.cards;
-          return { ...d, cards, transactions };
+          return { ...d, cards, transactions: resultingTransactions };
         }),
       deleteTransaction: (id) => deleteWithUndo([id]),
       deleteTransactions: (ids) => deleteWithUndo(ids),
@@ -1992,7 +2078,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removePin: () => patchActiveData((d) => ({ ...d, pin: null })),
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
-  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage]);
+  }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage, ensureRecurringThrough]);
 
   if (!cloudReady || migrationInProgress) {
     return (
