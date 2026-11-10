@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.glassfinance.monitor'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
-        applicationId 'com.glassfinance.mobile.preview'
+        applicationId 'com.glassfinance.app'
         minSdk 26
-        targetSdk 35
-        versionCode 2
-        versionName '0.3.0'
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0-internal'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
