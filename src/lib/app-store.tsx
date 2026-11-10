@@ -26,7 +26,7 @@ import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactio
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
-import { appendRecurringThrough } from "./recurring-transactions";
+import { appendRecurringThrough, stopRecurringEntries } from "./recurring-transactions";
 import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
@@ -1713,24 +1713,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       visibleTransactions,
       ensureRecurringThrough,
       stopRecurringSeries: (id) => patchActiveData((data) => {
-        const selected = data.transactions.find((row) => row.id === id);
-        const seriesId = selected?.recurrenceSourceId ?? id;
-        const source = data.transactions.find((row) => row.id === seriesId);
-        if (!source || source.recurrence !== "recorrente") return data;
-        const endDate = localDateKey();
-        const preserved = data.transactions.filter((row) =>
-          row.recurrenceSourceId !== seriesId ||
-          row.date <= endDate ||
-          row.paymentStatus === "paid"
-        );
-        return {
-          ...data,
-          transactions: preserved.map((row) =>
-            row.id === seriesId
-              ? { ...row, recurrenceEndDate: endDate }
-              : row
-          ),
-        };
+        const stopped = stopRecurringEntries(data.transactions, id, localDateKey());
+        return stopped === data.transactions
+          ? data
+          : { ...data, transactions: stopped };
       }),
       loanReceivables: activeData.loanReceivables,
       people: activeData.people,
