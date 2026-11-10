@@ -647,6 +647,8 @@ export default function Landing() {
           <div className="flex items-center gap-4 text-[12.5px] font-medium text-slate-600">
             <a href="#recursos" className="transition-colors hover:text-slate-900">Recursos</a>
             <a href="#telas" className="transition-colors hover:text-slate-900">Telas</a>
+            <a href="/privacidade.html" className="transition-colors hover:text-slate-900">Privacidade</a>
+            <a href="/exclusao-de-dados.html" className="transition-colors hover:text-slate-900">Excluir dados e conta</a>
             <Link to="/auth" className="transition-colors hover:text-slate-900">Entrar</Link>
           </div>
         </div>
