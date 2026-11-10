@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="monitor"
+        android:enabled="true"
+        android:icon="@drawable/ic_glass"
+        android:shortcutShortLabel="@string/shortcut_monitor"
+        android:shortcutLongLabel="@string/shortcut_monitor_full">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.glassfinance.mobile.preview"
+            android:targetClass="com.glassfinance.monitor.MonitorActivity" />
+    </shortcut>
+</shortcuts>
