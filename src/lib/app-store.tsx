@@ -1,4 +1,5 @@
 import { DEFAULT_REMINDER_PREFERENCES, sanitizeReminderPreferences, type ReminderPreferences } from "./reminder-filters";
+import { createDemoProfile } from "./demo-examples";
 import { useConvex, type ConvexReactClient } from "convex/react";
 import { metadataWithoutTransactions, inflateTransactionPages, transactionChanges, splitTransactionBatches, applyTransactionBatch } from "./finance-v2-state";
 import { uploadAttachmentToCloud, isAttachmentImage } from "./cloud-attachments";
@@ -948,6 +949,11 @@ function createInitialState(): AppStoreState {
     ...profile,
     data: maintainNotificationHistory(profile.data),
   }));
+  if (import.meta.env.VITE_SCREENSHOT_MODE === "true") {
+    // Screenshot-only branch: reuse the real UI with repository demo data.
+    const demo = createDemoProfile(defaultData(), new Date());
+    return { profiles: [demo], activeProfileId: demo.id, exampleDataVersion: 0, pinUsage: "open" };
+  }
   return {
     profiles,
     activeProfileId: profiles[0].id,
@@ -1231,23 +1237,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
   const convex = useConvex();
   const userId = user?._id ? String(user._id) : null;
+  const screenshotMode = import.meta.env.VITE_SCREENSHOT_MODE === "true";
   const v2Snapshot = useQuery(
     api.financeV2.getMine,
-    !authLoading && isAuthenticated ? {} : "skip",
+    !screenshotMode && !authLoading && isAuthenticated ? {} : "skip",
   );
   const cloudSnapshot = useQuery(
     api.financeState.getMine,
-    !authLoading && isAuthenticated && v2Snapshot === null ? {} : "skip",
+    !screenshotMode && !authLoading && isAuthenticated && v2Snapshot === null ? {} : "skip",
   );
   const saveMine = useMutation(api.financeState.saveMine);
   const saveMineV2 = useMutation(api.financeV2.saveMine);
   const deleteMine = useMutation(api.financeState.deleteMine);
   const [state, setState] = useState<AppStoreState>(() => startPaymentNoticeSession(createInitialState()));
-  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudReady, setCloudReady] = useState(screenshotMode);
   const [storageVersion, setStorageVersion] = useState<"legacy" | "v2">("legacy");
   const [migrationInProgress, setMigrationInProgress] = useState(false);
   const [migrationMessage, setMigrationMessage] = useState("Preparando armazenamento…");
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>("loading");
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>(screenshotMode ? "synced" : "loading");
   const hydratedUserRef = useRef<string | null>(null);
   const revisionRef = useRef(0);
   const lastSyncedPayloadRef = useRef("");
@@ -1265,7 +1272,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !userId || v2Snapshot === undefined) return;
+    if (screenshotMode || authLoading || !isAuthenticated || !userId || v2Snapshot === undefined) return;
     if (v2Snapshot === null && cloudSnapshot === undefined) return;
     if (hydratedUserRef.current === userId) return;
     let cancelled = false;
@@ -1362,7 +1369,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [cloudReady, v2Snapshot, convex]);
 
   const drainSaveQueue = useCallback(async () => {
-    if (saveInFlightRef.current || conflictRef.current || migrationRef.current) return;
+    if (screenshotMode || saveInFlightRef.current || conflictRef.current || migrationRef.current) return;
     saveInFlightRef.current = true;
     try {
       while (pendingPayloadRef.current && !conflictRef.current) {
