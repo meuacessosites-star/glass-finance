@@ -5,8 +5,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.service.notification.NotificationListenerService;
-import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -95,9 +93,7 @@ public final class MainActivity extends Activity {
         ComponentName component = new ComponentName(this, FinancialNotificationListener.class);
         String enabled = Settings.Secure.getString(
             getContentResolver(), "enabled_notification_listeners");
-        boolean authorized = enabled != null &&
-            TextUtils.SimpleStringSplitter.class != null &&
-            isEnabledComponent(enabled, component);
+        boolean authorized = enabled != null && isEnabledComponent(enabled, component);
         status.setText(authorized
             ? "Acesso autorizado no Android. Monitor local ativado."
             : "Monitor desligado: autorize o acesso nas configurações, se desejar.");
