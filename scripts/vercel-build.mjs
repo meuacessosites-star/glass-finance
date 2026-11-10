@@ -4,7 +4,11 @@ const isProduction = process.env.VERCEL_ENV === "production";
 const executable = isProduction ? "npx" : "npm";
 const args = isProduction
   ? [
-      "convex",
+      // Convex 1.44 can require deployment:data:view during an index change.
+      // The CLI bug is fixed in 1.46+. Pin a fixed CLI for production builds
+      // without silently changing the runtime dependency or lockfile.
+      "--yes",
+      "convex@1.49.0",
       "deploy",
       "--cmd-url-env-var-name",
       "VITE_CONVEX_URL",
@@ -15,7 +19,7 @@ const args = isProduction
 
 console.log(
   isProduction
-    ? "Production: publicando funções Convex e compilando o frontend."
+    ? "Production: publicando funções com Convex CLI 1.49.0 e compilando o frontend."
     : "Preview/Development: compilando apenas o frontend; não publica no Convex Production.",
 );
 
