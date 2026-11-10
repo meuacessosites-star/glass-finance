@@ -79,6 +79,12 @@ export type Transaction = {
   frequency?: RecurrenceFrequency;
   /** Nº de dias entre ocorrências quando frequency === "dias". */
   frequencyInterval?: number;
+  /** ID da série original. Presente somente nas ocorrências já geradas. */
+  recurrenceSourceId?: string;
+  /** Último dia em que a série recorrente ainda pode gerar ocorrências. */
+  recurrenceEndDate?: string;
+  /** Datas de ocorrências apagadas, para não recriá-las depois. */
+  recurrenceSkippedDates?: string[];
   /** Total de parcelas quando recurrence === "parcelada". */
   installments?: number;
   /** Parcela atual (1-based) quando recurrence === "parcelada". */
