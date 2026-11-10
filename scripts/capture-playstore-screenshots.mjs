@@ -35,6 +35,7 @@ try {
   const pages = [
     ["01-painel-inicial.png", "/dashboard", "Resumo financeiro"],
     ["02-transacoes.png", "/dashboard/transacoes", "Transações"],
+    ["02b-transacoes-lista.png", "/dashboard/transacoes", "Histórico de transações"],
     ["03-cartoes.png", "/dashboard/cartoes", "Cartões"],
     ["04-reservas.png", "/dashboard/reservas", "Reservas"],
   ];
@@ -47,6 +48,13 @@ try {
     const body = await page.locator("body").innerText();
     if (/Preview runtime error|Configuração pendente|Conectando à sua conta e carregando/.test(body)) {
       throw new Error("Page did not render " + path + "\n" + body.slice(0, 1500) + "\n" + problems.join("\n"));
+    }
+    if (filename === "02b-transacoes-lista.png") {
+      const list = page.locator("#transactions-list-scroll");
+      if (await list.count()) {
+        await list.evaluate((el) => { el.scrollTop = 1050; });
+        await page.waitForTimeout(300);
+      }
     }
     const screenshotPath = "playstore-screenshots/" + filename;
     await page.screenshot({ path: screenshotPath, fullPage: false, animations: "disabled" });
