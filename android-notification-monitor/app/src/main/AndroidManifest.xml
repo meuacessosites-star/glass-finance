@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No INTERNET, contacts, SMS, or storage permissions. This prototype stays offline. -->
+    <application
+        android:allowBackup="false"
+        android:label="Glass Monitor (Teste)"
+        android:usesCleartextTraffic="false"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- Android binds only after the person explicitly authorizes notification access. -->
+        <service
+            android:name=".FinancialNotificationListener"
+            android:label="Glass Monitor: alertas financeiros"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
