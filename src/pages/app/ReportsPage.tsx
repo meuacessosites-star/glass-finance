@@ -68,6 +68,7 @@ export default function ReportsPage() {
   const {
     categoryById,
     visibleTransactions,
+    ensureRecurringThrough,
     activeProfileId,
     categoryLimits,
     setCategoryLimit,
@@ -81,6 +82,11 @@ export default function ReportsPage() {
     () => chosenMonths ?? [currentMonth],
     [chosenMonths, currentMonth],
   );
+  useEffect(() => {
+    const latestMonth = [...months].sort().at(-1);
+    if (latestMonth) ensureRecurringThrough(latestMonth);
+  }, [months, ensureRecurringThrough]);
+
   const multipleMonths = months.length > 1;
   const periodLabel = multipleMonths
     ? `${months.length} meses selecionados`
