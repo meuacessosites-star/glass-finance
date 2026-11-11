@@ -7,6 +7,19 @@ import { convexAuth } from "@convex-dev/auth/server";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
 
 const passwordProvider = Password({
+  profile(params): { email: string; [key: string]: string } {
+    const email = String(params.email ?? "").trim().toLowerCase();
+    if (params.flow !== "signUp") return { email };
+    const username = String(params.username ?? "").trim().replace(/\s+/g, " ");
+    if (username.length < 3 || username.length > 32)
+      throw new Error("O nome de usuário deve ter entre 3 e 32 caracteres.");
+    return {
+      email,
+      username,
+      usernameNormalized: username.toLocaleLowerCase("pt-BR"),
+      name: username,
+    };
+  },
   verify: createEmailOtp("password-email-verification"),
   reset: createEmailOtp("password-reset"),
   validatePasswordRequirements(password) {

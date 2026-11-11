@@ -73,8 +73,9 @@ export default function HomePage() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 5);
   const name =
-    activeProfile?.name?.trim().split(" ")[0] ||
+    user?.username?.trim().split(" ")[0] ||
     user?.name?.trim().split(" ")[0] ||
+    activeProfile?.name?.trim().split(" ")[0] ||
     "pessoa";
   const pendingCount =
     notifications.filter((n) => n.status === "pending").length +

@@ -1,11 +1,13 @@
-import { useConvex } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useAuth } from "@/hooks/use-auth";
 import { buildPortableBackup, backupFile, readBackupFile } from "@/lib/portable-backup";
 import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
 import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import "@/components/app/planning.css";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Download,
@@ -44,6 +46,26 @@ const inputClass =
 
 export default function AccountPage() {
   const convex = useConvex();
+  const { user } = useAuth();
+  const changeUsername = useMutation(api.users.updateUsername);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameBusy, setUsernameBusy] = useState(false);
+  useEffect(() => {
+    setUsernameInput(user?.username ?? user?.name ?? "");
+  }, [user?.username, user?.name]);
+
+  const saveUsername = async () => {
+    if (usernameBusy) return;
+    setUsernameBusy(true);
+    try {
+      await changeUsername({ username: usernameInput });
+      toast.success("Nome de usuário atualizado em sua conta.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível alterar o nome.");
+    } finally {
+      setUsernameBusy(false);
+    }
+  };
   const { activeProfile, profiles, restoreTrashedTransaction, storageVersion, migrateFinanceStorage, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
@@ -187,6 +209,26 @@ export default function AccountPage() {
   return (
     <div className="space-y-4">
       <SettingsHeader title="Conta" />
+      <section className="glass rounded-3xl p-4" aria-label="Nome de usuário da conta">
+        <h2 className="text-[15px] font-semibold text-glass-ink">Seu nome de usuário</h2>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Este nome aparece no topo da tela inicial e fica salvo na sua conta em todos os dispositivos.
+          Não altera o nome dos perfis financeiros nem seu e-mail de acesso.
+        </p>
+        <label htmlFor="account-username" className="mt-3 block text-xs font-medium text-glass-sub">
+          Nome de usuário
+        </label>
+        <input id="account-username" type="text" minLength={3} maxLength={32}
+          autoComplete="nickname" className={cn(inputClass, "mt-1")}
+          value={usernameInput} onChange={(event) => setUsernameInput(event.target.value)}
+          placeholder="Como deseja aparecer no aplicativo?" />
+        <button type="button" disabled={usernameBusy || !usernameInput.trim() ||
+            usernameInput.trim() === (user?.username ?? user?.name ?? "").trim()}
+          onClick={() => { void saveUsername(); }}
+          className="mt-3 min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-white disabled:opacity-50">
+          {usernameBusy ? "Salvando…" : "Salvar nome de usuário"}
+        </button>
+      </section>
       <p className="px-1 text-[12px] font-medium text-glass-faint">
         Dados de{" "}
         <span className="font-bold text-glass-sub">{activeProfile?.name}</span> —

@@ -295,3 +295,29 @@ test("signup check distinguishes registered email without returning account deta
   expect(await t.query(api.registration.emailAlreadyRegistered, { email: "new@example.com" })).toBe(false);
   expect(await t.query(api.registration.emailAlreadyRegistered, { email: "invalid" })).toBe(false);
 });
+
+test("username availability rejects duplicates while allowing distinct names", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("users", { email: "one@example.com", username: "Maria", usernameNormalized: "maria" });
+  });
+  expect(await t.query(api.registration.usernameAvailable, { username: " MARIA " })).toBe(false);
+  expect(await t.query(api.registration.usernameAvailable, { username: "Joana" })).toBe(true);
+  expect(await t.query(api.registration.usernameAvailable, { username: "ab" })).toBe(false);
+});
+
+test("account username changes are persisted and isolated from other users", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const one = await ctx.db.insert("users", { email: "one@example.com", username: "Maria", usernameNormalized: "maria" });
+    const two = await ctx.db.insert("users", { email: "two@example.com", username: "Joana", usernameNormalized: "joana" });
+    return { one, two };
+  });
+  const session = t.withIdentity({ subject: `${ids.one}|session-id` });
+  await expect(session.mutation(api.users.updateUsername, { username: "JOANA" }))
+    .rejects.toThrow("já está em uso");
+  const saved = await session.mutation(api.users.updateUsername, { username: "Mariana" });
+  expect(saved.username).toBe("Mariana");
+  expect((await t.run(ctx => ctx.db.get(ids.one)))?.username).toBe("Mariana");
+  expect((await t.run(ctx => ctx.db.get(ids.two)))?.username).toBe("Joana");
+});

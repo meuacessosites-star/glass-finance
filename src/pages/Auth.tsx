@@ -51,6 +51,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [step, setStep] = useState<AuthStep>("credentials");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [code, setCode] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,6 +76,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     try {
       data.set("flow", flow);
       if (normalizedEmail) data.set("email", normalizedEmail);
+      if (flow === "signUp") {
+        const cleanUsername = username.trim().replace(/\s+/g, " ");
+        data.set("username", cleanUsername);
+        if (cleanUsername.length < 3 || cleanUsername.length > 32) {
+          setError("O nome de usuário deve ter entre 3 e 32 caracteres.");
+          return;
+        }
+        if (!(await convex.query(api.registration.usernameAvailable, { username: cleanUsername }))) {
+          setError("Este nome de usuário já está em uso. Escolha outro.");
+          return;
+        }
+      }
       if (flow === "signUp" && await convex.query(api.registration.emailAlreadyRegistered, { email: normalizedEmail })) {
         setExistingEmail(true);
         setError(duplicateMessage);
@@ -87,6 +100,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       // The backend may reject a simultaneous signup as duplicate after the
       // initial check. Confirm that safely before showing a generic error.
       if (flow === "signUp") {
+        if (authError instanceof Error && /nome de usuário|username/i.test(authError.message)) {
+          setError("Não foi possível usar esse nome de usuário. Escolha outro.");
+          return;
+        }
         try {
           if (await convex.query(api.registration.emailAlreadyRegistered, { email: normalizedEmail })) {
             setExistingEmail(true);
@@ -224,9 +241,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const description = step === "otp" || step === "verifyEmail" || step === "resetPassword" ? `Enviamos um código para ${email}.` : step === "resetRequest" ? "Vamos enviar um código para redefinir sua senha." : mode === "signUp" ? "Seus dados ficam vinculados à sua conta e podem ser sincronizados entre dispositivos." : "Entre para acessar seus dados financeiros.";
 
   return (
-    <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
+    <main className="relative flex h-[100dvh] flex-col items-center justify-start overflow-y-auto overscroll-contain px-4 py-8 sm:px-6">
       <AppBackground />
-      <section className="relative z-10 w-full max-w-[460px]">
+      <section className="relative z-10 my-auto w-full max-w-[460px] shrink-0">
         <div className="glass glass-strong relative overflow-hidden rounded-[2rem] border border-white/60 p-6 sm:p-9">
           <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-[#5b9dff]/20 blur-3xl" />
           <header className="relative text-center">
@@ -256,6 +273,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <div className="relative my-5 flex items-center gap-3"><span className="h-px flex-1 bg-black/10 dark:bg-white/15"/><span className="text-[11px] font-semibold uppercase tracking-wider text-glass-faint">ou use seu email</span><span className="h-px flex-1 bg-black/10 dark:bg-white/15"/></div>
 
               <form onSubmit={handlePassword} className="relative space-y-3">
+                {mode === "signUp" && (
+                  <label className="block space-y-1.5 text-xs font-semibold text-glass-sub">
+                    <span>Nome de usuário</span>
+                    <Input name="username" type="text" autoComplete="nickname" minLength={3} maxLength={32}
+                      required value={username} onChange={(event) => setUsername(event.target.value)}
+                      placeholder="Como deseja aparecer no aplicativo?"
+                      className="h-12 rounded-xl border-black/10 bg-white/60 dark:border-white/15 dark:bg-black/10" />
+                    <span className="block font-normal text-glass-faint">Será exibido na tela inicial. Você poderá alterá-lo depois em Conta.</span>
+                  </label>
+                )}
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Email</span><span className="relative block"><Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@exemplo.com" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 dark:border-white/15 dark:bg-black/10" /></span></label>
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Senha</span><span className="relative block"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="password" type={passwordVisible ? "text" : "password"} autoComplete={mode === "signUp" ? "new-password" : "current-password"} minLength={8} required placeholder="Mínimo de 8 caracteres" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 pr-12 dark:border-white/15 dark:bg-black/10"/><button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-glass-faint hover:text-glass-ink">{passwordVisible ? <EyeOff className="size-4"/> : <Eye className="size-4"/>}</button></span></label>
                 {error && <div role="alert" className={(existingEmail || missingEmail || incorrectPassword) ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
