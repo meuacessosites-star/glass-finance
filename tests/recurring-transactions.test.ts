@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendRecurringInMonth, appendRecurringThrough, recurringOccurrenceId, stopRecurringEntries } from "../src/lib/recurring-transactions";
+import { appendRecurringInMonth, appendRecurringThrough, recurringOccurrenceId, stopRecurringEntries, stopRecurringEntriesFrom } from "../src/lib/recurring-transactions";
 import { captureTransactionDeletion, applyTransactionDeletion, restoreTransactionDeletion } from "../src/lib/transaction-deletion";
 import type { Transaction } from "../src/lib/mock-data";
 import type { AppProfile, ProfileData } from "../src/lib/app-store";
@@ -149,4 +149,34 @@ test("an indefinitely repeating annual recurrence skips months with no due date"
 test("a deactivated series never returns in later selected months", () => {
   const source = tx({recurrenceEndDate:"2027-01-01"});
   assert.equal(appendRecurringInMonth([source], "2050-12").length, 1);
+});
+
+
+test("stopping monthly recurrence from a selected month keeps earlier months and the source", () => {
+  const generated = appendRecurringThrough([tx()], "2027-05");
+  const result = stopRecurringEntriesFrom(generated, "rent", "2027-02-01");
+  assert.equal(result[0].recurrenceEndDate, "2027-01-31");
+  assert.deepEqual(result.map((row) => row.date), ["2026-11-10", "2026-12-10", "2027-01-10"]);
+  assert.equal(appendRecurringInMonth(result, "2027-09"), result);
+});
+
+test("stopping weekly recurrence from a selected day keeps earlier occurrences and payments", () => {
+  const generated = appendRecurringThrough([tx({ frequency: "semanal" })], "2026-12");
+  const paid = generated.map(row => row.date === "2026-12-01"
+    ? { ...row, paymentStatus: "paid" as const } : row);
+  const result = stopRecurringEntriesFrom(paid, paid[1].id, "2026-11-25");
+  assert.equal(result[0].recurrenceEndDate, "2026-11-24");
+  assert.deepEqual(result.map(row => row.date), ["2026-11-10", "2026-11-17", "2026-11-24", "2026-12-01"]);
+  assert.equal(result[3].paymentStatus, "paid");
+});
+
+test("a selected stop period cannot remove the original entry or reactivate an ended series", () => {
+  const original = tx();
+  assert.equal(stopRecurringEntriesFrom([original], "rent", "2026-11-01")[0], original);
+  assert.equal(stopRecurringEntriesFrom([original], "rent", "invalid")[0], original);
+  const stopped = stopRecurringEntriesFrom(appendRecurringThrough([original], "2027-03"), "rent", "2027-01-01");
+  const earlier = stopRecurringEntriesFrom(stopped, "rent", "2026-12-01");
+  assert.equal(earlier[0].recurrenceEndDate, "2026-11-30");
+  const later = stopRecurringEntriesFrom(earlier, "rent", "2027-05-01");
+  assert.equal(later, earlier);
 });
