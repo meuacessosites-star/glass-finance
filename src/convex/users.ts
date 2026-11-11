@@ -44,7 +44,7 @@ export const updateUsername = mutation({
   handler: async (ctx, { username }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Entre na conta para alterar o nome de usuário.");
-    const clean = username.trim().replace(/\\s+/g, " ");
+    const clean = username.trim().replace(/\s+/g, " ");
     if (clean.length < 3 || clean.length > 32)
       throw new Error("O nome de usuário deve ter entre 3 e 32 caracteres.");
     const normalized = clean.toLocaleLowerCase("pt-BR");
