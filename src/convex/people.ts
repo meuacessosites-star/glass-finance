@@ -1,5 +1,5 @@
 import { financeOwner } from "./financeOwnership";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const getUserSubject = financeOwner;
