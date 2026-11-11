@@ -1,13 +1,8 @@
+import { financeOwner } from "./financeOwnership";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 
-async function getUserSubject(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Autenticação necessária para acessar pessoas");
-  }
-  return identity.subject;
-}
+const getUserSubject = financeOwner;
 
 export const list = query({
   args: {},
