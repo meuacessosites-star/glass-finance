@@ -24,6 +24,17 @@ export async function financeOwner(ctx: QueryCtx | MutationCtx): Promise<string>
   return String(mapping.storageSubject);
 }
 
+/** Reject stale writes when a user has explicitly switched histories. */
+export async function assertFinanceEpoch(ctx: MutationCtx, expectedEpoch: number | undefined): Promise<void> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new Error("Entre na sua conta");
+  const mapping = await ctx.db.query("financeOwners")
+    .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+  if (mapping && (mapping.switchEpoch ?? 0) > 0 && expectedEpoch !== mapping.switchEpoch) {
+    throw new Error("O histórico principal mudou em outro dispositivo. Atualize para evitar sobrescrever dados.");
+  }
+}
+
 type Source = { subject: string; updatedAt: number; version: "Histórico" | "Histórico individual" };
 async function oldSources(ctx: MutationCtx | QueryCtx, userId: string) {
   const prefix = `${userId}|`;
