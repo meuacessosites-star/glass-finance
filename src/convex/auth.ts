@@ -11,7 +11,7 @@ const passwordProvider = Password({
   async profile(params, ctx) {
     const email = String(params.email ?? "").trim().toLowerCase();
     if (params.flow !== "signUp") return { email };
-    const username = String(params.username ?? "").trim().replace(/\\s+/g, " ");
+    const username = String(params.username ?? "").trim().replace(/\s+/g, " ");
     if (username.length < 3 || username.length > 32)
       throw new Error("O nome de usuário deve ter entre 3 e 32 caracteres.");
     if (!(await ctx.runQuery(api.registration.usernameAvailable, { username })))
