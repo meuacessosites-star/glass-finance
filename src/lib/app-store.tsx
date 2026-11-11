@@ -26,7 +26,7 @@ import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactio
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
-import { appendRecurringThrough, stopRecurringEntries } from "./recurring-transactions";
+import { appendRecurringInMonth, appendRecurringThrough, stopRecurringEntries } from "./recurring-transactions";
 import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
@@ -1602,7 +1602,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setState((previous) => {
       const profiles = previous.profiles.map((profile) => {
         if (profile.id !== previous.activeProfileId) return profile;
-        const expanded = appendRecurringThrough(profile.data.transactions, month);
+        const expanded = appendRecurringInMonth(profile.data.transactions, month);
         return expanded === profile.data.transactions
           ? profile
           : { ...profile, data: { ...profile.data, transactions: expanded } };
