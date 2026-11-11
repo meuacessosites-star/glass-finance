@@ -87,9 +87,43 @@ export function TransactionDetailsSheet({
   });
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [installmentsExpanded, setInstallmentsExpanded] = useState(true);
+  const [stopDialogOpen, setStopDialogOpen] = useState(false);
+  const [stopFrom, setStopFrom] = useState("");
+  const recurrenceFrequency = transaction.frequency ?? "mensal";
+  const isMonthlyStop = recurrenceFrequency === "mensal";
+  const isYearlyStop = recurrenceFrequency === "anual";
+  const isDateStop = !isMonthlyStop && !isYearlyStop;
+  const [originalYear, originalMonth, originalDay] = transaction.date.split("-").map(Number);
+  const earliestMonth = new Date(Date.UTC(originalYear, originalMonth, 1)).toISOString().slice(0, 7);
+  const earliestYear = String(originalYear + 1);
+  const firstAllowedDate = new Date(Date.UTC(originalYear, originalMonth - 1, originalDay + 1)).toISOString().slice(0, 10);
+  const getInitialStop = () => {
+    if (isYearlyStop) return earliestYear;
+    if (isMonthlyStop) return earliestMonth;
+    const offset = recurrenceFrequency === "semanal" ? 7 : Math.max(1, Math.min(365, Math.floor(transaction.frequencyInterval ?? 30)));
+    return new Date(Date.UTC(originalYear, originalMonth - 1, originalDay + offset)).toISOString().slice(0, 10);
+  };
+  const stopDate = isYearlyStop ? `${stopFrom}-01-01` : isMonthlyStop ? `${stopFrom}-01` : stopFrom;
+  const validStop = /^\\d{4}-\\d{2}-\\d{2}$/.test(stopDate) &&
+    stopDate > transaction.date &&
+    (isDateStop || (isYearlyStop ? /^\\d{4}$/.test(stopFrom) : /^\\d{4}-(0[1-9]|1[0-2])$/.test(stopFrom)));
+  const openStopDialog = () => {
+    setStopFrom(getInitialStop());
+    setStopDialogOpen(true);
+  };
+  const confirmStop = () => {
+    if (!validStop) return;
+    stopRecurringSeries(transaction.id, stopDate);
+    setStopDialogOpen(false);
+    toast.success("Recorrência encerrada no período escolhido.");
+    onClose();
+  };
   // Close the expanded attachment whenever its owning details window closes.
   useEffect(() => {
-    if (!open) setLightboxIndex(null);
+    if (!open) {
+      setLightboxIndex(null);
+      setStopDialogOpen(false);
+    }
   }, [open]);
   const paymentDateInputRef = useRef<HTMLInputElement | null>(null);
   const category = categoryById[transaction.categoryId] ?? fallback;
@@ -561,12 +595,7 @@ export function TransactionDetailsSheet({
                     <button
                       type="button"
                       className="mt-2 min-h-10 rounded-xl border border-violet-300/60 bg-white/70 px-3 text-[12px] font-semibold text-violet-800 dark:border-violet-400/40 dark:bg-white/10 dark:text-violet-100"
-                      onClick={() => {
-                        if (!window.confirm("Desativar as próximas repetições desta transação? Os lançamentos anteriores serão preservados.")) return;
-                        stopRecurringSeries(transaction.id);
-                        toast.success("Próximas repetições desativadas.");
-                        onClose();
-                      }}
+                      onClick={openStopDialog}
                     >
                       Desativar próximas repetições
                     </button>
@@ -639,6 +668,85 @@ export function TransactionDetailsSheet({
             </div>
           </motion.div>
         </motion.div>
+      )}
+
+      {open && stopDialogOpen && (
+        <div
+          className="absolute inset-0 z-[80] flex items-center justify-center bg-[#09152b]/55 px-5 backdrop-blur-[3px]"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setStopDialogOpen(false); }}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recurrence-stop-heading"
+            aria-describedby="recurrence-stop-description"
+            className="w-full max-w-[360px] rounded-[1.75rem] border border-white/65 bg-[#f7f9ff] p-5 text-slate-900 shadow-2xl"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { event.stopPropagation(); setStopDialogOpen(false); }
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+                <Repeat className="size-5" />
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar janela"
+                className="flex size-10 items-center justify-center rounded-full bg-white text-slate-600"
+                onClick={() => setStopDialogOpen(false)}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <h2 id="recurrence-stop-heading" className="mt-3 text-[19px] font-bold leading-tight">
+              Quando deseja parar as repetições?
+            </h2>
+            <p id="recurrence-stop-description" className="mt-2 text-[13px] leading-relaxed text-slate-600">
+              Escolha {isMonthlyStop ? "o mês" : isYearlyStop ? "o ano" : "a data"} em que esta transação deixará de se repetir.
+              Os lançamentos anteriores e os pagamentos já registrados serão preservados.
+            </p>
+            <label htmlFor="stop-recurrence-period" className="mt-5 block text-[13px] font-bold text-slate-800">
+              {isMonthlyStop ? "Parar a partir de qual mês?" : isYearlyStop ? "Parar a partir de qual ano?" : "Parar a partir de qual data?"}
+            </label>
+            {isYearlyStop ? (
+              <input
+                id="stop-recurrence-period"
+                autoFocus
+                type="number"
+                min={earliestYear}
+                max="9999"
+                step="1"
+                value={stopFrom}
+                onChange={(event) => setStopFrom(event.target.value)}
+                className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-[15px] font-semibold text-slate-900 outline-none focus:border-violet-500"
+              />
+            ) : (
+              <input
+                id="stop-recurrence-period"
+                autoFocus
+                type={isMonthlyStop ? "month" : "date"}
+                min={isMonthlyStop ? earliestMonth : firstAllowedDate}
+                value={stopFrom}
+                onChange={(event) => setStopFrom(event.target.value)}
+                className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-[15px] font-semibold text-slate-900 outline-none focus:border-violet-500"
+              />
+            )}
+            <div className="mt-3 rounded-xl bg-violet-50 px-3 py-3 text-[12px] leading-relaxed text-violet-900">
+              {validStop
+                ? `A partir de ${isYearlyStop ? stopFrom : isMonthlyStop ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${stopFrom}-01T12:00:00Z`)) : new Date(`${stopFrom}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}, não serão criadas novas repetições. As anteriores continuam no histórico.`
+                : "Escolha um período posterior à primeira transação da série."}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2.5">
+              <button type="button" onClick={() => setStopDialogOpen(false)} className="min-h-12 rounded-xl bg-white px-3 text-[13px] font-bold text-slate-700">
+                Cancelar
+              </button>
+              <button type="button" disabled={!validStop} onClick={confirmStop} className="min-h-12 rounded-xl bg-[#2f6bff] px-3 text-[13px] font-bold text-white disabled:opacity-45">
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {open && lightboxIndex !== null && (
