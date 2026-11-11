@@ -1333,6 +1333,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [cloudSyncStatus, setCloudSyncStatus] = useState<AppStoreValue["cloudSyncStatus"]>("loading");
   const hydratedUserRef = useRef<string | null>(null);
   const revisionRef = useRef(0);
+  const historyEpochRef = useRef<number | null>(null);
   const lastSyncedPayloadRef = useRef("");
   const latestStateRef = useRef(state);
   const pendingPayloadRef = useRef<string | null>(null);
@@ -1347,8 +1348,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     latestStateRef.current = state;
   }, [state]);
 
+  // Switching history is an account-wide event. Never save an old snapshot
+  // against a newly selected history. Other signed-in devices reload the
+  // selected history as soon as Convex sends the new epoch.
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !userId || v2Snapshot === undefined) return;
+    if (!cloudReady || mappingStatus === undefined || historyEpochRef.current === null) return;
+    if ((mappingStatus.epoch ?? 0) === historyEpochRef.current) return;
+    conflictRef.current = true;
+    pendingPayloadRef.current = null;
+    if (localDirtyRef.current || saveInFlightRef.current) {
+      setCloudSyncStatus("conflict");
+      toast.error("Outro dispositivo alterou o histórico principal. Preserve um backup dos dados locais antes de atualizar.");
+      return;
+    }
+    window.location.reload();
+  }, [cloudReady, mappingStatus?.epoch]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !userId || mappingStatus === undefined || v2Snapshot === undefined) return;
     if (v2Snapshot === null && cloudSnapshot === undefined) return;
     if (hydratedUserRef.current === userId) return;
     let cancelled = false;
@@ -1363,6 +1380,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             );
         if (cancelled) return;
         hydratedUserRef.current = userId;
+        historyEpochRef.current = mappingStatus.epoch ?? 0;
         v2ModeRef.current = Boolean(v2Snapshot);
         setStorageVersion(v2Snapshot ? "v2" : "legacy");
         revisionRef.current = v2Snapshot?.revision ?? cloudSnapshot?.revision ?? 0;
@@ -1383,7 +1401,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     void hydrate();
     return () => { cancelled = true; };
-  }, [authLoading, isAuthenticated, userId, v2Snapshot, cloudSnapshot, convex]);
+  }, [authLoading, isAuthenticated, userId, mappingStatus, v2Snapshot, cloudSnapshot, convex]);
 
   useEffect(() => {
     if (v2ModeRef.current) return;
@@ -1473,10 +1491,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             result = v2ModeRef.current
               ? await saveMineV2({
                   expectedRevision: revisionRef.current,
+                  expectedEpoch: historyEpochRef.current ?? 0,
                   metadataPayload: metadataWithoutTransactions(intermediate),
                   operations: pieces[index],
                 })
-              : await saveMine({ payload, expectedRevision: revisionRef.current });
+              : await saveMine({ payload, expectedRevision: revisionRef.current, expectedEpoch: historyEpochRef.current ?? 0 });
             if (!result.ok) break;
             revisionRef.current = result.revision;
             checkpoint = intermediate;
@@ -1608,7 +1627,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (preparedRaw !== lastSyncedPayloadRef.current) {
         setMigrationMessage("Registrando referências dos arquivos sem apagar o histórico…");
         const saved = await saveMine({
-          payload: preparedRaw, expectedRevision: sourceRevision,
+          payload: preparedRaw, expectedRevision: sourceRevision, expectedEpoch: historyEpochRef.current ?? 0,
         });
         if (!saved.ok) {
           conflictRef.current = true;
