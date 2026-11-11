@@ -1,3 +1,4 @@
+import { financeOwner } from "./financeOwnership";
 import { linkReferencedFiles } from "./financeFileRefs";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
@@ -8,11 +9,7 @@ const MAX_CHANGE_BATCH_BYTES = 1_500_000;
 const ownerProfileKey = (owner: string, profileId: string) => JSON.stringify([owner, profileId]);
 const ownerTransactionKey = (owner: string, profileId: string, txId: string) => JSON.stringify([owner, profileId, txId]);
 
-async function owner(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Faça login para acessar os dados financeiros");
-  return identity.subject;
-}
+const owner = financeOwner;
 function monetaryCents(amount: number) {
   const result = Math.round(amount * 100);
   if (!Number.isFinite(amount) || !Number.isSafeInteger(result) ||

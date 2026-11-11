@@ -25,7 +25,9 @@ test("unauthenticated requests cannot write or read other accounts", async () =>
     expectedRevision: 0,
   })).rejects.toThrow();
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const bob = t.withIdentity({ subject: "bob" });
+  await bob.mutation(api.financeOwnership.ensureMine, {});
   await alice.mutation(api.financeState.saveMine, {
     payload: makeSnapshot([transaction("private", 25)]),
     expectedRevision: 0,
@@ -36,6 +38,7 @@ test("unauthenticated requests cannot write or read other accounts", async () =>
 test("migration copies only authorized original records and allows idempotent retries", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const row = transaction("income-1", 12.34);
   const saved = await alice.mutation(api.financeState.saveMine, {
     payload: makeSnapshot([row]), expectedRevision: 0,
@@ -61,6 +64,7 @@ test("migration copies only authorized original records and allows idempotent re
 test("v2 activation requires verified migration and prevents old clients overwriting it", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const row = transaction("income-1", 0.1);
   await alice.mutation(api.financeState.saveMine, {
     payload: makeSnapshot([row]), expectedRevision: 0,
@@ -89,7 +93,9 @@ test("v2 activation requires verified migration and prevents old clients overwri
 test("normalized writes preserve per-user isolation and reject concurrent stale edits", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const bob = t.withIdentity({ subject: "bob" });
+  await bob.mutation(api.financeOwnership.ensureMine, {});
   const original = transaction("income-1", 50);
   await alice.mutation(api.financeState.saveMine, {
     payload: makeSnapshot([original]), expectedRevision: 0,
@@ -122,7 +128,9 @@ test("normalized writes preserve per-user isolation and reject concurrent stale 
 test("a registered receipt cannot be read or claimed by another account", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const bob = t.withIdentity({ subject: "bob" });
+  await bob.mutation(api.financeOwnership.ensureMine, {});
   const storageId = await t.action(async ctx =>
     await ctx.storage.store(new Blob(["private example"], { type: "image/png" })));
   await alice.mutation(api.financeFiles.register, {
@@ -140,6 +148,7 @@ test("a registered receipt cannot be read or claimed by another account", async 
 test("committed receipt remains accessible after orphan cleanup", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const storageId = await t.action(async ctx =>
     await ctx.storage.store(new Blob(["receipt"], { type: "image/png" })));
   await alice.mutation(api.financeFiles.register, {
@@ -162,7 +171,9 @@ test("committed receipt remains accessible after orphan cleanup", async () => {
 test("push subscriptions require login and stay isolated between accounts", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const bob = t.withIdentity({ subject: "bob" });
+  await bob.mutation(api.financeOwnership.ensureMine, {});
   const endpoint = "https://fcm.googleapis.com/fcm/send/device-1";
   const input = {
     endpoint, profileId: "personal",
@@ -179,7 +190,7 @@ test("push subscriptions require login and stay isolated between accounts", asyn
   await bob.mutation(api.pushNotifications.removeDevice, { endpoint });
   const devices = await t.run(ctx => ctx.db.query("pushDevices").collect());
   expect(devices).toHaveLength(1);
-  expect(devices[0].userSubject).toBe("alice");
+  expect(devices[0].userSubject).toBe("account:alice");
   await alice.mutation(api.pushNotifications.removeDevice, { endpoint });
   expect(await t.run(ctx => ctx.db.query("pushDevices").collect())).toHaveLength(0);
 });
@@ -187,7 +198,9 @@ test("push subscriptions require login and stay isolated between accounts", asyn
 test("private reminder schedules contain only dates and types; deleting account removes push data", async () => {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.financeOwnership.ensureMine, {});
   const bob = t.withIdentity({ subject: "bob" });
+  await bob.mutation(api.financeOwnership.ensureMine, {});
   const items = [
     { key: "invoice:a:2026-12", date: "2026-12-15", kind: "invoice" },
     { key: "review", date: "2026-11-09", kind: "review" },
@@ -199,8 +212,67 @@ test("private reminder schedules contain only dates and types; deleting account 
   await bob.mutation(api.pushNotifications.syncSchedule, { profileId: "personal", items: [] });
   const all = await t.run(ctx => ctx.db.query("pushSchedules").collect());
   expect(all).toHaveLength(2);
-  expect(all.find(item => item.userSubject === "alice").items).toEqual(items);
+  expect(all.find(item => item.userSubject === "account:alice").items).toEqual(items);
   await alice.mutation(api.financeState.deleteMine, {});
   expect((await t.run(ctx => ctx.db.query("pushSchedules").collect()))
-    .map(item => item.userSubject)).toEqual(["bob"]);
+    .map(item => item.userSubject)).toEqual(["account:bob"]);
+});
+
+test("two sessions of one account share the same live financial data", async () => {
+  const t = convexTest(schema, modules);
+  const firstDevice = t.withIdentity({ subject: "multiuser|session-one" });
+  const secondDevice = t.withIdentity({ subject: "multiuser|session-two" });
+  await firstDevice.mutation(api.financeOwnership.ensureMine, {});
+  await firstDevice.mutation(api.financeState.saveMine, {
+    payload: makeSnapshot([transaction("shared", 42)]), expectedRevision: 0,
+  });
+  await secondDevice.mutation(api.financeOwnership.ensureMine, {});
+  const received = await secondDevice.query(api.financeState.getMine, {});
+  expect(JSON.parse(received.payload).profiles[0].data.transactions[0].id).toBe("shared");
+  const secondWrite = await secondDevice.mutation(api.financeState.saveMine, {
+    payload: makeSnapshot([transaction("shared", 43)]), expectedRevision: 1,
+  });
+  expect(secondWrite.ok).toBe(true);
+  expect(JSON.parse((await firstDevice.query(api.financeState.getMine, {})).payload)
+    .profiles[0].data.transactions[0].amount).toBe(43);
+});
+
+test("old financial history belonging to one session is preserved without copying", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async ctx => {
+    await ctx.db.insert("financeStates", {
+      userSubject: "existinguser|old-session", revision: 1, chunkCount: 1, updatedAt: 1,
+    });
+    await ctx.db.insert("financeStateChunks", {
+      userSubject: "existinguser|old-session", revision: 1, chunkIndex: 0,
+      payload: makeSnapshot([transaction("kept", 19)]),
+    });
+  });
+  const newDevice = t.withIdentity({ subject: "existinguser|new-session" });
+  await newDevice.mutation(api.financeOwnership.ensureMine, {});
+  const received = await newDevice.query(api.financeState.getMine, {});
+  expect(received.revision).toBe(1);
+  expect(received.payload).toContain('"kept"');
+  const maps = await t.run(ctx => ctx.db.query("financeOwners").collect());
+  expect(maps[0].storageSubject).toBe("existinguser|old-session");
+});
+
+test("independent legacy histories are never silently merged or overwritten", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async ctx => {
+    for (const suffix of ["old-one", "old-two"]) {
+      await ctx.db.insert("financeStates", {
+        userSubject: `splituser|${suffix}`, revision: 1, chunkCount: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("financeStateChunks", {
+        userSubject: `splituser|${suffix}`, revision: 1, chunkIndex: 0,
+        payload: makeSnapshot([transaction(suffix, 100)]),
+      });
+    }
+  });
+  const device = t.withIdentity({ subject: "splituser|new-device" });
+  await expect(device.mutation(api.financeOwnership.ensureMine, {}))
+    .rejects.toThrow("históricos salvos em sessões diferentes");
+  expect(await t.run(ctx => ctx.db.query("financeOwners").collect())).toHaveLength(0);
+  expect(await t.run(ctx => ctx.db.query("financeStates").collect())).toHaveLength(2);
 });

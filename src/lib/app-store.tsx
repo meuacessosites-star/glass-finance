@@ -1248,13 +1248,39 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
   const convex = useConvex();
   const userId = user?._id ? String(user._id) : null;
+  const ensureFinanceOwner = useMutation(api.financeOwnership.ensureMine);
+  const [ownerReadyUserId, setOwnerReadyUserId] = useState<string | null>(null);
+  const [ownerInitializationError, setOwnerInitializationError] = useState(false);
+  const ownerReady = Boolean(userId && ownerReadyUserId === userId);
+
+  // Establish one account-level financial identity before ANY finance query.
+  // This is a read-only selection of existing storage or a new mapping:
+  // it never copies, deletes or overwrites previous transaction histories.
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !userId) return;
+    let cancelled = false;
+    void ensureFinanceOwner()
+      .then(() => {
+        if (cancelled) return;
+        setOwnerInitializationError(false);
+        setOwnerReadyUserId(userId);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setOwnerReadyUserId(null);
+        setOwnerInitializationError(true);
+        toast.error(error instanceof Error ? error.message : "Não foi possível identificar os dados desta conta");
+      });
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated, userId, ensureFinanceOwner]);
+
   const v2Snapshot = useQuery(
     api.financeV2.getMine,
-    !authLoading && isAuthenticated ? {} : "skip",
+    !authLoading && isAuthenticated && ownerReady ? {} : "skip",
   );
   const cloudSnapshot = useQuery(
     api.financeState.getMine,
-    !authLoading && isAuthenticated && v2Snapshot === null ? {} : "skip",
+    !authLoading && isAuthenticated && ownerReady && v2Snapshot === null ? {} : "skip",
   );
   const saveMine = useMutation(api.financeState.saveMine);
   const saveMineV2 = useMutation(api.financeV2.saveMine);
@@ -2082,12 +2108,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
   }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage, ensureRecurringThrough]);
 
-  if (!cloudReady || migrationInProgress) {
+  if (!ownerReady || !cloudReady || migrationInProgress) {
     return (
       <div role="status" className="flex min-h-[100dvh] items-center justify-center bg-[#e8eefb] px-6 text-center text-sm font-semibold text-slate-700 dark:bg-[#0a1122] dark:text-slate-200">
         {migrationInProgress
           ? migrationMessage
-          : cloudSyncStatus === "error"
+          : ownerInitializationError
+            ? "Não foi possível vincular os dados desta conta com segurança. Nenhum histórico foi alterado. Faça backup dos registros em cada dispositivo antes de tentar uma unificação."
+            : cloudSyncStatus === "error"
             ? "Não foi possível validar os dados na nuvem. Recarregue a página para tentar novamente."
             : "Conectando à sua conta e carregando dados sincronizados…"}
       </div>

@@ -11,6 +11,7 @@
 import type * as aiVision from "../aiVision.js";
 import type * as auth from "../auth.js";
 import type * as auth_emailOtp from "../auth/emailOtp.js";
+import type * as financeOwnership from "../financeOwnership.js";
 import type * as financeState from "../financeState.js";
 import type * as financeV2 from "../financeV2.js";
 import type * as financeFiles from "../financeFiles.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   aiVision: typeof aiVision;
   auth: typeof auth;
   "auth/emailOtp": typeof auth_emailOtp;
+  financeOwnership: typeof financeOwnership;
   financeState: typeof financeState;
   financeV2: typeof financeV2;
   financeFiles: typeof financeFiles;

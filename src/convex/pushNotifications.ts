@@ -1,12 +1,9 @@
+import { financeOwner } from "./financeOwnership";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
-async function subject(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("É necessário entrar na conta");
-  return identity.subject;
-}
+const subject = financeOwner;
 
 const scheduleItem = v.object({
   key: v.string(),
