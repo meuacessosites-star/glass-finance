@@ -21,6 +21,7 @@ import type * as webPushCrypto from "../webPushCrypto.js";
 import type * as transactionMigration from "../transactionMigration.js";
 import type * as http from "../http.js";
 import type * as people from "../people.js";
+import type * as registration from "../registration.js";
 import type * as users from "../users.js";
 
 import type {
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   transactionMigration: typeof transactionMigration;
   http: typeof http;
   people: typeof people;
+  registration: typeof registration;
   users: typeof users;
 }>;
 
