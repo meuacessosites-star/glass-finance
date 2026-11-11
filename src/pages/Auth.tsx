@@ -19,6 +19,13 @@ function resolveRedirectAfterAuth(returnTo: string | null, fallback = "/dashboar
   return fallback;
 }
 
+function isIncorrectPasswordError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // Only explicit invalid-credential responses can be classified as a wrong
+  // password. A server/network failure must not be described that way.
+  return /invalid credentials|invalid password|incorrect password|wrong password/i.test(error.message);
+}
+
 function friendlyError(error: unknown, fallback: string) {
   if (!(error instanceof Error)) return fallback;
   const message = error.message.toLowerCase();
@@ -37,6 +44,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const convex = useConvex();
   const [existingEmail, setExistingEmail] = useState(false);
   const [missingEmail, setMissingEmail] = useState(false);
+  const [incorrectPassword, setIncorrectPassword] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(searchParams.get("returnTo"), redirectAfterAuth);
@@ -59,6 +67,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     setExistingEmail(false);
     setMissingEmail(false);
+    setIncorrectPassword(false);
     setNotice(null);
     const data = new FormData(event.currentTarget);
     const normalizedEmail = String(data.get("email") ?? "").trim().toLowerCase();
@@ -96,6 +105,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           if (!exists) {
             setMissingEmail(true);
             setError("Não encontramos um cadastro com este e-mail. Crie uma conta para começar.");
+            return;
+          }
+          if (isIncorrectPasswordError(authError)) {
+            setIncorrectPassword(true);
+            setError("Senha incorreta. Confira a senha digitada ou recupere seu acesso.");
             return;
           }
         } catch {
@@ -228,7 +242,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <>
               <div className="relative mt-6 grid grid-cols-2 rounded-full border border-black/10 bg-white/45 p-1 dark:border-white/10">
                 {(["signIn", "signUp"] as const).map((value) => (
-                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setExistingEmail(false); setMissingEmail(false); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
+                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setExistingEmail(false); setMissingEmail(false); setIncorrectPassword(false); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
                     {value === "signIn" ? "Entrar" : "Criar conta"}
                   </button>
                 ))}
@@ -244,8 +258,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <form onSubmit={handlePassword} className="relative space-y-3">
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Email</span><span className="relative block"><Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@exemplo.com" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 dark:border-white/15 dark:bg-black/10" /></span></label>
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Senha</span><span className="relative block"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="password" type={passwordVisible ? "text" : "password"} autoComplete={mode === "signUp" ? "new-password" : "current-password"} minLength={8} required placeholder="Mínimo de 8 caracteres" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 pr-12 dark:border-white/15 dark:bg-black/10"/><button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-glass-faint hover:text-glass-ink">{passwordVisible ? <EyeOff className="size-4"/> : <Eye className="size-4"/>}</button></span></label>
-                {error && <div role="alert" className={(existingEmail || missingEmail) ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
+                {error && <div role="alert" className={(existingEmail || missingEmail || incorrectPassword) ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
                   <p className="font-medium">{error}</p>
+                  {incorrectPassword && (
+                    <button type="button" className="mt-3 rounded-lg border border-amber-400 px-3 py-2 font-semibold"
+                      onClick={() => { setMode("signIn"); setStep("resetRequest"); setIncorrectPassword(false); setError(null); }}>
+                      Recuperar senha
+                    </button>
+                  )}
                   {missingEmail && (
                     <button type="button" className="mt-3 rounded-lg bg-[#2F6BFF] px-3 py-2 font-semibold text-white"
                       onClick={() => { setMode("signUp"); setMissingEmail(false); setError(null); }}>
