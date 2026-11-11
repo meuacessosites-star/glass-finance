@@ -1,5 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -96,5 +96,52 @@ export const selectMine = mutation({
       userId, storageSubject: subject, createdAt: Date.now(),
     });
     return { ready: true as const };
+  },
+});
+
+/**
+ * Account-scoped read-only sync diagnostic. Never modifies or transfers
+ * historical financial data between devices.
+ */
+export const diagnostics = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const accountKey = String(userId);
+    const mapping = await ctx.db.query("financeOwners")
+      .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+    const identity = await ctx.auth.getUserIdentity();
+    const selectedSubject = mapping?.storageSubject ?? identity?.subject ?? "";
+    const prefix = accountKey + "|";
+    const [legacy, v2] = await Promise.all([
+      ctx.db.query("financeStates").withIndex("by_user_subject",
+        q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect(),
+      ctx.db.query("financeV2States").withIndex("by_user_subject",
+        q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect(),
+    ]);
+    const known = new Map<string, number>();
+    for (const state of [...legacy, ...v2]) {
+      const subject = String(state.userSubject);
+      known.set(subject, Math.max(known.get(subject) ?? 0, Number(state.updatedAt)));
+    }
+    const [activeLegacy, activeV2] = selectedSubject
+      ? await Promise.all([
+          ctx.db.query("financeStates").withIndex("by_user_subject",
+            q => q.eq("userSubject", selectedSubject)).unique(),
+          ctx.db.query("financeV2States").withIndex("by_user_subject",
+            q => q.eq("userSubject", selectedSubject)).unique(),
+        ])
+      : [null, null];
+    const other = [...known.entries()].filter(([subject]) => subject !== selectedSubject);
+    return {
+      accountCode: accountKey.slice(-12),
+      mapped: Boolean(mapping),
+      version: activeV2 ? "v2" as const : activeLegacy ? "legacy" as const : "empty" as const,
+      revision: Number(activeV2?.revision ?? activeLegacy?.revision ?? 0),
+      updatedAt: Number(activeV2?.updatedAt ?? activeLegacy?.updatedAt ?? 0),
+      otherHistoryCount: other.length,
+      lastOtherHistoryUpdate: other.length ? Math.max(...other.map(([, timestamp]) => timestamp)) : 0,
+    };
   },
 });

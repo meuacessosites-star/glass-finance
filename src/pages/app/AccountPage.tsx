@@ -1,4 +1,4 @@
-import { useConvex, useMutation } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { buildPortableBackup, backupFile, readBackupFile } from "@/lib/portable-backup";
@@ -46,6 +46,7 @@ const inputClass =
 
 export default function AccountPage() {
   const convex = useConvex();
+  const syncDiagnostics = useQuery(api.financeOwnership.diagnostics);
   const { user } = useAuth();
   const changeUsername = useMutation(api.users.updateUsername);
   const [usernameInput, setUsernameInput] = useState("");
@@ -209,6 +210,46 @@ export default function AccountPage() {
   return (
     <div className="space-y-4">
       <SettingsHeader title="Conta" />
+      <section className="glass rounded-3xl p-4" aria-label="Diagnóstico de sincronização entre dispositivos">
+        <h2 className="text-[15px] font-semibold text-glass-ink">Sincronização entre dispositivos</h2>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Compare estas informações em cada aparelho, usando exatamente a mesma conta.
+          A consulta não modifica seus lançamentos.
+        </p>
+        <dl className="mt-3 grid grid-cols-2 gap-3 text-[12px] text-glass-sub">
+          <div>
+            <dt>Conta</dt>
+            <dd className="font-semibold text-glass-ink">{syncDiagnostics?.accountCode ?? "Carregando…"}</dd>
+          </div>
+          <div>
+            <dt>Vínculo à nuvem</dt>
+            <dd className="font-semibold text-glass-ink">{syncDiagnostics === undefined ? "Carregando…" : syncDiagnostics?.mapped ? "Vinculado" : "Não concluído"}</dd>
+          </div>
+          <div>
+            <dt>Histórico ativo</dt>
+            <dd className="font-semibold text-glass-ink">{syncDiagnostics === undefined ? "Carregando…" : syncDiagnostics?.version === "v2" ? "Individual" : syncDiagnostics?.version === "legacy" ? "Original" : "Sem dados"}</dd>
+          </div>
+          <div>
+            <dt>Revisão salva</dt>
+            <dd className="font-semibold text-glass-ink">{syncDiagnostics?.revision ?? "—"}</dd>
+          </div>
+          <div className="col-span-2">
+            <dt>Último salvamento na nuvem</dt>
+            <dd className="font-semibold text-glass-ink">{syncDiagnostics?.updatedAt ? new Date(syncDiagnostics.updatedAt).toLocaleString("pt-BR") : "Ainda não registrado"}</dd>
+          </div>
+        </dl>
+        {syncDiagnostics && syncDiagnostics.otherHistoryCount > 0 && (
+          <p className="mt-3 rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-950">
+            Encontramos {syncDiagnostics.otherHistoryCount} histórico(s) de sessões anteriores separado(s) do histórico ativo.
+            Eles não foram excluídos nem unidos automaticamente. Faça backups antes de recuperar dados.
+          </p>
+        )}
+        <p className="mt-3 text-[12px] text-glass-sub">
+          Situação neste aparelho: <strong className="text-glass-ink">{syncMessage}</strong>
+          Se os códigos de conta forem diferentes, não é a mesma conta de acesso.
+          Se forem iguais, compare a revisão e a data acima.
+        </p>
+      </section>
       <section className="glass rounded-3xl p-4" aria-label="Nome de usuário da conta">
         <h2 className="text-[15px] font-semibold text-glass-ink">Seu nome de usuário</h2>
         <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">

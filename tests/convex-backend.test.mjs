@@ -321,3 +321,24 @@ test("account username changes are persisted and isolated from other users", asy
   expect((await t.run(ctx => ctx.db.get(ids.one)))?.username).toBe("Mariana");
   expect((await t.run(ctx => ctx.db.get(ids.two)))?.username).toBe("Joana");
 });
+
+test("two authenticated sessions on same account resolve same cloud revision and preserve isolated historical snapshots", async () => {
+  const t = convexTest(schema, modules);
+  const userId = await t.run(ctx => ctx.db.insert("users", { email: "sync@example.com" }));
+  const first = t.withIdentity({ subject: `${userId}|device-one` });
+  const second = t.withIdentity({ subject: `${userId}|device-two` });
+  const initially = await first.mutation(api.financeOwnership.ensureMine, {});
+  expect(initially.ready).toBe(true);
+  const payload = JSON.stringify({ profiles: [{ id: "main", name: "Principal", data: { transactions: [] } }], activeProfileId: "main" });
+  expect((await first.mutation(api.financeState.saveMine, { payload, expectedRevision: 0 })).ok).toBe(true);
+  const secondReady = await second.mutation(api.financeOwnership.ensureMine, {});
+  expect(secondReady.ready).toBe(true);
+  expect((await second.query(api.financeState.getMine, {}))?.payload).toBe(payload);
+  const a = await first.query(api.financeOwnership.diagnostics, {});
+  const b = await second.query(api.financeOwnership.diagnostics, {});
+  expect(a?.accountCode).toBe(b?.accountCode);
+  expect(a?.mapped).toBe(true);
+  expect(a?.revision).toBe(1);
+  expect(b?.revision).toBe(1);
+  expect(b?.otherHistoryCount).toBe(0);
+});
