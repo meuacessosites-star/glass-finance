@@ -7,7 +7,7 @@ import { convexAuth } from "@convex-dev/auth/server";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
 
 const passwordProvider = Password({
-  profile(params) {
+  profile(params): { email: string; [key: string]: string } {
     const email = String(params.email ?? "").trim().toLowerCase();
     if (params.flow !== "signUp") return { email };
     const username = String(params.username ?? "").trim().replace(/\s+/g, " ");
