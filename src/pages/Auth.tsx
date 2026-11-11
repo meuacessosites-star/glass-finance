@@ -36,6 +36,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
   const convex = useConvex();
   const [existingEmail, setExistingEmail] = useState(false);
+  const [missingEmail, setMissingEmail] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(searchParams.get("returnTo"), redirectAfterAuth);
@@ -57,6 +58,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsSubmitting(true);
     setError(null);
     setExistingEmail(false);
+    setMissingEmail(false);
     setNotice(null);
     const data = new FormData(event.currentTarget);
     const normalizedEmail = String(data.get("email") ?? "").trim().toLowerCase();
@@ -84,6 +86,20 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           }
         } catch {
           // Keep the original failure when the check is unavailable.
+        }
+      }
+      if (flow === "signIn") {
+        // Only check the email after a failed login. An incorrect password for
+        // an existing account must never be presented as a missing account.
+        try {
+          const exists = await convex.query(api.registration.emailAlreadyRegistered, { email: normalizedEmail });
+          if (!exists) {
+            setMissingEmail(true);
+            setError("Não encontramos um cadastro com este e-mail. Crie uma conta para começar.");
+            return;
+          }
+        } catch {
+          // If the account lookup fails, preserve the authentication error.
         }
       }
       setError(friendlyError(authError, "Não foi possível concluir a solicitação. Tente novamente."));
@@ -212,7 +228,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <>
               <div className="relative mt-6 grid grid-cols-2 rounded-full border border-black/10 bg-white/45 p-1 dark:border-white/10">
                 {(["signIn", "signUp"] as const).map((value) => (
-                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setExistingEmail(false); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
+                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setExistingEmail(false); setMissingEmail(false); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
                     {value === "signIn" ? "Entrar" : "Criar conta"}
                   </button>
                 ))}
@@ -228,8 +244,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <form onSubmit={handlePassword} className="relative space-y-3">
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Email</span><span className="relative block"><Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@exemplo.com" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 dark:border-white/15 dark:bg-black/10" /></span></label>
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Senha</span><span className="relative block"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="password" type={passwordVisible ? "text" : "password"} autoComplete={mode === "signUp" ? "new-password" : "current-password"} minLength={8} required placeholder="Mínimo de 8 caracteres" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 pr-12 dark:border-white/15 dark:bg-black/10"/><button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-glass-faint hover:text-glass-ink">{passwordVisible ? <EyeOff className="size-4"/> : <Eye className="size-4"/>}</button></span></label>
-                {error && <div role="alert" className={existingEmail ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
+                {error && <div role="alert" className={(existingEmail || missingEmail) ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
                   <p className="font-medium">{error}</p>
+                  {missingEmail && (
+                    <button type="button" className="mt-3 rounded-lg bg-[#2F6BFF] px-3 py-2 font-semibold text-white"
+                      onClick={() => { setMode("signUp"); setMissingEmail(false); setError(null); }}>
+                      Criar conta
+                    </button>
+                  )}
                   {existingEmail && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" className="rounded-lg bg-[#2F6BFF] px-3 py-2 font-semibold text-white"
