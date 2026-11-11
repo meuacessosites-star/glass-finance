@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Convex Auth's identity.subject contains the session identifier. Its value
@@ -30,7 +31,7 @@ export async function assertFinanceEpoch(ctx: MutationCtx, expectedEpoch: number
   if (!userId) throw new Error("Entre na sua conta");
   const mapping = await ctx.db.query("financeOwners")
     .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
-  if (mapping && (mapping.switchEpoch ?? 0) > 0 && expectedEpoch !== mapping.switchEpoch) {
+  if (mapping && Number(mapping.switchEpoch ?? 0) > 0 && expectedEpoch !== Number(mapping.switchEpoch)) {
     throw new Error("O histórico principal mudou em outro dispositivo. Atualize para evitar sobrescrever dados.");
   }
 }
@@ -149,7 +150,7 @@ export const listHistoryPreviews = query({
       let readable = false;
       if (v2) {
         try {
-          const payload: unknown = JSON.parse(v2.metadataPayload);
+          const payload: unknown = JSON.parse(String(v2.metadataPayload));
           if (payload && typeof payload === "object" && "profiles" in payload &&
               Array.isArray(payload.profiles)) {
             profileCount = payload.profiles.length;
@@ -159,14 +160,14 @@ export const listHistoryPreviews = query({
             readable = true;
           }
         } catch { /* Never claim a corrupted history is empty */ }
-      } else if (legacy && legacy.chunkCount <= 100) {
+      } else if (legacy && Number(legacy.chunkCount) <= 100) {
         const chunks = await ctx.db.query("financeStateChunks")
           .withIndex("by_user_subject_revision", q => q.eq("userSubject", source.subject))
           .filter(q => q.eq(q.field("revision"), legacy.revision)).collect();
-        if (chunks.length === legacy.chunkCount) {
+        if (chunks.length === Number(legacy.chunkCount)) {
           try {
-            const raw: unknown = JSON.parse(chunks.sort((a,b) => a.chunkIndex - b.chunkIndex)
-              .map(c => c.payload).join(""));
+            const raw: unknown = JSON.parse(chunks.sort((a,b) => Number(a.chunkIndex) - Number(b.chunkIndex))
+              .map(c => String(c.payload)).join(""));
             if (raw && typeof raw === "object" && "profiles" in raw && Array.isArray(raw.profiles)) {
               profileCount = raw.profiles.length;
               const values = raw.profiles as Array<{ data?: { transactions?: unknown[] } }>;
@@ -211,7 +212,7 @@ export const switchMine = mutation({
     if (!valid.some(source => source.subject === subject))
       throw new Error("Este histórico não pertence à sua conta");
     const epoch = expectedEpoch + 1;
-    await ctx.db.patch(mapping._id, { storageSubject: subject, switchEpoch: epoch });
+    await ctx.db.patch(mapping._id as Id<"financeOwners">, { storageSubject: subject, switchEpoch: epoch });
     return { changed: true, epoch };
   },
 });
