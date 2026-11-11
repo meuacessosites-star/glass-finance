@@ -13,7 +13,13 @@ export async function financeOwner(ctx: QueryCtx | MutationCtx): Promise<string>
   const mapping = await ctx.db.query("financeOwners")
     .withIndex("by_user_id", q => q.eq("userId", userId))
     .unique();
-  if (!mapping) throw new Error("Sincronização da conta ainda não foi inicializada");
+  if (!mapping) {
+    // Older browser builds can still finish their existing session safely
+    // while the new client initializes the account-level mapping.
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Entre na sua conta para acessar os dados financeiros");
+    return identity.subject;
+  }
   return String(mapping.storageSubject);
 }
 
