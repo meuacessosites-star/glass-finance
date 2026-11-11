@@ -285,3 +285,13 @@ test("independent legacy histories are never silently merged or overwritten", as
     api.financeOwnership.selectMine, { subject: "splituser|old-two" },
   )).rejects.toThrow("não pertence a esta conta");
 });
+
+test("signup check distinguishes registered email without returning account details", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("users", { email: "registered@example.com" });
+  });
+  expect(await t.query(api.registration.emailAlreadyRegistered, { email: "Registered@Example.com " })).toBe(true);
+  expect(await t.query(api.registration.emailAlreadyRegistered, { email: "new@example.com" })).toBe(false);
+  expect(await t.query(api.registration.emailAlreadyRegistered, { email: "invalid" })).toBe(false);
+});
