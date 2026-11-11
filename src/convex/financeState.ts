@@ -1,4 +1,4 @@
-import { financeOwner } from "./financeOwnership";
+import { assertFinanceEpoch, financeOwner } from "./financeOwnership";
 import { linkReferencedFiles } from "./financeFileRefs";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -41,8 +41,10 @@ export const saveMine = mutation({
   args: {
     payload: v.string(),
     expectedRevision: v.number(),
+    expectedEpoch: v.optional(v.number()),
   },
-  handler: async (ctx, { payload, expectedRevision }) => {
+  handler: async (ctx, { payload, expectedRevision, expectedEpoch }) => {
+    await assertFinanceEpoch(ctx, expectedEpoch);
     const userSubject = await getUserSubject(ctx);
     // Legacy clients must not overwrite accounts that have switched to
     // individual transaction records; they receive a safe revision conflict.
