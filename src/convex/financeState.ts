@@ -126,8 +126,9 @@ export const saveMine = mutation({
 });
 
 export const deleteMine = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { expectedEpoch: v.optional(v.number()) },
+  handler: async (ctx, { expectedEpoch }) => {
+    await assertFinanceEpoch(ctx, expectedEpoch);
     const userSubject = await getUserSubject(ctx);
     const state = await ctx.db
       .query("financeStates")
