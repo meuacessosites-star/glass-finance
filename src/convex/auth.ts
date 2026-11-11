@@ -5,8 +5,24 @@ import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { createEmailOtp, emailOtp } from "./auth/emailOtp";
+import { api } from "./_generated/api";
 
 const passwordProvider = Password({
+  async profile(params, ctx) {
+    const email = String(params.email ?? "").trim().toLowerCase();
+    if (params.flow !== "signUp") return { email };
+    const username = String(params.username ?? "").trim().replace(/\\s+/g, " ");
+    if (username.length < 3 || username.length > 32)
+      throw new Error("O nome de usuário deve ter entre 3 e 32 caracteres.");
+    if (!(await ctx.runQuery(api.registration.usernameAvailable, { username })))
+      throw new Error("Este nome de usuário já está em uso. Escolha outro.");
+    return {
+      email,
+      username,
+      usernameNormalized: username.toLocaleLowerCase("pt-BR"),
+      name: username,
+    };
+  },
   verify: createEmailOtp("password-email-verification"),
   reset: createEmailOtp("password-reset"),
   validatePasswordRequirements(password) {
