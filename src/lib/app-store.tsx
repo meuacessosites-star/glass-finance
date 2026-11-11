@@ -1249,7 +1249,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const convex = useConvex();
   const userId = user?._id ? String(user._id) : null;
   const ensureFinanceOwner = useMutation(api.financeOwnership.ensureMine);
+  const selectFinanceOwner = useMutation(api.financeOwnership.selectMine);
   const [ownerReadyUserId, setOwnerReadyUserId] = useState<string | null>(null);
+  const [recoverySources, setRecoverySources] = useState<Array<{ subject: string; updatedAt: number; version: string }>>([]);
+  const [recoverySelection, setRecoverySelection] = useState<string | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [ownerInitializationError, setOwnerInitializationError] = useState(false);
   const ownerReady = Boolean(userId && ownerReadyUserId === userId);
 
@@ -1260,9 +1264,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     if (authLoading || !isAuthenticated || !userId) return;
     let cancelled = false;
     void ensureFinanceOwner()
-      .then(() => {
+      .then((result) => {
         if (cancelled) return;
         setOwnerInitializationError(false);
+        if (!result.ready) {
+          setOwnerReadyUserId(null);
+          setRecoverySources(result.sources);
+          return;
+        }
+        setRecoverySources([]);
         setOwnerReadyUserId(userId);
       })
       .catch((error) => {
@@ -1273,6 +1283,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       });
     return () => { cancelled = true; };
   }, [authLoading, isAuthenticated, userId, ensureFinanceOwner]);
+
+  const confirmRecoverySource = async () => {
+    if (!recoverySelection || recoveryBusy || !userId) return;
+    setRecoveryBusy(true);
+    try {
+      await selectFinanceOwner({ subject: recoverySelection });
+      setRecoverySources([]);
+      setRecoverySelection(null);
+      setOwnerInitializationError(false);
+      setOwnerReadyUserId(userId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível selecionar este histórico");
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
 
   const v2Snapshot = useQuery(
     api.financeV2.getMine,
@@ -2107,6 +2133,41 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       verifyPin: (pin) => activeData.pin !== null && activeData.pin === pin,
     };
   }, [state, cloudSyncStatus, retryCloudSync, deleteCloudData, storageVersion, migrateFinanceStorage, ensureRecurringThrough]);
+
+  if (!ownerReady && recoverySources.length > 1 && !ownerInitializationError) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[#e8eefb] px-4 py-8 text-slate-900 dark:bg-[#0a1122]">
+        <div className="w-full max-w-[440px] rounded-[28px] bg-white p-6 shadow-lg">
+          <h1 className="text-xl font-bold">Recuperar seus dados financeiros</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            Esta conta possui históricos salvos em sessões diferentes. Para evitar que seus registros sejam perdidos ou misturados, escolha qual deseja abrir primeiro.
+            Os demais históricos permanecerão guardados, sem exclusão.
+          </p>
+          <div className="mt-4 space-y-2">
+            {recoverySources.map((source, index) => (
+              <label key={source.subject} className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 p-3 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                <input type="radio" name="financial-history" checked={recoverySelection === source.subject}
+                  onChange={() => setRecoverySelection(source.subject)} className="size-4 accent-blue-600" />
+                <span className="min-w-0 text-sm">
+                  <span className="block font-semibold">Histórico {index + 1}</span>
+                  <span className="block text-xs text-slate-600">{source.version} · Última atualização: {source.updatedAt ? new Date(source.updatedAt).toLocaleString("pt-BR") : "data indisponível"}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-4 rounded-xl bg-amber-50 px-3 py-3 text-xs leading-relaxed text-amber-900">
+            Esta escolha define qual histórico ficará sincronizado nesta conta. Ela não une automaticamente transações diferentes.
+            Se houver lançamentos importantes nos outros históricos, preserve uma cópia antes de tentar unificá-los.
+          </p>
+          <button type="button" disabled={!recoverySelection || recoveryBusy}
+            onClick={() => { void confirmRecoverySource(); }}
+            className="mt-4 min-h-12 w-full rounded-2xl bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50">
+            {recoveryBusy ? "Abrindo histórico…" : "Abrir histórico selecionado"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!ownerReady || !cloudReady || migrationInProgress) {
     return (
