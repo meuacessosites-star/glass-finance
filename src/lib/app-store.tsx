@@ -1256,6 +1256,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [ownerInitializationError, setOwnerInitializationError] = useState(false);
   const ownerReady = Boolean(userId && ownerReadyUserId === userId);
+  const mappingStatus = useQuery(
+    api.financeOwnership.getMappingStatus,
+    !authLoading && isAuthenticated && userId ? {} : "skip",
+  );
+
+  // A selection made on another device immediately unlocks all the other
+  // sessions of the same account. There is no need to log out and back in.
+  useEffect(() => {
+    if (!userId || mappingStatus?.mapped !== true) return;
+    setRecoverySources([]);
+    setRecoverySelection(null);
+    setOwnerInitializationError(false);
+    setOwnerReadyUserId(userId);
+  }, [userId, mappingStatus?.mapped]);
 
   // Establish one account-level financial identity before ANY finance query.
   // This is a read-only selection of existing storage or a new mapping:
