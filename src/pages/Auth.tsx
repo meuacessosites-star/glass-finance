@@ -1,6 +1,8 @@
 import { AppBackground } from "@/components/app/AppBackground";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/convex/_generated/api";
+import { useConvex } from "convex/react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2, LockKeyhole, Mail, Wallet } from "lucide-react";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -32,6 +34,8 @@ function friendlyError(error: unknown, fallback: string) {
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const convex = useConvex();
+  const [existingEmail, setExistingEmail] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(searchParams.get("returnTo"), redirectAfterAuth);
@@ -52,16 +56,37 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setExistingEmail(false);
     setNotice(null);
+    const data = new FormData(event.currentTarget);
+    const normalizedEmail = String(data.get("email") ?? "").trim().toLowerCase();
+    const duplicateMessage = "Este e-mail já possui um cadastro. Entre na sua conta ou recupere sua senha.";
     try {
-      const data = new FormData(event.currentTarget);
       data.set("flow", flow);
-      if (email) data.set("email", email.trim().toLowerCase());
+      if (normalizedEmail) data.set("email", normalizedEmail);
+      if (flow === "signUp" && await convex.query(api.registration.emailAlreadyRegistered, { email: normalizedEmail })) {
+        setExistingEmail(true);
+        setError(duplicateMessage);
+        return;
+      }
       await signIn("password", data);
       if (nextStep) setStep(nextStep);
       else navigate(redirect, { replace: true });
     } catch (authError) {
-      setError(friendlyError(authError, "Não foi possível concluir a solicitação. Verifique sua conexão e tente novamente."));
+      // The backend may reject a simultaneous signup as duplicate after the
+      // initial check. Confirm that safely before showing a generic error.
+      if (flow === "signUp") {
+        try {
+          if (await convex.query(api.registration.emailAlreadyRegistered, { email: normalizedEmail })) {
+            setExistingEmail(true);
+            setError(duplicateMessage);
+            return;
+          }
+        } catch {
+          // Keep the original failure when the check is unavailable.
+        }
+      }
+      setError(friendlyError(authError, "Não foi possível concluir a solicitação. Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }
@@ -187,7 +212,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <>
               <div className="relative mt-6 grid grid-cols-2 rounded-full border border-black/10 bg-white/45 p-1 dark:border-white/10">
                 {(["signIn", "signUp"] as const).map((value) => (
-                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
+                  <button key={value} type="button" onClick={() => { setMode(value); setError(null); setExistingEmail(false); setNotice(null); }} className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-colors ${mode === value ? "bg-[#2F6BFF] text-white" : "text-glass-sub hover:text-glass-ink"}`}>
                     {value === "signIn" ? "Entrar" : "Criar conta"}
                   </button>
                 ))}
@@ -203,7 +228,21 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <form onSubmit={handlePassword} className="relative space-y-3">
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Email</span><span className="relative block"><Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@exemplo.com" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 dark:border-white/15 dark:bg-black/10" /></span></label>
                 <label className="block space-y-1.5 text-xs font-semibold text-glass-sub"><span>Senha</span><span className="relative block"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-glass-faint"/><Input name="password" type={passwordVisible ? "text" : "password"} autoComplete={mode === "signUp" ? "new-password" : "current-password"} minLength={8} required placeholder="Mínimo de 8 caracteres" className="h-12 rounded-xl border-black/10 bg-white/60 pl-10 pr-12 dark:border-white/15 dark:bg-black/10"/><button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-glass-faint hover:text-glass-ink">{passwordVisible ? <EyeOff className="size-4"/> : <Eye className="size-4"/>}</button></span></label>
-                {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
+                {error && <div role="alert" className={existingEmail ? "rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" : "text-sm font-medium text-red-600"}>
+                  <p className="font-medium">{error}</p>
+                  {existingEmail && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" className="rounded-lg bg-[#2F6BFF] px-3 py-2 font-semibold text-white"
+                        onClick={() => { setMode("signIn"); setExistingEmail(false); setError(null); }}>
+                        Entrar
+                      </button>
+                      <button type="button" className="rounded-lg border border-amber-400 px-3 py-2 font-semibold"
+                        onClick={() => { setMode("signIn"); setStep("resetRequest"); setExistingEmail(false); setError(null); }}>
+                        Recuperar senha
+                      </button>
+                    </div>
+                  )}
+                </div>}
                 {notice && <p role="status" className="text-sm font-medium text-emerald-700">{notice}</p>}
                 <button type="submit" disabled={isSubmitting} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2F6BFF] px-4 text-sm font-semibold text-white transition-all hover:bg-[#2458df] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60">
                   {isSubmitting ? <Loader2 className="size-4 animate-spin"/> : <>{mode === "signUp" ? "Criar conta" : "Entrar"}<ArrowRight className="size-4"/></>}
