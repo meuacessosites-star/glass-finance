@@ -14,7 +14,7 @@ export async function financeOwner(ctx: QueryCtx | MutationCtx): Promise<string>
     .withIndex("by_user_id", q => q.eq("userId", userId))
     .unique();
   if (!mapping) throw new Error("Sincronização da conta ainda não foi inicializada");
-  return mapping.storageSubject;
+  return String(mapping.storageSubject);
 }
 
 /**
@@ -39,11 +39,11 @@ export const ensureMine = mutation({
     const legacyStates = await ctx.db.query("financeStates")
       .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff"))
       .collect();
-    for (const state of legacyStates) existingSubjects.add(state.userSubject);
+    for (const state of legacyStates) existingSubjects.add(String(state.userSubject));
     const normalizedStates = await ctx.db.query("financeV2States")
       .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff"))
       .collect();
-    for (const state of normalizedStates) existingSubjects.add(state.userSubject);
+    for (const state of normalizedStates) existingSubjects.add(String(state.userSubject));
 
     // Existing records may have been created under a non-session identifier
     // by an earlier release. Treat the authenticated identity as a candidate.
