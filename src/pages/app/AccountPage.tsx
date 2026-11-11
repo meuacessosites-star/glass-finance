@@ -284,7 +284,7 @@ export default function AccountPage() {
           <p className="mt-3 text-xs text-glass-sub">Nenhum histórico anterior encontrado nesta conta.</p>
         ) : (
           <div className="mt-3 space-y-2">
-            {savedHistories.histories.map((history, index) => (
+            {savedHistories.histories.map((history: { subject: string; selected: boolean; updatedAt: number; version: string; readable: boolean; profileCount: number | null; transactionCount: number | null }, index: number) => (
               <div key={history.subject} className="rounded-2xl border border-black/10 p-3 dark:border-white/15">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-glass-ink">Histórico {index + 1}</p>
