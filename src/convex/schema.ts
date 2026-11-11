@@ -45,6 +45,14 @@ const schema = defineSchema(
       createdAt: v.number(),
     }).index("by_user_subject", ["userSubject"]),
 
+    // One financial owner per signed-in account, independent of device session.
+    // The original storage subject is retained so historical records stay intact.
+    financeOwners: defineTable({
+      userId: v.id("users"),
+      storageSubject: v.string(),
+      createdAt: v.number(),
+    }).index("by_user_id", ["userId"]),
+
     financeStates: defineTable({
       userSubject: v.string(),
       revision: v.number(),
