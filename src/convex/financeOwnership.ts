@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Convex Auth's identity.subject contains the session identifier. Its value
@@ -24,8 +25,19 @@ export async function financeOwner(ctx: QueryCtx | MutationCtx): Promise<string>
   return String(mapping.storageSubject);
 }
 
+/** Reject stale writes when a user has explicitly switched histories. */
+export async function assertFinanceEpoch(ctx: MutationCtx, expectedEpoch: number | undefined): Promise<void> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new Error("Entre na sua conta");
+  const mapping = await ctx.db.query("financeOwners")
+    .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+  if (mapping && Number(mapping.switchEpoch ?? 0) > 0 && expectedEpoch !== Number(mapping.switchEpoch)) {
+    throw new Error("O histórico principal mudou em outro dispositivo. Atualize para evitar sobrescrever dados.");
+  }
+}
+
 type Source = { subject: string; updatedAt: number; version: "Histórico" | "Histórico individual" };
-async function oldSources(ctx: MutationCtx, userId: string) {
+async function oldSources(ctx: MutationCtx | QueryCtx, userId: string) {
   const prefix = `${userId}|`;
   const sources = new Map<string, Source>();
   const legacy = await ctx.db.query("financeStates")
@@ -111,7 +123,97 @@ export const getMappingStatus = query({
     if (!userId) return { mapped: false as const };
     const mapping = await ctx.db.query("financeOwners")
       .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
-    return { mapped: Boolean(mapping) };
+    return { mapped: Boolean(mapping), epoch: mapping?.switchEpoch ?? 0 };
+  },
+});
+
+/**
+ * Read-only previews for all known histories of this account. No payload,
+ * full storage subject, personal details or transaction values leave the DB.
+ * Unreadable snapshots are explicitly marked instead of reported as empty.
+ */
+export const listHistoryPreviews = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Faça login para consultar seus históricos");
+    const mapping = await ctx.db.query("financeOwners")
+      .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+    const sources = await oldSources(ctx, String(userId));
+    const previews = await Promise.all(sources.map(async (source) => {
+      const v2 = await ctx.db.query("financeV2States")
+        .withIndex("by_user_subject", q => q.eq("userSubject", source.subject)).unique();
+      const legacy = await ctx.db.query("financeStates")
+        .withIndex("by_user_subject", q => q.eq("userSubject", source.subject)).unique();
+      let profileCount: number | null = null;
+      let transactionCount: number | null = null;
+      let readable = false;
+      if (v2) {
+        try {
+          const payload: unknown = JSON.parse(String(v2.metadataPayload));
+          if (payload && typeof payload === "object" && "profiles" in payload &&
+              Array.isArray(payload.profiles)) {
+            profileCount = payload.profiles.length;
+            const rows = await ctx.db.query("financeTransactions")
+              .withIndex("by_owner", q => q.eq("userSubject", source.subject)).take(2001);
+            transactionCount = rows.length <= 2000 ? rows.length : null;
+            readable = true;
+          }
+        } catch { /* Never claim a corrupted history is empty */ }
+      } else if (legacy && Number(legacy.chunkCount) <= 100) {
+        const chunks = await ctx.db.query("financeStateChunks")
+          .withIndex("by_user_subject_revision", q => q.eq("userSubject", source.subject))
+          .filter(q => q.eq(q.field("revision"), legacy.revision)).collect();
+        if (chunks.length === Number(legacy.chunkCount)) {
+          try {
+            const raw: unknown = JSON.parse(chunks.sort((a,b) => Number(a.chunkIndex) - Number(b.chunkIndex))
+              .map(c => String(c.payload)).join(""));
+            if (raw && typeof raw === "object" && "profiles" in raw && Array.isArray(raw.profiles)) {
+              profileCount = raw.profiles.length;
+              const values = raw.profiles as Array<{ data?: { transactions?: unknown[] } }>;
+              transactionCount = values.every(p => Array.isArray(p.data?.transactions))
+                ? values.reduce((sum,p) => sum + (p.data?.transactions?.length ?? 0), 0)
+                : null;
+              readable = true;
+            }
+          } catch { /* Show unknown rather than zero */ }
+        }
+      }
+      return {
+        subject: source.subject,
+        selected: mapping?.storageSubject === source.subject,
+        updatedAt: source.updatedAt,
+        version: source.version,
+        readable,
+        profileCount,
+        transactionCount,
+      };
+    }));
+    return { epoch: mapping?.switchEpoch ?? 0, histories: previews };
+  },
+});
+
+/** Explicitly switch which ORIGINAL history is visible, without merging or
+ * deleting anything. The epoch invalidates writes issued by other devices
+ * against a previously selected source.
+ */
+export const switchMine = mutation({
+  args: { subject: v.string(), expectedEpoch: v.number() },
+  handler: async (ctx, { subject, expectedEpoch }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Faça login para recuperar os dados");
+    const mapping = await ctx.db.query("financeOwners")
+      .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+    if (!mapping) throw new Error("Sua conta ainda não possui um histórico principal");
+    if ((mapping.switchEpoch ?? 0) !== expectedEpoch)
+      throw new Error("Outro dispositivo já alterou o histórico. Atualize e confira novamente.");
+    if (mapping.storageSubject === subject) return { changed: false, epoch: expectedEpoch };
+    const valid = await oldSources(ctx, String(userId));
+    if (!valid.some(source => source.subject === subject))
+      throw new Error("Este histórico não pertence à sua conta");
+    const epoch = expectedEpoch + 1;
+    await ctx.db.patch(mapping._id as Id<"financeOwners">, { storageSubject: subject, switchEpoch: epoch });
+    return { changed: true, epoch };
   },
 });
 

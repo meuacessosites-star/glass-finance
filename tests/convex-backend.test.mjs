@@ -374,3 +374,49 @@ test("three historical sessions need one initial selection, then other devices o
   const allSnapshots = await t.run(ctx => ctx.db.query("financeStates").collect());
   expect(allSnapshots).toHaveLength(3);
 });
+
+test("a previously selected empty history can be replaced by a verified older history without losing either", async () => {
+  const t = convexTest(schema, modules);
+  const sources = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { email: "recover@example.com" });
+    const empty = `${userId}|latest`;
+    const populated = `${userId}|older`;
+    const emptyPayload = makeSnapshot([]);
+    const populatedPayload = makeSnapshot([transaction("saved-tx-1", 11.25), transaction("saved-tx-2", 35)]);
+    for (const [subject, payload, updatedAt] of [
+      [empty, emptyPayload, 200], [populated, populatedPayload, 100],
+    ]) {
+      await ctx.db.insert("financeStates", { userSubject: subject, revision: 1, chunkCount: 1, updatedAt });
+      await ctx.db.insert("financeStateChunks", { userSubject: subject, revision: 1, chunkIndex: 0, payload });
+    }
+    return { userId, empty, populated, emptyPayload, populatedPayload };
+  });
+  const first = t.withIdentity({ subject: `${sources.userId}|phone` });
+  const tablet = t.withIdentity({ subject: `${sources.userId}|tablet` });
+  await first.mutation(api.financeOwnership.selectMine, { subject: sources.empty });
+  const previews = await first.query(api.financeOwnership.listHistoryPreviews, {});
+  expect(previews.histories).toHaveLength(2);
+  expect(previews.histories.find(h => h.subject === sources.empty)?.transactionCount).toBe(0);
+  expect(previews.histories.find(h => h.subject === sources.populated)?.transactionCount).toBe(2);
+  expect(previews.histories.find(h => h.subject === sources.empty)?.selected).toBe(true);
+  await first.mutation(api.financeOwnership.switchMine, { subject: sources.populated, expectedEpoch: 0 });
+  expect((await tablet.query(api.financeOwnership.getMappingStatus, {})).epoch).toBe(1);
+  expect((await tablet.query(api.financeState.getMine, {}))?.payload).toBe(sources.populatedPayload);
+  await expect(tablet.mutation(api.financeState.saveMine, {
+    expectedRevision: 1, payload: makeSnapshot([]), expectedEpoch: 0,
+  })).rejects.toThrow("histórico principal mudou");
+  await expect(tablet.mutation(api.financeState.deleteMine, { expectedEpoch: 0 }))
+    .rejects.toThrow("histórico principal mudou");
+  expect((await t.run(async ctx => ctx.db.query("financeStates").collect()))).toHaveLength(2);
+  expect((await first.query(api.financeOwnership.listHistoryPreviews, {}))
+    .histories.find(h => h.subject === sources.empty)?.transactionCount).toBe(0);
+  await expect(first.mutation(api.financeOwnership.switchMine, {
+    subject: sources.empty, expectedEpoch: 0,
+  })).rejects.toThrow("Outro dispositivo");
+  await tablet.mutation(api.financeOwnership.switchMine, {
+    subject: sources.empty, expectedEpoch: 1,
+  });
+  expect((await first.query(api.financeState.getMine, {}))?.payload).toBe(sources.emptyPayload);
+  expect((await tablet.query(api.financeOwnership.getMappingStatus, {})).epoch).toBe(2);
+  expect((await t.run(async ctx => ctx.db.query("financeStates").collect()))).toHaveLength(2);
+});

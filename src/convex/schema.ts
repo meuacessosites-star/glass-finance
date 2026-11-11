@@ -53,6 +53,7 @@ const schema = defineSchema(
       userId: v.id("users"),
       storageSubject: v.string(),
       createdAt: v.number(),
+      switchEpoch: v.optional(v.number()), // guards stale devices after changing the selected history
     }).index("by_user_id", ["userId"]),
 
     financeStates: defineTable({
