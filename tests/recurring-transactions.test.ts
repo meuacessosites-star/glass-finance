@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendRecurringThrough, recurringOccurrenceId, stopRecurringEntries } from "../src/lib/recurring-transactions";
+import { appendRecurringInMonth, appendRecurringThrough, recurringOccurrenceId, stopRecurringEntries } from "../src/lib/recurring-transactions";
 import { captureTransactionDeletion, applyTransactionDeletion, restoreTransactionDeletion } from "../src/lib/transaction-deletion";
 import type { Transaction } from "../src/lib/mock-data";
 import type { AppProfile, ProfileData } from "../src/lib/app-store";
@@ -106,4 +106,47 @@ test("stopping a recurrence twice cannot extend an earlier end date", () => {
   const result=stopRecurringEntries([original],"rent","2026-12-20");
   assert.equal(result[0], original);
   assert.equal(result[0].recurrenceEndDate,"2026-11-14");
+});
+
+test("an indefinite monthly recurrence is visible in any requested year without pre-creating all years", () => {
+  const original = tx();
+  const later = appendRecurringInMonth([original], "2042-08");
+  assert.deepEqual(later.map((row) => row.date), ["2026-11-10", "2042-08-10"]);
+  assert.equal(later[1].paymentStatus, "pending");
+  assert.equal(appendRecurringInMonth(later, "2042-08"), later);
+  const earlier = appendRecurringInMonth(later, "2034-02");
+  assert.deepEqual(earlier.map((row) => row.date), ["2026-11-10", "2042-08-10", "2034-02-10"]);
+  const nearby = appendRecurringInMonth(earlier, "2042-09");
+  assert.equal(nearby.filter((row) => row.date.startsWith("2042-09")).length, 1);
+  assert.equal(nearby.filter((row) => row.date.startsWith("2042-08")).length, 1);
+});
+
+test("weekly recurrence creates all occurrences within a single requested month", () => {
+  const expanded = appendRecurringInMonth([tx({ frequency: "semanal" })], "2027-01");
+  assert.deepEqual(
+    expanded.filter((row) => row.date.startsWith("2027-01")).map((row) => row.date),
+    ["2027-01-05", "2027-01-12", "2027-01-19", "2027-01-26"],
+  );
+  assert.equal(appendRecurringInMonth(expanded, "2027-01"), expanded);
+});
+
+test("daily recurrence is bounded to a selected month even when many years ahead", () => {
+  const result = appendRecurringInMonth([tx({ frequency: "dias", frequencyInterval: 1 })], "2047-03");
+  assert.equal(result.length, 32);
+  assert.equal(result[1].date, "2047-03-01");
+  assert.equal(result[31].date, "2047-03-31");
+});
+
+test("an indefinitely repeating annual recurrence skips months with no due date", () => {
+  const source = tx({ frequency: "anual" });
+  const missing = appendRecurringInMonth([source], "2042-08");
+  assert.equal(missing.length, 1);
+  const due = appendRecurringInMonth(missing, "2042-11");
+  assert.equal(due.length, 2);
+  assert.equal(due[1].date, "2042-11-10");
+});
+
+test("a deactivated series never returns in later selected months", () => {
+  const source = tx({recurrenceEndDate:"2027-01-01"});
+  assert.equal(appendRecurringInMonth([source], "2050-12").length, 1);
 });
