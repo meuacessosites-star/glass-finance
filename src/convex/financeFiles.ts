@@ -1,14 +1,11 @@
+import { financeOwner } from "./financeOwnership";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
 const MAX_FILE_BYTES = 8_000_000;
 
-async function owner(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Autenticação necessária para acessar anexos");
-  return identity.subject;
-}
+const owner = financeOwner;
 
 /** Short-lived, authenticated upload URL. The file is not linked until register() completes. */
 export const createUploadUrl = mutation({
