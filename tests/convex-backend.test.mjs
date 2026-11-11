@@ -271,8 +271,17 @@ test("independent legacy histories are never silently merged or overwritten", as
     }
   });
   const device = t.withIdentity({ subject: "splituser|new-device" });
-  await expect(device.mutation(api.financeOwnership.ensureMine, {}))
-    .rejects.toThrow("históricos salvos em sessões diferentes");
+  const result = await device.mutation(api.financeOwnership.ensureMine, {});
+  expect(result.ready).toBe(false);
+  expect(result.sources).toHaveLength(2);
   expect(await t.run(ctx => ctx.db.query("financeOwners").collect())).toHaveLength(0);
+  const selected = await device.mutation(api.financeOwnership.selectMine, { subject: "splituser|old-one" });
+  expect(selected.ready).toBe(true);
+  const active = await device.query(api.financeState.getMine, {});
+  expect(active.payload).toContain('"old-one"');
   expect(await t.run(ctx => ctx.db.query("financeStates").collect())).toHaveLength(2);
+  expect(await t.run(ctx => ctx.db.query("financeOwners").collect())).toHaveLength(1);
+  await expect(t.withIdentity({ subject: "otheruser|session" }).mutation(
+    api.financeOwnership.selectMine, { subject: "splituser|old-two" },
+  )).rejects.toThrow("não pertence a esta conta");
 });
