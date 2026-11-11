@@ -1,3 +1,4 @@
+import { financeOwner } from "./financeOwnership";
 import { linkReferencedFiles } from "./financeFileRefs";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -8,11 +9,7 @@ import { v } from "convex/values";
 const CHUNK_CHARACTERS = 150_000;
 const MAX_PAYLOAD_BYTES = 12_000_000;
 
-async function getUserSubject(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Autenticação necessária para acessar os dados financeiros");
-  return identity.subject;
-}
+const getUserSubject = financeOwner;
 
 export const getMine = query({
   args: {},
