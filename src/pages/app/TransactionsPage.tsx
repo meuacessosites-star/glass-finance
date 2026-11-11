@@ -112,13 +112,16 @@ export default function TransactionsPage() {
       ),
     [consolidatedTransactions],
   );
-  const monthOptions = useMemo(() => {
-    const navigableMonths = Array.from({ length: 49 }, (_, index) =>
-      shiftMonth(currentMonthKey, 24 - index),
-    );
-    return [...new Set([...navigableMonths, ...allMonths])].sort((a, b) => b.localeCompare(a));
-  }, [allMonths, currentMonthKey]);
   const [month, setMonth] = useState<string>(currentMonthKey);
+  const monthOptions = useMemo(() => {
+    // Keep the picker close to the month being viewed, not only the day the
+    // browser was opened. A recurrence can continue into any future year.
+    const nearbyMonths = Array.from({ length: 49 }, (_, index) =>
+      shiftMonth(month, 24 - index),
+    );
+    return [...new Set([...nearbyMonths, currentMonthKey, ...allMonths])]
+      .sort((a, b) => b.localeCompare(a));
+  }, [allMonths, currentMonthKey, month]);
   useEffect(() => {
     setNavigationTarget(null);
     setHighlightedId(null);
@@ -140,11 +143,9 @@ export default function TransactionsPage() {
   }, [location.key]);
   const selectedMonth = periodMode === "current" && selectedMonths.length === 0
     ? currentMonthKey
-    : monthOptions.includes(month)
+    : /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
       ? month
-      : monthOptions.includes(currentMonthKey)
-        ? currentMonthKey
-        : monthOptions[0] ?? currentMonthKey;
+      : currentMonthKey;
   useEffect(() => {
     const target = [...selectedMonths, selectedMonth, rangeStart?.slice(0, 7), rangeEnd?.slice(0, 7)]
       .filter((item): item is string => Boolean(item && /^\\d{4}-(0[1-9]|1[0-2])$/.test(item)))
