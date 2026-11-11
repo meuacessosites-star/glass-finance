@@ -342,3 +342,35 @@ test("two authenticated sessions on same account resolve same cloud revision and
   expect(b?.revision).toBe(1);
   expect(b?.otherHistoryCount).toBe(0);
 });
+
+test("three historical sessions need one initial selection, then other devices observe it immediately", async () => {
+  const t = convexTest(schema, modules);
+  const data = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { email: "legacy-sync@example.com" });
+    const payloads = [];
+    for (let index = 0; index < 3; index++) {
+      const subject = `${userId}|old-session-${index}`;
+      const payload = JSON.stringify({
+        profiles: [{ id: "p" + index, name: "Profile " + index, data: { transactions: [] } }],
+        activeProfileId: "p" + index,
+      });
+      await ctx.db.insert("financeStates", { userSubject: subject, chunkCount: 1, revision: 1, updatedAt: 100 + index });
+      await ctx.db.insert("financeStateChunks", { userSubject: subject, revision: 1, chunkIndex: 0, payload });
+      payloads.push({ subject, payload });
+    }
+    return { userId, payloads };
+  });
+  const phone = t.withIdentity({ subject: `${data.userId}|phone` });
+  const tablet = t.withIdentity({ subject: `${data.userId}|tablet` });
+  expect((await phone.mutation(api.financeOwnership.ensureMine, {})).ready).toBe(false);
+  expect((await tablet.mutation(api.financeOwnership.ensureMine, {})).sources).toHaveLength(3);
+  expect((await tablet.query(api.financeOwnership.getMappingStatus, {})).mapped).toBe(false);
+  await phone.mutation(api.financeOwnership.selectMine, { subject: data.payloads[1].subject });
+  expect((await tablet.query(api.financeOwnership.getMappingStatus, {})).mapped).toBe(true);
+  expect((await tablet.mutation(api.financeOwnership.ensureMine, {})).ready).toBe(true);
+  expect((await phone.query(api.financeState.getMine, {}))?.payload).toBe(data.payloads[1].payload);
+  expect((await tablet.query(api.financeState.getMine, {}))?.payload).toBe(data.payloads[1].payload);
+  expect((await tablet.query(api.financeOwnership.diagnostics, {}))?.otherHistoryCount).toBe(2);
+  const allSnapshots = await t.run(ctx => ctx.db.query("financeStates").collect());
+  expect(allSnapshots).toHaveLength(3);
+});
