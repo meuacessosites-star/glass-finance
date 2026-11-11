@@ -100,6 +100,22 @@ export const selectMine = mutation({
 });
 
 /**
+ * Live account-level binding status. Convex automatically pushes changes from
+ * one device to all connected sessions of the same authenticated user.
+ * Never sends a session subject or financial records to the browser.
+ */
+export const getMappingStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { mapped: false as const };
+    const mapping = await ctx.db.query("financeOwners")
+      .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
+    return { mapped: Boolean(mapping) };
+  },
+});
+
+/**
  * Account-scoped read-only sync diagnostic. Never modifies or transfers
  * historical financial data between devices.
  */
