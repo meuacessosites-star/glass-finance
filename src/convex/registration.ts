@@ -18,3 +18,18 @@ export const emailAlreadyRegistered = query({
     return existing !== null;
   },
 });
+
+/** Public availability check only for new accounts. Profile edits are checked
+ * again inside the authenticated mutation. */
+export const usernameAvailable = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
+    const name = username.trim().replace(/\s+/g, " ");
+    if (name.length < 3 || name.length > 32) return false;
+    const normalized = name.toLocaleLowerCase("pt-BR");
+    const found = await ctx.db.query("users")
+      .withIndex("by_username_normalized", q => q.eq("usernameNormalized", normalized))
+      .first();
+    return !found;
+  },
+});
