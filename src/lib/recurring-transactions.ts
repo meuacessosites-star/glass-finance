@@ -54,8 +54,17 @@ export function recurringOccurrenceId(sourceId: string, date: string): string {
   return `recurrence:${sourceId}:${date}`;
 }
 
-export function appendRecurringThrough(transactions: Transaction[], throughMonth: string): Transaction[] {
+/** Generate up to a month, or restrict generation to a requested range.
+ * An active series has no end date; a single-month request is bounded work.
+ */
+export function appendRecurringThrough(
+  transactions: Transaction[],
+  throughMonth: string,
+  fromMonth?: string,
+): Transaction[] {
   if (!ISO_MONTH.test(throughMonth)) return transactions;
+  const boundedFrom = fromMonth && ISO_MONTH.test(fromMonth) && fromMonth <= throughMonth ? fromMonth : undefined;
+  const rangeStart = boundedFrom ? `${boundedFrom}-01` : undefined;
   const end = `${throughMonth}-${String(new Date(Date.UTC(Number(throughMonth.slice(0, 4)), Number(throughMonth.slice(5, 7)), 0)).getUTCDate()).padStart(2, "0")}`;
   const ids = new Set(transactions.map((item) => item.id));
   const created: Transaction[] = [];
@@ -63,11 +72,27 @@ export function appendRecurringThrough(transactions: Transaction[], throughMonth
     if (source.recurrence !== "recorrente" || source.recurrenceSourceId || source.source === "loan") continue;
     if (dayToTime(source.date) === null || source.date >= end) continue;
     const skipped = new Set(source.recurrenceSkippedDates ?? []);
-    // A hard ceiling protects the browser against malformed century-long data.
-    // Normal accounts can generate more after opening a newer month.
-    for (let index = 1; index <= 10000; index++) {
+    // Jump close to the requested date instead of creating all intervening
+    // years. Each occurrence still has the same deterministic ID.
+    let firstIndex = 1;
+    if (rangeStart) {
+      const frequency = source.frequency ?? "mensal";
+      if (frequency === "mensal" || frequency === "anual") {
+        const monthsApart = (Number(boundedFrom!.slice(0, 4)) - Number(source.date.slice(0, 4))) * 12 +
+          Number(boundedFrom!.slice(5, 7)) - Number(source.date.slice(5, 7));
+        firstIndex = Math.max(1, Math.floor(monthsApart / (frequency === "anual" ? 12 : 1)) - 1);
+      } else {
+        const daysApart = (dayToTime(rangeStart)! - dayToTime(source.date)!) / DAY_MS;
+        const interval = frequency === "semanal" ? 7 : Math.max(1, Math.min(365, Math.floor(source.frequencyInterval ?? 30)));
+        firstIndex = Math.max(1, Math.floor(daysApart / interval) - 1);
+      }
+    }
+    // At most 31 occurrences per month even for a daily schedule.
+    const maxIterations = rangeStart ? 40 : 10000;
+    for (let index = firstIndex; index < firstIndex + maxIterations; index++) {
       const date = occurrenceDate(source, index);
       if (!date || date > end || (source.recurrenceEndDate && date > source.recurrenceEndDate)) break;
+      if (rangeStart && date < rangeStart) continue;
       const id = recurringOccurrenceId(source.id, date);
       if (ids.has(id) || skipped.has(date)) continue;
       const oldDateTime = dayToTime(source.date)!;
@@ -93,6 +118,12 @@ export function appendRecurringThrough(transactions: Transaction[], throughMonth
     }
   }
   return created.length ? [...transactions, ...created] : transactions;
+}
+
+/** Materialize just the selected month. Opening any later month extends the
+ * perpetual series without flooding storage with future transactions. */
+export function appendRecurringInMonth(transactions: Transaction[], month: string): Transaction[] {
+  return appendRecurringThrough(transactions, month, month);
 }
 
 /** Pause all future occurrences of the series without erasing paid history. */
