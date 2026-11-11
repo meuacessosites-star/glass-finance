@@ -26,7 +26,7 @@ import { applyTransactionDeletion, captureTransactionDeletion, restoreTransactio
 import { sanitizeDueDate } from "./transaction-status";
 import { openUnpaidPurchaseInvoices, setInvoicePaymentStatus, setTransactionPaymentState } from "./payment-updates";
 import { selectTransactionLedgers } from "./transaction-ledgers";
-import { appendRecurringInMonth, appendRecurringThrough, stopRecurringEntries } from "./recurring-transactions";
+import { appendRecurringInMonth, appendRecurringThrough, stopRecurringEntries, stopRecurringEntriesFrom } from "./recurring-transactions";
 import { recordScopedInvoicePayment, setScopedInvoiceStatus } from "./card-invoice-summary";
 import { getTransactionInvoiceMonth, isCreditCardExpense, localDateKey, sanitizeInvoiceMonth, sanitizeInvoicePaidPurchaseIds } from "./card-billing";
 import {
@@ -1143,7 +1143,7 @@ type AppStoreValue = {
   /** Gera as próximas ocorrências conforme os meses acessados, sem duplicar históricos. */
   ensureRecurringThrough: (month: string) => void;
   /** Encerra a série após a data indicada, mantendo o histórico de pagamentos. */
-  stopRecurringSeries: (id: string) => void;
+  stopRecurringSeries: (id: string, fromDate?: string) => void;
   updateTransaction: (
     id: string,
     patch: Partial<
@@ -1712,8 +1712,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       loanTransactions,
       visibleTransactions,
       ensureRecurringThrough,
-      stopRecurringSeries: (id) => patchActiveData((data) => {
-        const stopped = stopRecurringEntries(data.transactions, id, localDateKey());
+      stopRecurringSeries: (id, fromDate) => patchActiveData((data) => {
+        const stopped = fromDate
+          ? stopRecurringEntriesFrom(data.transactions, id, fromDate)
+          : stopRecurringEntries(data.transactions, id, localDateKey());
         return stopped === data.transactions
           ? data
           : { ...data, transactions: stopped };

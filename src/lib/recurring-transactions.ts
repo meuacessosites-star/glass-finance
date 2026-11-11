@@ -150,3 +150,20 @@ export function stopRecurringEntries(transactions: Transaction[], entryId: strin
   });
   return changed ? result : transactions;
 }
+
+/** Stop the series beginning on this day (inclusive), rather than after it.
+ * The original entry and every previously recorded payment are preserved.
+ */
+export function stopRecurringEntriesFrom(transactions: Transaction[], entryId: string, fromDate: string): Transaction[] {
+  const fromTime = dayToTime(fromDate);
+  if (fromTime === null) return transactions;
+  const selected = transactions.find((row) => row.id === entryId);
+  const sourceId = selected?.recurrenceSourceId ?? entryId;
+  const source = transactions.find((row) => row.id === sourceId);
+  const startTime = source ? dayToTime(source.date) : null;
+  // The first saved entry belongs to the historical series and must remain.
+  if (!source || source.recurrence !== "recorrente" || startTime === null || fromTime <= startTime) {
+    return transactions;
+  }
+  return stopRecurringEntries(transactions, entryId, dateAt(fromTime - DAY_MS));
+}
