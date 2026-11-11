@@ -217,3 +217,62 @@ test("private reminder schedules contain only dates and types; deleting account 
   expect((await t.run(ctx => ctx.db.query("pushSchedules").collect()))
     .map(item => item.userSubject)).toEqual(["account:bob"]);
 });
+
+test("two sessions of one account share the same live financial data", async () => {
+  const t = convexTest(schema, modules);
+  const firstDevice = t.withIdentity({ subject: "multiuser|session-one" });
+  const secondDevice = t.withIdentity({ subject: "multiuser|session-two" });
+  await firstDevice.mutation(api.financeOwnership.ensureMine, {});
+  await firstDevice.mutation(api.financeState.saveMine, {
+    payload: makeSnapshot([transaction("shared", 42)]), expectedRevision: 0,
+  });
+  await secondDevice.mutation(api.financeOwnership.ensureMine, {});
+  const received = await secondDevice.query(api.financeState.getMine, {});
+  expect(JSON.parse(received.payload).profiles[0].data.transactions[0].id).toBe("shared");
+  const secondWrite = await secondDevice.mutation(api.financeState.saveMine, {
+    payload: makeSnapshot([transaction("shared", 43)]), expectedRevision: 1,
+  });
+  expect(secondWrite.ok).toBe(true);
+  expect(JSON.parse((await firstDevice.query(api.financeState.getMine, {})).payload)
+    .profiles[0].data.transactions[0].amount).toBe(43);
+});
+
+test("old financial history belonging to one session is preserved without copying", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async ctx => {
+    await ctx.db.insert("financeStates", {
+      userSubject: "existinguser|old-session", revision: 1, chunkCount: 1, updatedAt: 1,
+    });
+    await ctx.db.insert("financeStateChunks", {
+      userSubject: "existinguser|old-session", revision: 1, chunkIndex: 0,
+      payload: makeSnapshot([transaction("kept", 19)]),
+    });
+  });
+  const newDevice = t.withIdentity({ subject: "existinguser|new-session" });
+  await newDevice.mutation(api.financeOwnership.ensureMine, {});
+  const received = await newDevice.query(api.financeState.getMine, {});
+  expect(received.revision).toBe(1);
+  expect(received.payload).toContain('"kept"');
+  const maps = await t.run(ctx => ctx.db.query("financeOwners").collect());
+  expect(maps[0].storageSubject).toBe("existinguser|old-session");
+});
+
+test("independent legacy histories are never silently merged or overwritten", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async ctx => {
+    for (const suffix of ["old-one", "old-two"]) {
+      await ctx.db.insert("financeStates", {
+        userSubject: `splituser|${suffix}`, revision: 1, chunkCount: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("financeStateChunks", {
+        userSubject: `splituser|${suffix}`, revision: 1, chunkIndex: 0,
+        payload: makeSnapshot([transaction(suffix, 100)]),
+      });
+    }
+  });
+  const device = t.withIdentity({ subject: "splituser|new-device" });
+  await expect(device.mutation(api.financeOwnership.ensureMine, {}))
+    .rejects.toThrow("históricos salvos em sessões diferentes");
+  expect(await t.run(ctx => ctx.db.query("financeOwners").collect())).toHaveLength(0);
+  expect(await t.run(ctx => ctx.db.query("financeStates").collect())).toHaveLength(2);
+});
