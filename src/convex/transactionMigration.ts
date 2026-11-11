@@ -1,3 +1,4 @@
+import { financeOwner } from "./financeOwnership";
 import type { Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
@@ -5,11 +6,7 @@ import { v } from "convex/values";
 
 // Preparação isolada: nenhuma função abaixo modifica os snapshots legados.
 // A revisão é conferida em cada lote para não copiar uma versão obsoleta.
-async function owner(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Autenticação necessária");
-  return identity.subject;
-}
+const owner = financeOwner;
 const ownerProfileKey = (userSubject: string, profileId: string) =>
   JSON.stringify([userSubject, profileId]);
 const ownerTransactionKey = (userSubject: string, profileId: string, transactionId: string) =>
