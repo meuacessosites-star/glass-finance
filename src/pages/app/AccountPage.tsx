@@ -47,6 +47,27 @@ const inputClass =
 export default function AccountPage() {
   const convex = useConvex();
   const syncDiagnostics = useQuery(api.financeOwnership.diagnostics);
+  const savedHistories = useQuery(api.financeOwnership.listHistoryPreviews);
+  const switchHistory = useMutation(api.financeOwnership.switchMine);
+  const [historySwitchBusy, setHistorySwitchBusy] = useState(false);
+  const openOtherHistory = async (subject: string, epoch: number) => {
+    if (historySwitchBusy || cloudSyncStatus !== "synced") {
+      toast.error("Confirme a sincronização ou salve um backup antes de trocar o histórico.");
+      return;
+    }
+    if (!window.confirm(
+      "Abrir este histórico salvo? O histórico atual e os demais continuarão guardados, sem união ou exclusão. " +
+      "Confira que não existem alterações pendentes em nenhum dispositivo. Recomenda-se salvar um backup antes da troca."
+    )) return;
+    setHistorySwitchBusy(true);
+    try {
+      await switchHistory({ subject, expectedEpoch: epoch });
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível abrir o histórico.");
+      setHistorySwitchBusy(false);
+    }
+  };
   const { user } = useAuth();
   const changeUsername = useMutation(api.users.updateUsername);
   const [usernameInput, setUsernameInput] = useState("");
@@ -248,6 +269,51 @@ export default function AccountPage() {
           Situação neste aparelho: <strong className="text-glass-ink">{syncMessage}</strong>
           Se os códigos de conta forem diferentes, não é a mesma conta de acesso.
           Se forem iguais, compare a revisão e a data acima.
+        </p>
+      </section>
+      <section className="glass rounded-3xl p-4" aria-label="Históricos anteriores para recuperação">
+        <h2 className="text-[15px] font-semibold text-glass-ink">Recuperar históricos de outros aparelhos</h2>
+        <p className="mt-1 text-xs leading-relaxed text-glass-sub">
+          Históricos antigos podem conter transações diferentes. Confira a quantidade de perfis e
+          transações antes de escolher. O mais recente nem sempre é o que contém seus lançamentos.
+          A troca não apaga nem junta os históricos.
+        </p>
+        {!savedHistories ? (
+          <p className="mt-3 text-xs text-glass-sub">Consultando os históricos salvos…</p>
+        ) : savedHistories.histories.length === 0 ? (
+          <p className="mt-3 text-xs text-glass-sub">Nenhum histórico anterior encontrado nesta conta.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {savedHistories.histories.map((history, index) => (
+              <div key={history.subject} className="rounded-2xl border border-black/10 p-3 dark:border-white/15">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-glass-ink">Histórico {index + 1}</p>
+                  {history.selected && <span className="text-xs font-semibold text-primary">Aberto agora</span>}
+                </div>
+                <p className="mt-1 text-xs text-glass-sub">
+                  {history.updatedAt ? "Última atualização: " + new Date(history.updatedAt).toLocaleString("pt-BR") : "Data indisponível"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-glass-ink">
+                  {history.readable
+                    ? (history.profileCount ?? "—") + " perfil(is) · " +
+                      (history.transactionCount === null ? "contagem de transações indisponível" : history.transactionCount + " transação(ões)")
+                    : "Não foi possível conferir os registros deste histórico"}
+                </p>
+                {!history.selected && (
+                  <button type="button"
+                    disabled={historySwitchBusy || cloudSyncStatus !== "synced" || !history.readable}
+                    onClick={() => { void openOtherHistory(history.subject, savedHistories.epoch); }}
+                    className="mt-3 min-h-10 rounded-xl border border-primary px-3 text-xs font-semibold text-primary disabled:opacity-50">
+                    {historySwitchBusy ? "Abrindo…" : "Abrir este histórico"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-xs text-glass-sub">
+          Antes de trocar, salve um backup e confira se todos os dispositivos terminaram de salvar.
+          Se houver alterações pendentes, a troca fica bloqueada.
         </p>
       </section>
       <section className="glass rounded-3xl p-4" aria-label="Nome de usuário da conta">
