@@ -1557,7 +1557,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       await new Promise((resolve) => window.setTimeout(resolve, 25));
     }
     try {
-      await deleteMine({});
+      await deleteMine({ expectedEpoch: historyEpochRef.current ?? 0 });
     } catch (error) {
       conflictRef.current = false;
       pendingPayloadRef.current = JSON.stringify(latestStateRef.current);
