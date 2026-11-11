@@ -143,7 +143,7 @@ export default function TransactionsPage() {
   }, [location.key]);
   const selectedMonth = periodMode === "current" && selectedMonths.length === 0
     ? currentMonthKey
-    : /^\\d{4}-(0[1-9]|1[0-2])$/.test(month)
+    : /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
       ? month
       : currentMonthKey;
   useEffect(() => {
