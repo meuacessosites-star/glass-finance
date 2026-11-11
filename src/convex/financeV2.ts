@@ -1,4 +1,4 @@
-import { financeOwner } from "./financeOwnership";
+import { assertFinanceEpoch, financeOwner } from "./financeOwnership";
 import { linkReferencedFiles } from "./financeFileRefs";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
@@ -77,10 +77,12 @@ const operation = v.object({
 export const saveMine = mutation({
   args: {
     expectedRevision: v.number(),
+    expectedEpoch: v.optional(v.number()),
     metadataPayload: v.string(),
     operations: v.array(operation),
   },
-  handler: async (ctx, { expectedRevision, metadataPayload, operations }) => {
+  handler: async (ctx, { expectedRevision, expectedEpoch, metadataPayload, operations }) => {
+    await assertFinanceEpoch(ctx, expectedEpoch);
     const userSubject = await owner(ctx);
     const state = await ctx.db.query("financeV2States")
       .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).unique();
