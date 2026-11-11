@@ -148,7 +148,7 @@ export default function TransactionsPage() {
       : currentMonthKey;
   useEffect(() => {
     const target = [...selectedMonths, selectedMonth, rangeStart?.slice(0, 7), rangeEnd?.slice(0, 7)]
-      .filter((item): item is string => Boolean(item && /^\\d{4}-(0[1-9]|1[0-2])$/.test(item)))
+      .filter((item): item is string => Boolean(item && /^\d{4}-(0[1-9]|1[0-2])$/.test(item)))
       .sort()
       .slice(-1)[0];
     if (target) ensureRecurringThrough(target);
