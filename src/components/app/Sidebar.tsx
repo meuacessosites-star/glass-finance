@@ -179,7 +179,7 @@ export function Sidebar() {
   const { isOpen, close } = useSidebar();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { activeProfile, profiles, activeProfileId, setActiveProfile } =
+  const { activeProfile, profiles, activeProfileId, setActiveProfile, cloudSyncStatus } =
     useAppStore();
   const { signOut } = useAuth();
 
@@ -209,9 +209,24 @@ export function Sidebar() {
   };
 
   const handleSignOut = async () => {
+    // Avoid losing unsent changes when a user signs out of one device.
+    // Signing out only affects this device's auth session; never touch
+    // other devices' sessions or account-level cloud data.
+    if (cloudSyncStatus !== "synced") {
+      toast.error(
+        cloudSyncStatus === "saving"
+          ? "Há alterações sendo salvas. Confirme que a nuvem está sincronizada antes de sair."
+          : "Existem alterações não confirmadas na nuvem. Preserve um backup e confirme a sincronização antes de sair."
+      );
+      return;
+    }
     close();
-    await signOut();
-    navigate("/");
+    try {
+      await signOut();
+      navigate("/");
+    } catch {
+      toast.error("Não foi possível sair neste dispositivo. Tente novamente.");
+    }
   };
 
   return (
