@@ -2,6 +2,7 @@ import { usePrivateCurrency } from "@/components/app/BalancePrivacy";
 import { BalancePrivacyToggle } from "@/components/app/BalancePrivacy";
 import "@/components/app/transaction-navigation.css";
 import { getTransactionPaymentStatus, type PaymentStatusFilter } from "@/lib/transaction-status";
+import { requestedRecurrenceMonths } from "@/lib/recurrence-months";
 import { countUnpaidTransactions, normalizeSearchText, selectTransactionView, transactionInPeriod } from "@/lib/transaction-view";
 import { useReportNavigationPendingCount } from "@/components/app/NavigationPendingContext";
 import { useLocalDate } from "@/hooks/use-local-date";
@@ -148,13 +149,14 @@ export default function TransactionsPage() {
     : /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
       ? month
       : currentMonthKey;
+  const recurringMonths = useMemo(
+    () => requestedRecurrenceMonths(selectedMonth, selectedMonths, rangeStart, rangeEnd, periodMode === "custom"),
+    [selectedMonth, selectedMonths, rangeStart, rangeEnd, periodMode],
+  );
   useEffect(() => {
-    const target = [...selectedMonths, selectedMonth, rangeStart?.slice(0, 7), rangeEnd?.slice(0, 7)]
-      .filter((item): item is string => Boolean(item && /^\d{4}-(0[1-9]|1[0-2])$/.test(item)))
-      .sort()
-      .slice(-1)[0];
-    if (target) ensureRecurringThrough(target);
-  }, [selectedMonth, selectedMonths, rangeStart, rangeEnd, ensureRecurringThrough]);
+    // Earlier selected months must be generated too, not just the latest one.
+    for (const target of recurringMonths.months) ensureRecurringThrough(target);
+  }, [recurringMonths, ensureRecurringThrough]);
 
   const activeRangeStart = periodMode === "custom" && rangeStart ? rangeStart : null;
   const activeRangeEnd = periodMode === "custom" && rangeStart ? rangeEnd ?? rangeStart : null;
@@ -458,6 +460,11 @@ export default function TransactionsPage() {
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-5xl flex-col">
+      {recurringMonths.truncated && (
+        <p role="alert" className="mb-2 rounded-xl border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          O período tem mais de 120 meses. Para conferir todas as recorrências, divida-o em intervalos menores.
+        </p>
+      )}
       <div className="shrink-0 pt-[calc(env(safe-area-inset-top)+1rem)] sm:pt-0">
         <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
