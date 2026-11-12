@@ -1,10 +1,11 @@
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
-import { buildPortableBackup, backupFile, readBackupFile } from "@/lib/portable-backup";
+import { buildPortableBackup, backupFile, readBackupFile, verifyPreparedBackup } from "@/lib/portable-backup";
 import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
 import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
+import { auditFinancialProfiles } from "@/lib/financial-integrity";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import { AppConfirmDialog } from "@/components/app/AppConfirmDialog";
 import "@/components/app/planning.css";
@@ -96,6 +97,7 @@ export default function AccountPage() {
   };
   const { activeProfile, profiles, restoreTrashedTransaction, storageVersion, migrateFinanceStorage, exportState, importState, cloudSyncStatus, retryCloudSync, deleteCloudData } = useAppStore();
   const storageHealth = useMemo(() => estimateStorageHealth(profiles), [profiles]);
+  const financialAudit = useMemo(() => auditFinancialProfiles(profiles), [profiles]);
   const [pdfBusy,setPdfBusy]=useState(false);
   const [backupBusy,setBackupBusy]=useState(false);
   const [migrationBusy,setMigrationBusy]=useState(false);
@@ -109,8 +111,19 @@ export default function AccountPage() {
     if (backupBusy) return;
     setBackupBusy(true);
     try {
-      const json = await buildPortableBackup(convex, exportState());
+      if (cloudSyncStatus !== "synced") {
+        throw new Error("Aguarde a sincronização antes de gerar o backup completo.");
+      }
+      const snapshot = exportState();
+      const originalInspection = inspectBackup(snapshot);
+      const json = await buildPortableBackup(convex, snapshot);
+      const backupInspection = inspectBackup(json);
+      if (originalInspection.profiles !== backupInspection.profiles ||
+          originalInspection.transactions !== backupInspection.transactions) {
+        throw new Error("A conferência do backup encontrou uma diferença de registros. Nenhum arquivo foi oferecido.");
+      }
       const { blob, extension } = await backupFile(json);
+      await verifyPreparedBackup(json, blob, extension);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -121,7 +134,7 @@ export default function AccountPage() {
       setLastBackup(stamp);
       try { localStorage.setItem("granascan:last-backup", stamp); } catch { /* optional */ }
       toast("Backup completo solicitado", {
-        description: "Inclui os anexos acessíveis desta conta. Confira se o arquivo foi salvo.",
+        description: "Os registros e o arquivo preparado foram conferidos. Verifique se o download foi salvo no dispositivo.",
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao criar backup completo.");
@@ -364,11 +377,41 @@ export default function AccountPage() {
         {(cloudSyncStatus === "error" || cloudSyncStatus === "conflict") && <button type="button" onClick={retryCloudSync} className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white">Tentar sincronizar</button>}
       </div>
 
+      <section className="glass rounded-3xl p-4" aria-label="Conferência de integridade financeira">
+        <h2 className="text-[15px] font-semibold text-glass-ink">Integridade do histórico</h2>
+        <p className="mt-1 text-xs leading-relaxed text-glass-sub">
+          Conferência local e somente leitura dos lançamentos carregados. Não modifica saldos,
+          não elimina duplicações e não substitui a validação do banco na nuvem.
+        </p>
+        <p className={cn("mt-3 text-sm font-semibold", financialAudit.issues ? "text-amber-700 dark:text-amber-300" : "text-glass-ink")}>
+          {financialAudit.issues
+            ? `${financialAudit.issues} ocorrência(s) para revisar`
+            : "Nenhuma inconsistência estrutural detectada nos registros carregados."}
+        </p>
+        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-glass-sub">
+          <div>Registros conferidos <strong className="block text-glass-ink">{financialAudit.transactionCount}</strong></div>
+          <div>IDs repetidos <strong className="block text-glass-ink">{financialAudit.duplicateIds}</strong></div>
+          <div>Valores inválidos <strong className="block text-glass-ink">{financialAudit.invalidAmounts}</strong></div>
+          <div>Datas inválidas <strong className="block text-glass-ink">{financialAudit.invalidDates}</strong></div>
+          <div>Registros incompletos <strong className="block text-glass-ink">{financialAudit.incompleteRows}</strong></div>
+          <div>Recorrências sem origem <strong className="block text-glass-ink">{financialAudit.brokenRecurrenceLinks}</strong></div>
+        </dl>
+        {financialAudit.issues > 0 && (
+          <p role="alert" className="mt-3 rounded-xl bg-amber-500/10 p-3 text-xs text-glass-ink">
+            Faça um backup e confira seus registros antes de tentar migrar o armazenamento.
+            Nada será corrigido ou excluído automaticamente.
+          </p>
+        )}
+      </section>
+
       {/* Diagnóstico local: limites do formato antigo, não quota do plano Convex. */}
       <section className="glass rounded-3xl p-4" aria-label="Armazenamento dos dados">
         <p className="text-[15px] font-semibold text-glass-ink">Armazenamento e histórico</p>
         <p className="mt-1 text-[12.5px] leading-relaxed text-glass-sub">
           Estimativa dos dados carregados neste dispositivo. Não representa o espaço total da sua conta no Convex.
+        </p>
+        <p className="mt-2 text-xs font-medium text-glass-sub">
+          Situação da nuvem: {syncMessage}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-glass-sub">
           <div>Transações <strong className="block text-glass-ink">{storageHealth.transactionCount.toLocaleString("pt-BR")}</strong></div>
@@ -475,7 +518,7 @@ export default function AccountPage() {
         <button
           type="button"
           onClick={() => void handleDownload()}
-          disabled={backupBusy}
+          disabled={backupBusy || cloudSyncStatus !== "synced"}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_-8px_rgba(47,107,255,0.65)] transition-colors hover:brightness-105 active:scale-[0.98]"
         >
           <FileJson className="size-4" />
