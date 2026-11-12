@@ -26,6 +26,7 @@ import { SidebarTrigger } from "@/components/app/Sidebar";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { TransactionRow } from "@/components/app/TransactionRow";
+import { AppConfirmDialog } from "@/components/app/AppConfirmDialog";
 import { PreviousMonthDebtReminder } from "@/components/app/PreviousMonthDebtReminder";
 import {
   SearchHighlight,
@@ -93,6 +94,7 @@ export default function TransactionsPage() {
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>("all");
   const [isMarkingPending, setIsMarkingPending] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<null | { type: "pay"; count: number } | { type: "delete"; ids: string[] }>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [categoryChartExpanded, setCategoryChartExpanded] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -346,10 +348,11 @@ export default function TransactionsPage() {
   }, [categoryById, summaryTransactions]);
   const handleMarkPendingAsPaid = () => {
     if (pendingTransactions.length === 0 || isMarkingPending) return;
-    const confirmed = window.confirm(
-      `Marcar ${pendingTransactions.length} transação(ões) pendente(s) como paga(s)?`,
-    );
-    if (!confirmed) return;
+    setPendingConfirmation({ type: "pay", count: pendingTransactions.length });
+  };
+
+  const performMarkPendingAsPaid = () => {
+    if (isMarkingPending) return;
     setIsMarkingPending(true);
     for (const transactionId of pendingRegularTransactionIds) {
       setTransactionPaymentStatus(transactionId, "paid");
@@ -414,10 +417,10 @@ export default function TransactionsPage() {
       toast.info("Recebíveis de empréstimos não podem ser excluídos aqui.");
       return;
     }
-    const confirmed = window.confirm(
-      `Excluir ${ids.length} ${ids.length === 1 ? "transação selecionada" : "transações selecionadas"}?`,
-    );
-    if (!confirmed) return;
+    setPendingConfirmation({ type: "delete", ids });
+  };
+
+  const performDeleteSelected = (ids: string[]) => {
     const deletion = deleteTransactions(ids);
     if (!deletion) {
       toast.info("Nenhuma transação disponível para excluir.");
@@ -429,6 +432,14 @@ export default function TransactionsPage() {
       { duration: 10000, action: { label: "Desfazer", onClick: () => undoTransactionDeletion(deletion) } },
     );
     exitSelectMode();
+  };
+
+  const confirmPendingAction = () => {
+    const pending = pendingConfirmation;
+    if (!pending) return;
+    setPendingConfirmation(null);
+    if (pending.type === "pay") performMarkPendingAsPaid();
+    else performDeleteSelected(pending.ids);
   };
 
   const handleEditTransaction = (transaction: Transaction) => {
@@ -506,7 +517,19 @@ export default function TransactionsPage() {
             </button>
           </div>
         </div>
-        <AnimatePresence initial={false}>
+        <AppConfirmDialog
+        open={pendingConfirmation !== null}
+        onOpenChange={(open) => { if (!open) setPendingConfirmation(null); }}
+        onConfirm={confirmPendingAction}
+        title={pendingConfirmation?.type === "delete" ? "Excluir transações?" : "Marcar como pagas?"}
+        description={pendingConfirmation?.type === "delete"
+          ? `Deseja excluir ${pendingConfirmation.ids.length} ${pendingConfirmation.ids.length === 1 ? "transação selecionada" : "transações selecionadas"}? Você poderá desfazer a exclusão logo depois.`
+          : `Marcar ${pendingConfirmation?.type === "pay" ? pendingConfirmation.count : 0} transação(ões) pendente(s) como paga(s)?`}
+        confirmLabel={pendingConfirmation?.type === "delete" ? "Excluir" : "Marcar como pagas"}
+        destructive={pendingConfirmation?.type === "delete"}
+        busy={isMarkingPending}
+      />
+      <AnimatePresence initial={false}>
           {summaryExpanded && (
             <motion.div
               key="transactions-summary-content"

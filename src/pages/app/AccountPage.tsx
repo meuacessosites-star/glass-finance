@@ -6,6 +6,7 @@ import { localDateKey } from "@/lib/card-billing";
 import { inspectBackup } from "@/lib/backup-validation";
 import { estimateStorageHealth, formatStorageBytes, LEGACY_SNAPSHOT_LIMIT_BYTES } from "@/lib/storage-health";
 import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
+import { AppConfirmDialog } from "@/components/app/AppConfirmDialog";
 import "@/components/app/planning.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -50,15 +51,20 @@ export default function AccountPage() {
   const savedHistories = useQuery(api.financeOwnership.listHistoryPreviews);
   const switchHistory = useMutation(api.financeOwnership.switchMine);
   const [historySwitchBusy, setHistorySwitchBusy] = useState(false);
-  const openOtherHistory = async (subject: string, epoch: number) => {
+  const [accountConfirmation, setAccountConfirmation] = useState<null | { type: "history"; subject: string; epoch: number } | { type: "migration" } | { type: "delete-cloud" }>(null);
+  const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
+  const openOtherHistory = (subject: string, epoch: number) => {
     if (historySwitchBusy || cloudSyncStatus !== "synced") {
       toast.error("Confirme a sincronização ou salve um backup antes de trocar o histórico.");
       return;
     }
-    if (!window.confirm(
-      "Abrir este histórico salvo? O histórico atual e os demais continuarão guardados, sem união ou exclusão. " +
-      "Confira que não existem alterações pendentes em nenhum dispositivo. Recomenda-se salvar um backup antes da troca."
-    )) return;
+    setAccountConfirmation({ type: "history", subject, epoch });
+  };
+  const confirmHistorySwitch = async (subject: string, epoch: number) => {
+    if (historySwitchBusy || cloudSyncStatus !== "synced") {
+      toast.error("Aguarde a sincronização antes de trocar o histórico.");
+      return;
+    }
     setHistorySwitchBusy(true);
     try {
       await switchHistory({ subject, expectedEpoch: epoch });
@@ -124,32 +130,44 @@ export default function AccountPage() {
     }
   };
 
-  const handleMigrate = async () => {
+  const handleMigrate = () => {
     if (migrationBusy || cloudSyncStatus !== "synced" || storageVersion === "v2") return;
-    if (!window.confirm(
-      "A migração só começa depois de sincronizar tudo. Faça e guarde um backup completo antes de continuar. " +
-      "O histórico antigo será mantido como segurança. Deseja iniciar a conferência e migração?"
-    )) return;
-    setMigrationBusy(true);
-    try {
-      await migrateFinanceStorage();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "A migração foi interrompida com segurança.");
-    } finally {
-      setMigrationBusy(false);
-    }
+    setAccountConfirmation({ type: "migration" });
   };
 
-  const handleDeleteCloudData = async () => {
-    const confirmed = window.confirm(
-      "Apagar permanentemente da nuvem todos os perfis, transações, cartões, empréstimos, anexos e demais dados financeiros desta conta? Essa ação não apaga a conta de login e não pode ser desfeita sem um backup.",
-    );
-    if (!confirmed) return;
+  const handleDeleteCloudData = () => {
+    setAccountConfirmation({ type: "delete-cloud" });
+  };
+
+  const confirmAccountAction = async () => {
+    if (!accountConfirmation || accountConfirmationBusy) return;
+    const pending = accountConfirmation;
+    setAccountConfirmationBusy(true);
     try {
-      await deleteCloudData();
-      toast.success("Dados financeiros apagados da nuvem.");
-    } catch {
-      toast.error("Não foi possível apagar os dados remotos. Tente novamente.");
+      if (pending.type === "history") {
+        await confirmHistorySwitch(pending.subject, pending.epoch);
+      } else if (pending.type === "migration") {
+        if (cloudSyncStatus !== "synced" || storageVersion === "v2") {
+          toast.error("A sincronização precisa estar concluída antes da migração.");
+          return;
+        }
+        setMigrationBusy(true);
+        try {
+          await migrateFinanceStorage();
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "A migração foi interrompida com segurança.");
+        } finally {
+          setMigrationBusy(false);
+        }
+      } else {
+        await deleteCloudData();
+        toast.success("Dados financeiros apagados da nuvem.");
+      }
+      setAccountConfirmation(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível concluir a operação.");
+    } finally {
+      setAccountConfirmationBusy(false);
     }
   };
 
@@ -597,6 +615,20 @@ export default function AccountPage() {
         <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">Apaga perfis, lançamentos, cartões, anexos e contatos financeiros vinculados a esta conta. A conta de login não é excluída.</p>
         <button type="button" onClick={() => void handleDeleteCloudData()} className="mt-3 w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-500/10 dark:text-red-300">Apagar todos os dados da nuvem</button>
       </div>
+      <AppConfirmDialog
+        open={accountConfirmation !== null}
+        onOpenChange={(open) => { if (!open) setAccountConfirmation(null); }}
+        onConfirm={() => { void confirmAccountAction(); }}
+        title={accountConfirmation?.type === "history" ? "Abrir este histórico?" : accountConfirmation?.type === "migration" ? "Iniciar migração?" : "Apagar todos os dados?"}
+        description={accountConfirmation?.type === "history"
+          ? "O histórico atual e os demais continuarão guardados, sem união ou exclusão. Confira se não há alterações pendentes em outros dispositivos e salve um backup antes de trocar."
+          : accountConfirmation?.type === "migration"
+            ? "Faça e guarde um backup completo antes de continuar. O histórico antigo será mantido como segurança."
+            : "Isso apagará permanentemente os perfis, transações, cartões, empréstimos, anexos e demais dados financeiros da nuvem. A conta de login será preservada. Sem backup, essa ação não pode ser desfeita."}
+        confirmLabel={accountConfirmation?.type === "history" ? "Abrir histórico" : accountConfirmation?.type === "migration" ? "Iniciar migração" : "Apagar permanentemente"}
+        destructive={accountConfirmation?.type === "delete-cloud"}
+        busy={accountConfirmationBusy || historySwitchBusy || migrationBusy}
+      />
       <Dialog open={!!pendingImport} onOpenChange={o=>{if(!o)setPendingImport(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Revisar importação</DialogTitle><DialogDescription>Isso substitui todos os perfis sincronizados da conta, não apenas o perfil aberto. Não altera permissões de acesso ao site.</DialogDescription></DialogHeader>{pendingImport&&<><p>{pendingImport.profiles} perfil(is) · {pendingImport.transactions} transações</p><p className="break-words">{pendingImport.names}</p><p>Faça um backup dos dados atuais antes de continuar. Essa substituição não pode ser desfeita sem um backup.</p><div className="planning-actions"><button onClick={handleDownload}>Baixar backup atual</button><button onClick={()=>setPendingImport(null)}>Cancelar</button><button className="planning-primary" onClick={confirmImport}>Substituir dados e importar</button></div></>}</DialogContent></Dialog>
     </div>
   );

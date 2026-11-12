@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { CategoryIcon } from "./CategoryIcon";
 import { SearchHighlight, scrollToSearchResult } from "./SearchHighlight";
 import { TransactionDetailsSheet } from "./TransactionDetailsSheet";
+import { AppConfirmDialog } from "./AppConfirmDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -147,6 +148,7 @@ export function TransactionRow({
   const dueDate = getTransactionDueDate(transaction, cards, loanReceivables);
   const [open, setOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
   const lastDragAt = useRef(0);
   const x = useMotionValue(0);
@@ -248,10 +250,13 @@ export function TransactionRow({
       closeSwipe();
       return;
     }
-    if (!window.confirm("Deseja excluir esta transação?")) {
-      closeSwipe();
-      return;
-    }
+    closeSwipe();
+    setOpen(false);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    setDeleteDialogOpen(false);
     const deletion = deleteTransaction(transaction.id);
     if (!deletion) {
       toast.info("Esta movimentação é gerenciada na sua própria aba.");
@@ -614,6 +619,15 @@ export function TransactionRow({
         </div>
       )}
 
+      <AppConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        title="Excluir transação?"
+        description="Esta transação será excluída. Você poderá desfazer a exclusão logo depois."
+        confirmLabel="Excluir transação"
+        destructive
+      />
       <AlertDialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <AlertDialogContent className="glass-strong z-[80] max-w-[calc(100%-2rem)] rounded-2xl border-glass-ink/10 p-5 text-glass-ink dark:border-white/10 dark:text-white sm:max-w-md">
           <AlertDialogHeader>
