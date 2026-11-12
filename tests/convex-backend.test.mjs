@@ -420,3 +420,35 @@ test("a previously selected empty history can be replaced by a verified older hi
   expect((await tablet.query(api.financeOwnership.getMappingStatus, {})).epoch).toBe(2);
   expect((await t.run(async ctx => ctx.db.query("financeStates").collect()))).toHaveLength(2);
 });
+
+test("two concurrently authenticated devices preserve independent sessions and share financial revisions", async () => {
+  const t = convexTest(schema, modules);
+  const userId = await t.run(ctx => ctx.db.insert("users", { email: "two-devices@example.com" }));
+  const phone = t.withIdentity({ subject: `${userId}|phone-session` });
+  const tablet = t.withIdentity({ subject: `${userId}|tablet-session` });
+
+  expect((await phone.mutation(api.financeOwnership.ensureMine, {})).ready).toBe(true);
+  expect((await tablet.mutation(api.financeOwnership.ensureMine, {})).ready).toBe(true);
+  expect((await phone.query(api.users.currentUser))?._id).toBe(userId);
+  expect((await tablet.query(api.users.currentUser))?._id).toBe(userId);
+
+  const initial = makeSnapshot([transaction("tx-phone-1", 30.20)]);
+  expect((await phone.mutation(api.financeState.saveMine, {
+    payload: initial, expectedRevision: 0,
+  })).ok).toBe(true);
+  expect((await tablet.query(api.financeState.getMine, {}))?.payload).toBe(initial);
+
+  const updated = makeSnapshot([transaction("tx-phone-1", 30.20), transaction("tx-tablet-1", -12.50)]);
+  expect((await tablet.mutation(api.financeState.saveMine, {
+    payload: updated, expectedRevision: 1,
+  })).ok).toBe(true);
+  expect((await phone.query(api.financeState.getMine, {}))?.payload).toBe(updated);
+
+  const staleSave = await phone.mutation(api.financeState.saveMine, {
+    payload: initial, expectedRevision: 1,
+  });
+  expect(staleSave.ok).toBe(false);
+  expect((await tablet.query(api.financeState.getMine, {}))?.payload).toBe(updated);
+  expect((await phone.query(api.users.currentUser))?._id).toBe(userId);
+  expect((await tablet.query(api.users.currentUser))?._id).toBe(userId);
+});
