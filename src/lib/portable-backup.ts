@@ -77,3 +77,17 @@ export async function readBackupFile(file: File) {
   }
   return file.text();
 }
+
+/** Confirm that the prepared archive round-trips before presenting it as a backup.
+ * This verifies bytes in memory, not whether the browser ultimately saved the file.
+ */
+export async function verifyPreparedBackup(raw: string, blob: Blob, extension: string): Promise<void> {
+  const unpacked = extension === ".json.gz"
+    ? typeof DecompressionStream === "undefined"
+      ? null
+      : await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text()
+    : await blob.text();
+  if (unpacked === null || unpacked !== raw) {
+    throw new Error("A verificação do backup falhou. Nenhum arquivo inválido será oferecido.");
+  }
+}
