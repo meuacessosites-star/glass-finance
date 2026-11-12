@@ -1348,6 +1348,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     latestStateRef.current = state;
   }, [state]);
 
+  // A mobile/PWA page can be closed while Convex is still confirming a write.
+  // Warn on explicit navigation; never claim that unsent edits were persisted.
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!localDirtyRef.current && !saveInFlightRef.current &&
+          pendingPayloadRef.current === null) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
+
   // Switching history is an account-wide event. Never save an old snapshot
   // against a newly selected history. Other signed-in devices reload the
   // selected history as soon as Convex sends the new epoch.
