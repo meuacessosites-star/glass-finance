@@ -26,6 +26,8 @@ export type ReceiptResult = {
   date?: string; // yyyy-mm-dd (input date nativo)
   time?: string; // HH:MM
   paymentMethod?: string;
+  installments?: number;
+  currentInstallment?: number;
   categorySuggestion?: string;
   transactionType?: "income" | "expense";
   purchaseContext?: "physical" | "digital" | "single_payment" | "income";
@@ -42,6 +44,8 @@ type GeminiReceipt = {
   data?: string;
   hora?: string;
   forma_pagamento?: string;
+  parcelas?: number | string;
+  parcela_atual?: number | string;
   categoria_sugerida?: string;
   tipo_transacao?: string;
   contexto_operacao?: string;
@@ -87,11 +91,12 @@ const RECEIPT_PROMPT = [
   "Defina tipo_transacao como receita somente se o documento comprovar depósito, Pix recebido, crédito em conta ou transferência recebida a favor do usuário. Toda compra, pagamento, débito, Pix enviado ou nota fiscal é despesa.",
   "Defina contexto_operacao como receita, compra_fisica, servico_digital ou pagamento_unico. Compra física é uma compra em loja, mercado ou estabelecimento presencial; serviço digital inclui assinaturas, aplicativos e plataformas; pagamento único é uma cobrança de serviço sem recorrência.",
   "Identifique a hora da transação, se impressa, no formato HH:MM.",
+  "Detecte parcelas SOMENTE quando o comprovante indicar explicitamente parcelamento do PAGAMENTO, por exemplo Visa crédito 4x R$73,49, 2x sem juros, parcelado em 3 vezes, parcela 2/5. Quantidades de produtos como 2x pão NÃO são parcelamento. Retorne parcelas como total de parcelas inteiro entre 2 e 24, ou 0 quando não houver evidência; parcela_atual como número apenas se estiver explicitamente impressa, senão 0. Mantenha o valor_total do documento, sem multiplicar valores de parcelas.",
   "A forma de pagamento é obrigatória quando houver qualquer indício. Procure ATIVAMENTE em todo o comprovante, inclusive entrelinhas, cabeçalhos e rodapés de notas sem QR Code. Em comprovantes digitais, procure EXAUSTIVAMENTE Visa, Mastercard, Elo, dígitos finais do cartão, bandeira, saldo da conta ou frases como 'pago com saldo'. Classifique obrigatoriamente como Cartão de Crédito, Cartão de Débito ou Saldo quando houver esses indícios; use Pix, Dinheiro, Boleto ou Transferência quando a evidência impressa corresponder a esses meios.",
   "Classifique a transação em uma única categoria entre: Alimentação, Restaurantes, Café, Transporte, Moradia, Manutenção, Saúde, Academia, Lazer, Viagem, Pets, Compras, Presentes, Assinaturas, Educação, Salário, Freelance, Transferências ou Outros. Para receita, use Transferências, salvo evidência clara de salário.",
   "Monte titulo_sugerido de forma obrigatória: para receita, 'Pix recebido de [Nome do Pagador ou Empresa]'; para compra_fisica com estabelecimento identificado, use EXATAMENTE o nome do estabelecimento e nunca o nome de um produto; para servico_digital, use 'Assinatura [Nome do Serviço]'; para pagamento_unico, use o nome do serviço ou cobrador.",
   "Retorne um único objeto JSON com exatamente esta estrutura:",
-  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "hora": "HH:MM ou vazio", "forma_pagamento": "Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência, Saldo ou vazio", "categoria_sugerida": "Uma das categorias permitidas", "tipo_transacao": "receita ou despesa", "contexto_operacao": "receita, compra_fisica, servico_digital ou pagamento_unico", "titulo_sugerido": "Título conforme as regras", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
+  '{ "estabelecimento": "Nome Fantasia limpo ou vazio", "valor_total": 0.00, "data": "DD/MM/AAAA ou vazio", "hora": "HH:MM ou vazio", "forma_pagamento": "Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, Transferência, Saldo ou vazio", "parcelas": 0, "parcela_atual": 0, "categoria_sugerida": "Uma das categorias permitidas", "tipo_transacao": "receita ou despesa", "contexto_operacao": "receita, compra_fisica, servico_digital ou pagamento_unico", "titulo_sugerido": "Título conforme as regras", "itens": [{ "qtd": "1", "produto": "Nome do produto", "valor": 0.00 }] }.',
   "Use números em valor_total e valor. Se um campo não puder ser identificado, use string vazia, 0 ou uma lista vazia conforme o tipo.",
 ].join(" ");
 
@@ -104,6 +109,8 @@ const RECEIPT_RESPONSE_SCHEMA = {
     data: { type: "string" },
     hora: { type: "string" },
     forma_pagamento: { type: "string" },
+    parcelas: { type: "integer" },
+    parcela_atual: { type: "integer" },
     categoria_sugerida: { type: "string" },
     tipo_transacao: { type: "string", enum: ["receita", "despesa"] },
     contexto_operacao: {
@@ -130,6 +137,8 @@ const RECEIPT_RESPONSE_SCHEMA = {
     "data",
     "hora",
     "forma_pagamento",
+    "parcelas",
+    "parcela_atual",
     "categoria_sugerida",
     "tipo_transacao",
     "contexto_operacao",
@@ -305,6 +314,8 @@ function normalizeGemini(text: string): ReceiptResult {
       time: toTime(String(parsed.hora ?? "")) || undefined,
       paymentMethod:
         normalizePaymentMethod(String(parsed.forma_pagamento ?? "")) || undefined,
+      installments: Number(parsed.parcelas ?? 0) || undefined,
+      currentInstallment: Number(parsed.parcela_atual ?? 0) || undefined,
       categorySuggestion: toCategoryId(String(parsed.categoria_sugerida ?? "")),
       transactionType,
       purchaseContext,
