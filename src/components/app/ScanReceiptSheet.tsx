@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { motion } from "framer-motion";
 import {
   Camera,
@@ -21,6 +21,8 @@ import {
 import type { ReceiptResult } from "@/convex/aiVision";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
+import { receiptInstallmentPlan } from "@/lib/receipt-installments";
+import { firstDroppedReceiptImage } from "@/lib/receipt-drop";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
@@ -78,6 +80,8 @@ export function ScanReceiptSheet({
   });
 
   const [step, setStep] = useState<Step>("source");
+  const [draggingImage, setDraggingImage] = useState(false);
+  const dragDepthRef = useRef(0);
   const [images, setImages] = useState<string[]>([]);
   const [scanPhase, setScanPhase] = useState<ScanPhase>("reading");
   // Porcentagem simulada da leitura: sobe até ~85% enquanto a IA responde e
@@ -138,6 +142,8 @@ export function ScanReceiptSheet({
     setScanError("");
     setPrefill(null);
     sourceFileRef.current = null;
+    dragDepthRef.current = 0;
+    setDraggingImage(false);
 
     return () => clearScanTimers();
   }, [open, clearScanTimers]);
@@ -255,6 +261,9 @@ export function ScanReceiptSheet({
       ? applyCategory(suggestedCategory)
       : "";
     const payment = normalizePaymentMethod(res.paymentMethod);
+    const installmentPlan = effectiveType === "expense"
+      ? receiptInstallmentPlan(res.installments, res.currentInstallment)
+      : null;
 
     return {
       type: effectiveType,
@@ -271,11 +280,11 @@ export function ScanReceiptSheet({
         typeof img === "string" && img.startsWith("data:image/")
           ? [{ src: img, isImage: true, name: "Nota escaneada" }]
           : [],
-      recurrence: "unica" as const,
+      recurrence: installmentPlan ? "parcelada" as const : "unica" as const,
       frequency: "mensal" as const,
       daysInterval: 15,
-      installments: 2,
-      currentInstallment: 1,
+      installments: installmentPlan?.installments ?? 2,
+      currentInstallment: installmentPlan?.currentInstallment ?? 1,
       paymentMethod: payment.method,
       cardMode: payment.cardMode,
       cardId: null,
@@ -436,6 +445,39 @@ export function ScanReceiptSheet({
     return "Ocorreu um erro na leitura. Tente outra foto mais nítida ou preencha manualmente.";
   };
 
+  /** File drop uses the same Gemini scan path as picking a photo. */
+  const onReceiptDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setDraggingImage(true);
+  };
+  const onReceiptDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const onReceiptDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDraggingImage(false);
+  };
+  const onReceiptDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setDraggingImage(false);
+    const file = firstDroppedReceiptImage(event.dataTransfer.files);
+    if (!file) {
+      toast.error("Solte uma imagem JPG, PNG, WebP ou outro formato de imagem compatível.");
+      return;
+    }
+    if (event.dataTransfer.files.length > 1) {
+      toast.info("A primeira imagem compatível foi selecionada para leitura.");
+    }
+    void lerComprovante(file);
+  };
+
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -524,10 +566,10 @@ export function ScanReceiptSheet({
           initial={false}
           animate={{ y: open && step !== "review" ? 0 : "100%" }}
           transition={{ type: "spring", damping: 30, stiffness: 330 }}
-          className="glass glass-strong absolute inset-0 z-[56] flex flex-col bg-white dark:bg-[#f4f8ff]"
+          className="glass glass-strong absolute inset-0 z-[56] flex min-h-0 flex-col overflow-hidden bg-white dark:bg-[#f4f8ff]"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pb-1 pt-4">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-1 pt-4">
             <div>
               <h3 className="text-[20px] font-bold tracking-tight text-glass-ink">
                 Escanear nota
@@ -551,8 +593,33 @@ export function ScanReceiptSheet({
           {step === "source" && (
             <div
               key="view-scanner"
-              className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center"
+              onDragEnter={onReceiptDragEnter}
+              onDragOver={onReceiptDragOver}
+              onDragLeave={onReceiptDragLeave}
+              onDrop={onReceiptDrop}
+              className={cn(
+                "no-scrollbar relative flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center transition-colors",
+                draggingImage && "bg-primary/5 ring-2 ring-inset ring-primary/50",
+              )}
             >
+              <div
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "mb-5 w-full rounded-2xl border-2 border-dashed px-4 py-5 text-center transition-colors",
+                  draggingImage
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-primary/25 bg-primary/5 text-glass-sub",
+                )}
+              >
+                <ImagePlus className="mx-auto mb-2 size-7" />
+                <p className="text-sm font-semibold">
+                  {draggingImage ? "Solte para escanear esta imagem" : "Arraste e solte uma imagem aqui"}
+                </p>
+                <p className="mt-1 text-xs">
+                  Ou escolha uma foto pelos botões abaixo
+                </p>
+              </div>
               <div className="flex size-20 items-center justify-center rounded-[1.6rem] bg-[#1FBF4F]/15 shadow-[0_14px_34px_-14px_rgba(31,191,79,0.6)]">
                 <ScanLine className="size-9 text-[#17a443]" strokeWidth={2.2} />
               </div>
@@ -618,9 +685,9 @@ export function ScanReceiptSheet({
           {step === "scan" && (
             <div
               key="view-loading"
-              className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6 pt-3"
+              className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-3 sm:px-5"
             >
-              <div className="mx-auto mt-3 w-full max-w-[250px]">
+              <div className="mx-auto mt-1 w-full min-w-0 max-w-[380px]">
                 {scanPhase !== "failed" && (
                   <button
                     type="button"
@@ -631,12 +698,12 @@ export function ScanReceiptSheet({
                     Escolher outra foto
                   </button>
                 )}
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
+                <div className="relative mx-auto h-[min(43dvh,420px)] min-h-[140px] w-full overflow-hidden rounded-3xl bg-slate-100 shadow-[0_18px_44px_-18px_rgba(15,40,90,0.5)] ring-1 ring-white/60">
                   {images[0] ? (
                     <img
                       src={images[0]}
                       alt="Nota sendo lida"
-                      className="absolute inset-0 h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-contain"
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center bg-[#0b1630]">
@@ -656,7 +723,7 @@ export function ScanReceiptSheet({
                 </div>
 
                 {/* Status: mensagem rotativa + porcentagem + barra */}
-                <div className="glass mt-3 rounded-2xl px-4 py-3">
+                <div className="glass mt-3 min-w-0 rounded-2xl px-3 py-3 sm:px-4">
                   {scanPhase === "success" ? (
                     <div
                       key="view-scan-success"
@@ -718,21 +785,24 @@ export function ScanReceiptSheet({
 
                   {scanPhase === "failed" && (
                     <div key="view-scan-failed" className="mt-3 space-y-2.5">
-                      <div className="grid grid-cols-2 gap-2.5">
+                      {/* Equal-width, equal-height actions based on the CARD width,
+                          not the viewport. Explicit two-line labels prevent giant
+                          Android text scaling from squeezing or overlapping pills. */}
+                      <div className="grid w-full min-w-0 grid-cols-2 items-stretch gap-2">
                         <button
                           type="button"
                           onClick={handleRetry}
-                          className="glass glass-soft flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
+                          className="glass glass-soft flex min-h-[64px] w-full min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-[12px] font-semibold leading-[1.3] text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
                         >
-                          <RefreshCw className="size-3.5" />
-                          Tentar novamente
+                          <RefreshCw aria-hidden="true" className="size-3.5 shrink-0" />
+                          <span className="block min-w-0">Tentar<br />novamente</span>
                         </button>
                         <button
                           type="button"
                           onClick={handleManualFill}
-                          className="flex items-center justify-center rounded-full bg-primary py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
+                          className="flex min-h-[64px] w-full min-w-0 items-center justify-center rounded-xl bg-primary px-2 py-2 text-center text-[12px] font-semibold leading-[1.3] text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
                         >
-                          Preencher manualmente
+                          <span className="block min-w-0">Preencher<br />manualmente</span>
                         </button>
                       </div>
 
