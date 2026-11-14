@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { motion } from "framer-motion";
 import {
   Camera,
@@ -21,6 +21,7 @@ import {
 import type { ReceiptResult } from "@/convex/aiVision";
 import { compressAttachmentFile } from "@/lib/attachment-utils";
 import { imageToDataUrl, SCAN_CATEGORIES } from "@/lib/receipt-scan";
+import { firstDroppedReceiptImage } from "@/lib/receipt-drop";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
@@ -78,6 +79,8 @@ export function ScanReceiptSheet({
   });
 
   const [step, setStep] = useState<Step>("source");
+  const [draggingImage, setDraggingImage] = useState(false);
+  const dragDepthRef = useRef(0);
   const [images, setImages] = useState<string[]>([]);
   const [scanPhase, setScanPhase] = useState<ScanPhase>("reading");
   // Porcentagem simulada da leitura: sobe até ~85% enquanto a IA responde e
@@ -138,6 +141,8 @@ export function ScanReceiptSheet({
     setScanError("");
     setPrefill(null);
     sourceFileRef.current = null;
+    dragDepthRef.current = 0;
+    setDraggingImage(false);
 
     return () => clearScanTimers();
   }, [open, clearScanTimers]);
@@ -436,6 +441,39 @@ export function ScanReceiptSheet({
     return "Ocorreu um erro na leitura. Tente outra foto mais nítida ou preencha manualmente.";
   };
 
+  /** File drop uses the same Gemini scan path as picking a photo. */
+  const onReceiptDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setDraggingImage(true);
+  };
+  const onReceiptDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const onReceiptDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDraggingImage(false);
+  };
+  const onReceiptDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setDraggingImage(false);
+    const file = firstDroppedReceiptImage(event.dataTransfer.files);
+    if (!file) {
+      toast.error("Solte uma imagem JPG, PNG, WebP ou outro formato de imagem compatível.");
+      return;
+    }
+    if (event.dataTransfer.files.length > 1) {
+      toast.info("A primeira imagem compatível foi selecionada para leitura.");
+    }
+    void lerComprovante(file);
+  };
+
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -551,8 +589,33 @@ export function ScanReceiptSheet({
           {step === "source" && (
             <div
               key="view-scanner"
-              className="no-scrollbar flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center"
+              onDragEnter={onReceiptDragEnter}
+              onDragOver={onReceiptDragOver}
+              onDragLeave={onReceiptDragLeave}
+              onDrop={onReceiptDrop}
+              className={cn(
+                "no-scrollbar relative flex flex-1 flex-col items-center overflow-y-auto px-5 pb-8 pt-6 text-center transition-colors",
+                draggingImage && "bg-primary/5 ring-2 ring-inset ring-primary/50",
+              )}
             >
+              <div
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "mb-5 w-full rounded-2xl border-2 border-dashed px-4 py-5 text-center transition-colors",
+                  draggingImage
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-primary/25 bg-primary/5 text-glass-sub",
+                )}
+              >
+                <ImagePlus className="mx-auto mb-2 size-7" />
+                <p className="text-sm font-semibold">
+                  {draggingImage ? "Solte para escanear esta imagem" : "Arraste e solte uma imagem aqui"}
+                </p>
+                <p className="mt-1 text-xs">
+                  Ou escolha uma foto pelos botões abaixo
+                </p>
+              </div>
               <div className="flex size-20 items-center justify-center rounded-[1.6rem] bg-[#1FBF4F]/15 shadow-[0_14px_34px_-14px_rgba(31,191,79,0.6)]">
                 <ScanLine className="size-9 text-[#17a443]" strokeWidth={2.2} />
               </div>
