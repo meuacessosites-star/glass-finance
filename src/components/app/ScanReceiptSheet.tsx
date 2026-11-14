@@ -785,21 +785,24 @@ export function ScanReceiptSheet({
 
                   {scanPhase === "failed" && (
                     <div key="view-scan-failed" className="mt-3 space-y-2.5">
-                      <div className="grid grid-cols-1 gap-2.5 min-[390px]:grid-cols-2">
+                      {/* Equal-width, equal-height actions based on the CARD width,
+                          not the viewport. Explicit two-line labels prevent giant
+                          Android text scaling from squeezing or overlapping pills. */}
+                      <div className="grid w-full min-w-0 grid-cols-2 items-stretch gap-2">
                         <button
                           type="button"
                           onClick={handleRetry}
-                          className="glass glass-soft flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 py-2.5 text-center text-[13px] font-semibold text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
+                          className="glass glass-soft flex min-h-[64px] w-full min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-[12px] font-semibold leading-[1.3] text-glass-ink transition-all hover:bg-white/60 active:scale-[0.98]"
                         >
-                          <RefreshCw className="size-3.5" />
-                          Tentar novamente
+                          <RefreshCw aria-hidden="true" className="size-3.5 shrink-0" />
+                          <span className="block min-w-0">Tentar<br />novamente</span>
                         </button>
                         <button
                           type="button"
                           onClick={handleManualFill}
-                          className="flex min-h-11 min-w-0 items-center justify-center rounded-2xl bg-primary px-2 py-2.5 text-center text-[13px] font-semibold leading-snug text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
+                          className="flex min-h-[64px] w-full min-w-0 items-center justify-center rounded-xl bg-primary px-2 py-2 text-center text-[12px] font-semibold leading-[1.3] text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.6)] transition-all hover:brightness-105 active:scale-[0.98]"
                         >
-                          Preencher manualmente
+                          <span className="block min-w-0">Preencher<br />manualmente</span>
                         </button>
                       </div>
 
