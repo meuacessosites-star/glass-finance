@@ -27,6 +27,7 @@ entries.push("planning-suite.test");
 entries.push("money-rounding.test");
 entries.push("storage-health.test", "finance-v2-state.test", "web-push-crypto.test");
 entries.push("receipt-drop.test");
+entries.push("receipt-installments.test");
 entries.push("financial-safety.test");
 try {
   await build({ entryPoints: entries.map((name) => path.join(root, "tests", `${name}.ts`)), outdir: output, outExtension: { ".js": ".mjs" }, bundle: true, platform: "node", format: "esm", tsconfig: path.join(root, "tsconfig.app.json") });
