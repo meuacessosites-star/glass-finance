@@ -303,7 +303,7 @@ export function AddTransactionSheet({
           ? initial.categoryId
           : fallback?.id ?? categories[0]?.id ?? "outros",
       );
-      setDate(initial.date || localDateKey());
+      setDate(initial.date ?? localDateKey());
       setDueDate(initial.dueDate ?? "");
       setTime(initial.time ?? "");
       setNote(initial.note ?? "");
@@ -372,7 +372,8 @@ export function AddTransactionSheet({
   });
 
   const canSave = cents > 0 && title.trim().length > 0 && !!categoryId &&
-    (!onCommit || (Boolean(sanitizeDueDate(date)) &&
+    Boolean(sanitizeDueDate(date)) &&
+    (!onCommit || (
       (!cardId || Boolean(selectedCard && !selectedCard.archived)) &&
       (!isCreditExpense || Boolean(billingCycle))));
 
@@ -965,6 +966,11 @@ export function AddTransactionSheet({
                     className="w-full bg-transparent text-[14px] font-semibold text-glass-ink outline-none [color-scheme:light] dark:[color-scheme:dark]"
                   />
                 </label>
+                {!date && initial?.attachments.some((attachment) => attachment.name === "Nota escaneada") && (
+                  <p className="mt-1.5 text-[11px] font-semibold text-amber-600" role="alert">
+                    Data não identificada. Confira o comprovante e selecione a data antes de salvar.
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-glass-sub">
