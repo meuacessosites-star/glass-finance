@@ -25,6 +25,7 @@ import { receiptInstallmentPlan } from "@/lib/receipt-installments";
 import { firstDroppedReceiptImage } from "@/lib/receipt-drop";
 import { useAction } from "convex/react";
 import { cn } from "@/lib/utils";
+import { localDateKey } from "@/lib/card-billing";
 import { useExclusiveOverlay } from "@/lib/overlay-manager";
 import { normalizePaymentMethod } from "./PaymentMethodSelector";
 import {
@@ -175,7 +176,6 @@ export function ScanReceiptSheet({
    * servem apenas como contingência.
    */
   const buildPrefill = (res: ReceiptResult, img: string | null) => {
-    const today = new Date().toISOString().slice(0, 10);
     const store = typeof res.store === "string" ? res.store.trim() : "";
     const items = Array.isArray(res.items)
       ? res.items
@@ -212,7 +212,7 @@ export function ScanReceiptSheet({
       /^\d{4}-\d{2}-\d{2}$/.test(res.date) &&
       !Number.isNaN(Date.parse(`${res.date}T12:00:00`))
         ? res.date
-        : today;
+        : "";
     const safeTime =
       typeof res.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(res.time)
         ? res.time
@@ -299,7 +299,7 @@ export function ScanReceiptSheet({
     cents: 0,
     title: "Comprovante",
     categoryId: defaultCategoryId(),
-    date: new Date().toISOString().slice(0, 10),
+    date: img ? "" : localDateKey(),
     time: "",
     note: "",
     attachments:
@@ -532,7 +532,7 @@ export function ScanReceiptSheet({
       cents: 0,
       title: "",
       categoryId: defaultCategoryId(),
-      date: new Date().toISOString().slice(0, 10),
+      date: localDateKey(),
       time: "",
       note: "",
       attachments: images[0]
