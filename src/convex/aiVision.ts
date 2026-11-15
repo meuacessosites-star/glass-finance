@@ -90,6 +90,7 @@ const RECEIPT_PROMPT = [
   "Extraia somente informações que estejam visíveis na imagem; não invente dados.",
   "Defina tipo_transacao como receita somente se o documento comprovar depósito, Pix recebido, crédito em conta ou transferência recebida a favor do usuário. Toda compra, pagamento, débito, Pix enviado ou nota fiscal é despesa.",
   "Defina contexto_operacao como receita, compra_fisica, servico_digital ou pagamento_unico. Compra física é uma compra em loja, mercado ou estabelecimento presencial; serviço digital inclui assinaturas, aplicativos e plataformas; pagamento único é uma cobrança de serviço sem recorrência.",
+  "Identifique a DATA EFETIVA DA TRANSAÇÃO que está escrita no comprovante: data da compra, pagamento confirmado, Pix concluído ou recebimento. Leia dia, mês e ano exatamente como aparecem e retorne DD/MM/AAAA. Não confunda com vencimento, validade, agendamento futuro, impressão ou emissão de fatura. Se houver várias datas, escolha a da operação efetivamente realizada. Caso a data da transação esteja ausente ou ilegível, retorne string vazia. Nunca preencha a data de hoje por suposição.",
   "Identifique a hora da transação, se impressa, no formato HH:MM.",
   "Detecte parcelas SOMENTE quando o comprovante indicar explicitamente parcelamento do PAGAMENTO, por exemplo Visa crédito 4x R$73,49, 2x sem juros, parcelado em 3 vezes, parcela 2/5. Quantidades de produtos como 2x pão NÃO são parcelamento. Retorne parcelas como total de parcelas inteiro entre 2 e 24, ou 0 quando não houver evidência; parcela_atual como número apenas se estiver explicitamente impressa, senão 0. Mantenha o valor_total do documento, sem multiplicar valores de parcelas.",
   "A forma de pagamento é obrigatória quando houver qualquer indício. Procure ATIVAMENTE em todo o comprovante, inclusive entrelinhas, cabeçalhos e rodapés de notas sem QR Code. Em comprovantes digitais, procure EXAUSTIVAMENTE Visa, Mastercard, Elo, dígitos finais do cartão, bandeira, saldo da conta ou frases como 'pago com saldo'. Classifique obrigatoriamente como Cartão de Crédito, Cartão de Débito ou Saldo quando houver esses indícios; use Pix, Dinheiro, Boleto ou Transferência quando a evidência impressa corresponder a esses meios.",
@@ -174,15 +175,18 @@ function parseNumber(input: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/** "DD/MM/AAAA" (ou "AAAA-MM-DD") → "AAAA-MM-DD" para o input date. */
+/** Converte apenas datas reais, brasileiras ou ISO, para YYYY-MM-DD. */
 function toIsoDate(raw: string): string {
   const value = raw.trim();
-  if (!value) return "";
-  const br = value.match(/^(\d{2})[/-](\d{2})[/-](\d{4})/);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
-  const iso = value.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  return "";
+  const br = value.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})(?!\d)/);
+  const iso = value.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?!\d)/);
+  if (!br && !iso) return "";
+  const year = Number(br ? br[3] : iso?.[1]);
+  const month = Number(br ? br[2] : iso?.[2]);
+  const day = Number(br ? br[1] : iso?.[3]);
+  if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1) return "";
+  if (day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return "";
+  return [String(year).padStart(4, "0"), String(month).padStart(2, "0"), String(day).padStart(2, "0")].join("-");
 }
 
 /** Extrai apenas uma hora válida para o campo nativo do formulário. */
