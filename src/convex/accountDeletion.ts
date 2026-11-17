@@ -23,23 +23,7 @@ export const deleteMyAccount = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (identity?.subject) subjects.add(identity.subject);
 
-    // Historical multi-device sessions can have different storage subjects.
-    for (const table of [
-      "financeStates", "financeV2States", "financeFiles",
-      "financeTransactions", "people", "pushDevices", "pushSchedules",
-      "financeMigrationProgress",
-    ] as const) {
-      const index = table === "financeTransactions" ? "by_owner"
-        : table === "people" ? "by_user_subject"
-        : table === "pushDevices" ? "by_user"
-        : table === "pushSchedules" || table === "financeMigrationProgress" || table === "financeFiles"
-          ? "by_owner_profile" : "by_user_subject";
-      // Shared index name and first key are userSubject in all of these tables.
-      // Query the prefix using table-specific indexes below instead of
-      // fetching unrelated accounts' data.
-      void index;
-    }
-
+    // Include historical subjects from each account's older sessions.
     const legacy = await ctx.db.query("financeStates")
       .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const normalized = await ctx.db.query("financeV2States")
