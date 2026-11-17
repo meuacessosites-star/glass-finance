@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 // A browser installation (including a PWA) has one locally persisted ID.
 // This measures activity in Glass Finance, NOT devices signed into Google.
@@ -16,10 +17,11 @@ export const heartbeat = mutation({
 
     const now = Date.now();
     const current = await ctx.db.query("accountDevices")
-      .withIndex("by_user_device", q => q.eq("userId", userId).eq("deviceId", deviceId))
-      .unique();
-    if (current) {
-      if (now - current.lastSeenAt >= 30_000) await ctx.db.patch(current._id, { lastSeenAt: now });
+      .withIndex("by_user_device", q => q.eq("userId", userId))
+      .collect();
+    const matching = current.find(row => String(row.deviceId) === deviceId);
+    if (matching) {
+      if (now - Number(matching.lastSeenAt) >= 30_000) await ctx.db.patch(matching._id as Id<"accountDevices">, { lastSeenAt: now });
     } else {
       await ctx.db.insert("accountDevices", {
         userId, deviceId, firstSeenAt: now, lastSeenAt: now,
@@ -27,9 +29,9 @@ export const heartbeat = mutation({
     }
     // Keep bounded account-level presence history, not an indefinite device log.
     const stale = await ctx.db.query("accountDevices")
-      .withIndex("by_user_last_seen", q => q.eq("userId", userId).lt("lastSeenAt", now - 30 * 24 * 60 * 60 * 1000))
-      .take(8);
-    for (const row of stale) await ctx.db.delete(row._id);
+      .withIndex("by_user_last_seen", q => q.eq("userId", userId))
+      .collect();
+    for (const row of stale.filter(row => Number(row.lastSeenAt) < now - 30 * 24 * 60 * 60 * 1000).slice(0, 8)) await ctx.db.delete(row._id as Id<"accountDevices">);
     return { ok: true };
   },
 });
@@ -42,8 +44,8 @@ export const summary = query({
     if (!userId) return null;
     const now = Date.now();
     const active = await ctx.db.query("accountDevices")
-      .withIndex("by_user_last_seen", q => q.eq("userId", userId).gte("lastSeenAt", now - ACTIVE_FOR_MS))
+      .withIndex("by_user_last_seen", q => q.eq("userId", userId))
       .collect();
-    return { activeDevices: active.length, observedWithinMinutes: 5 };
+    return { activeDevices: active.filter(row => Number(row.lastSeenAt) >= now - ACTIVE_FOR_MS).length, observedWithinMinutes: 5 };
   },
 });
