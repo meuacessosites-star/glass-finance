@@ -20,10 +20,42 @@ import { DueTodayAlerts } from "@/components/app/DueTodayAlerts";
 import { AppStoreProvider, useAppStore } from "@/lib/app-store";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 /**
  * The GranaScan app shell: a fluid viewport-native layout that hosts the app.
  */
+function AccountPresence() {
+  const heartbeat = useMutation(api.accountDevices.heartbeat);
+  useEffect(() => {
+    let deviceId: string;
+    try {
+      deviceId = localStorage.getItem("glass-finance:installation-id") ?? "";
+      if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(deviceId)) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem("glass-finance:installation-id", deviceId);
+      }
+    } catch {
+      // Without persisted storage, the count cannot reliably identify this installation.
+      return;
+    }
+    const send = () => {
+      if (document.visibilityState === "visible") void heartbeat({ deviceId }).catch(() => {});
+    };
+    send();
+    window.addEventListener("focus", send);
+    document.addEventListener("visibilitychange", send);
+    const interval = window.setInterval(send, 60_000);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", send);
+      document.removeEventListener("visibilitychange", send);
+    };
+  }, [heartbeat]);
+  return null;
+}
+
 function DashboardShell() {
   const [addOpen, setAddOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -81,6 +113,7 @@ function DashboardShell() {
             </div>
           </main>
 
+          <AccountPresence />
           <BrowserReminderRunner />
           <PushScheduleSync />
           {!isTransactionEdit && <DueTodayAlerts />}

@@ -30,5 +30,5 @@ const passwordProvider = Password({
 });
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [Google, passwordProvider, emailOtp, Anonymous],
+  providers: [Google({ authorization: { params: { prompt: "select_account" } } }), passwordProvider, emailOtp, Anonymous],
 });

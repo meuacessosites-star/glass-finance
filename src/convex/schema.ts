@@ -34,6 +34,15 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]).index("by_username_normalized", ["usernameNormalized"]), // preserve email index
 
+    accountDevices: defineTable({
+      userId: v.id("users"),
+      deviceId: v.string(),
+      firstSeenAt: v.number(),
+      lastSeenAt: v.number(),
+    })
+      .index("by_user_device", ["userId", "deviceId"])
+      .index("by_user_last_seen", ["userId", "lastSeenAt"]),
+
     people: defineTable({
       userSubject: v.string(),
       name: v.string(),
