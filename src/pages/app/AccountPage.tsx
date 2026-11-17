@@ -297,6 +297,10 @@ export default function AccountPage() {
         <h2 className="text-[15px] font-semibold text-glass-ink">Informações da sua conta</h2>
         <div className="mt-3 space-y-3 text-sm">
           <div>
+            <p className="text-xs text-glass-sub">E-mail da conta</p>
+            <p className="break-all font-semibold text-glass-ink">{user?.email ?? "E-mail não informado"}</p>
+          </div>
+          <div>
             <p className="text-xs text-glass-sub">Conta criada em</p>
             <p className="font-semibold text-glass-ink">
               {user?._creationTime
