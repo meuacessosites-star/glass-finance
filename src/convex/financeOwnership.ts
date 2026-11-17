@@ -11,7 +11,7 @@ import type { Id } from "./_generated/dataModel";
  */
 export async function financeOwner(ctx: QueryCtx | MutationCtx): Promise<string> {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Entre na sua conta para acessar os dados financeiros");
+  if (!userId || !(await ctx.db.get(userId))) throw new Error("Entre na sua conta para acessar os dados financeiros");
   const mapping = await ctx.db.query("financeOwners")
     .withIndex("by_user_id", q => q.eq("userId", userId))
     .unique();
@@ -78,7 +78,7 @@ export const ensureMine = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Entre na sua conta para sincronizar os dados");
+    if (!userId || !(await ctx.db.get(userId))) throw new Error("Entre na sua conta para sincronizar os dados");
     const mapping = await ctx.db.query("financeOwners")
       .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
     if (mapping) return { ready: true as const, sources: [] as Source[] };
@@ -95,7 +95,7 @@ export const selectMine = mutation({
   args: { subject: v.string() },
   handler: async (ctx, { subject }) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Entre na sua conta para recuperar os dados");
+    if (!userId || !(await ctx.db.get(userId))) throw new Error("Entre na sua conta para recuperar os dados");
     const existing = await ctx.db.query("financeOwners")
       .withIndex("by_user_id", q => q.eq("userId", userId)).unique();
     if (existing) return { ready: true as const };
