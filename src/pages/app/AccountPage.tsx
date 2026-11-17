@@ -58,7 +58,7 @@ export default function AccountPage() {
   const savedHistories = useQuery(api.financeOwnership.listHistoryPreviews);
   const switchHistory = useMutation(api.financeOwnership.switchMine);
   const [historySwitchBusy, setHistorySwitchBusy] = useState(false);
-  const [accountConfirmation, setAccountConfirmation] = useState<null | { type: "history"; subject: string; epoch: number } | { type: "migration" } | { type: "delete-cloud" }>(null);
+  const [accountConfirmation, setAccountConfirmation] = useState<null | { type: "history"; subject: string; epoch: number } | { type: "migration" } | { type: "delete-cloud" } | { type: "delete-account" }>(null);
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const openOtherHistory = (subject: string, epoch: number) => {
     if (historySwitchBusy || cloudSyncStatus !== "synced") {
@@ -81,7 +81,9 @@ export default function AccountPage() {
       setHistorySwitchBusy(false);
     }
   };
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const deleteMyAccount = useMutation(api.accountDeletion.deleteMyAccount);
+  const [deleteAccountConfirmationText, setDeleteAccountConfirmationText] = useState("");
   const changeUsername = useMutation(api.users.updateUsername);
   const [usernameInput, setUsernameInput] = useState("");
   const [usernameBusy, setUsernameBusy] = useState(false);
@@ -158,6 +160,15 @@ export default function AccountPage() {
     setAccountConfirmation({ type: "delete-cloud" });
   };
 
+  const handleDeleteAccount = () => {
+    if (cloudSyncStatus !== "synced") {
+      toast.error("Sincronize ou faça um backup dos dados pendentes antes de excluir sua conta.");
+      return;
+    }
+    setDeleteAccountConfirmationText("");
+    setAccountConfirmation({ type: "delete-account" });
+  };
+
   const confirmAccountAction = async () => {
     if (!accountConfirmation || accountConfirmationBusy) return;
     const pending = accountConfirmation;
@@ -178,6 +189,20 @@ export default function AccountPage() {
         } finally {
           setMigrationBusy(false);
         }
+      } else if (pending.type === "delete-account") {
+        if (deleteAccountConfirmationText.trim() !== "EXCLUIR") {
+          toast.error("Digite EXCLUIR para confirmar a exclusão da conta.");
+          return;
+        }
+        if (cloudSyncStatus !== "synced") {
+          toast.error("Conclua a sincronização antes de excluir a conta.");
+          return;
+        }
+        await deleteMyAccount({ confirmation: "EXCLUIR" });
+        // The account and every session have been revoked by the server.
+        await signOut().catch(() => {});
+        window.location.replace("/auth");
+        return;
       } else {
         await deleteCloudData();
         toast.success("Dados financeiros apagados da nuvem.");
@@ -689,18 +714,44 @@ export default function AccountPage() {
         <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">Apaga perfis, lançamentos, cartões, anexos e contatos financeiros vinculados a esta conta. A conta de login não é excluída.</p>
         <button type="button" onClick={() => void handleDeleteCloudData()} className="mt-3 w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-500/10 dark:text-red-300">Apagar todos os dados da nuvem</button>
       </div>
+      <div className="glass rounded-3xl border border-red-500/30 p-4">
+        <p className="text-[15px] font-semibold text-red-700 dark:text-red-300">Excluir minha conta</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+          Exclui seu cadastro, acesso por Google ou senha, sessões e todos os históricos financeiros
+          vinculados à conta. Esta ação é permanente e diferente de apagar apenas os dados financeiros.
+          Exporte seu backup antes de continuar.
+        </p>
+        <button type="button" onClick={handleDeleteAccount} disabled={accountConfirmationBusy}
+          className="mt-3 w-full rounded-full border border-red-500/50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300">
+          Excluir conta permanentemente
+        </button>
+      </div>
       <AppConfirmDialog
         open={accountConfirmation !== null}
         onOpenChange={(open) => { if (!open) setAccountConfirmation(null); }}
         onConfirm={() => { void confirmAccountAction(); }}
-        title={accountConfirmation?.type === "history" ? "Abrir este histórico?" : accountConfirmation?.type === "migration" ? "Iniciar migração?" : "Apagar todos os dados?"}
+        title={accountConfirmation?.type === "history" ? "Abrir este histórico?" : accountConfirmation?.type === "migration" ? "Iniciar migração?" : accountConfirmation?.type === "delete-account" ? "Excluir a conta permanentemente?" : "Apagar todos os dados?"}
         description={accountConfirmation?.type === "history"
           ? "O histórico atual e os demais continuarão guardados, sem união ou exclusão. Confira se não há alterações pendentes em outros dispositivos e salve um backup antes de trocar."
           : accountConfirmation?.type === "migration"
             ? "Faça e guarde um backup completo antes de continuar. O histórico antigo será mantido como segurança."
-            : "Isso apagará permanentemente os perfis, transações, cartões, empréstimos, anexos e demais dados financeiros da nuvem. A conta de login será preservada. Sem backup, essa ação não pode ser desfeita."}
-        confirmLabel={accountConfirmation?.type === "history" ? "Abrir histórico" : accountConfirmation?.type === "migration" ? "Iniciar migração" : "Apagar permanentemente"}
-        destructive={accountConfirmation?.type === "delete-cloud"}
+            : accountConfirmation?.type === "delete-account"
+              ? <span>
+                  Todos os seus históricos, arquivos e o cadastro de login serão apagados. Não é possível desfazer.
+                  Para confirmar, digite EXCLUIR no campo abaixo.
+                  <input
+                    type="text"
+                    value={deleteAccountConfirmationText}
+                    onChange={(event) => setDeleteAccountConfirmationText(event.target.value)}
+                    placeholder="EXCLUIR"
+                    autoComplete="off"
+                    aria-label="Digite EXCLUIR para confirmar"
+                    className="mt-3 w-full rounded-xl border border-red-400/50 bg-transparent px-3 py-2 text-base text-glass-ink outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </span>
+              : "Isso apagará permanentemente os perfis, transações, cartões, empréstimos, anexos e demais dados financeiros da nuvem. A conta de login será preservada. Sem backup, essa ação não pode ser desfeita."}
+        confirmLabel={accountConfirmation?.type === "history" ? "Abrir histórico" : accountConfirmation?.type === "migration" ? "Iniciar migração" : accountConfirmation?.type === "delete-account" ? "Excluir minha conta" : "Apagar permanentemente"}
+        destructive={accountConfirmation?.type === "delete-cloud" || accountConfirmation?.type === "delete-account"}
         busy={accountConfirmationBusy || historySwitchBusy || migrationBusy}
       />
       <Dialog open={!!pendingImport} onOpenChange={o=>{if(!o)setPendingImport(null)}}><DialogContent className="planning-dialog"><DialogHeader><DialogTitle>Revisar importação</DialogTitle><DialogDescription>Isso substitui todos os perfis sincronizados da conta, não apenas o perfil aberto. Não altera permissões de acesso ao site.</DialogDescription></DialogHeader>{pendingImport&&<><p>{pendingImport.profiles} perfil(is) · {pendingImport.transactions} transações</p><p className="break-words">{pendingImport.names}</p><p>Faça um backup dos dados atuais antes de continuar. Essa substituição não pode ser desfeita sem um backup.</p><div className="planning-actions"><button onClick={handleDownload}>Baixar backup atual</button><button onClick={()=>setPendingImport(null)}>Cancelar</button><button className="planning-primary" onClick={confirmImport}>Substituir dados e importar</button></div></>}</DialogContent></Dialog>
