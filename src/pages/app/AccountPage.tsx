@@ -48,6 +48,12 @@ const inputClass =
 
 export default function AccountPage() {
   const convex = useConvex();
+  const [deviceRefreshTick, setDeviceRefreshTick] = useState(0);
+  const deviceSummary = useQuery(api.accountDevices.summary, { refreshTick: deviceRefreshTick });
+  useEffect(() => {
+    const timer = window.setInterval(() => setDeviceRefreshTick(t => t + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const syncDiagnostics = useQuery(api.financeOwnership.diagnostics);
   const savedHistories = useQuery(api.financeOwnership.listHistoryPreviews);
   const switchHistory = useMutation(api.financeOwnership.switchMine);
@@ -262,6 +268,31 @@ export default function AccountPage() {
   return (
     <div className="space-y-4">
       <SettingsHeader title="Conta" />
+      <section className="glass rounded-3xl p-4" aria-label="Informações reais da conta">
+        <h2 className="text-[15px] font-semibold text-glass-ink">Informações da sua conta</h2>
+        <div className="mt-3 space-y-3 text-sm">
+          <div>
+            <p className="text-xs text-glass-sub">Conta criada em</p>
+            <p className="font-semibold text-glass-ink">
+              {user?._creationTime
+                ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeZone: "America/Recife" }).format(new Date(user._creationTime))
+                : "Não foi possível consultar a data"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-glass-sub">Dispositivos ativos no Glass Finance</p>
+            <p className="font-semibold text-glass-ink">
+              {deviceSummary === undefined ? "Consultando…" : deviceSummary === null
+                ? "Não foi possível consultar" : `${deviceSummary.activeDevices} ${deviceSummary.activeDevices === 1 ? "dispositivo" : "dispositivos"}`}
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
+              Contagem real de instalações/navegadores que acessaram o aplicativo nos últimos 5 minutos.
+              Um mesmo aparelho em navegadores diferentes pode aparecer mais de uma vez.
+              Não inclui outros serviços nem todos os dispositivos conectados ao Google.
+            </p>
+          </div>
+        </div>
+      </section>
       <section className="glass rounded-3xl p-4" aria-label="Diagnóstico de sincronização entre dispositivos">
         <h2 className="text-[15px] font-semibold text-glass-ink">Sincronização entre dispositivos</h2>
         <p className="mt-1 text-[12px] leading-relaxed text-glass-sub">
