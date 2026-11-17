@@ -31,19 +31,19 @@ export const deleteMyAccount = mutation({
     for (const doc of [...legacy, ...normalized]) subjects.add(doc.userSubject);
 
     const oldChunks = await ctx.db.query("financeStateChunks")
-      .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldTransactions = await ctx.db.query("financeTransactions")
-      .withIndex("by_owner", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_owner", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldFiles = await ctx.db.query("financeFiles")
-      .withIndex("by_owner_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_owner_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldContacts = await ctx.db.query("people")
-      .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_user_subject", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldPushDevices = await ctx.db.query("pushDevices")
-      .withIndex("by_user", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_user", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldSchedules = await ctx.db.query("pushSchedules")
-      .withIndex("by_user_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_user_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     const oldMigrations = await ctx.db.query("financeMigrationProgress")
-      .withIndex("by_owner_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\\uffff")).collect();
+      .withIndex("by_owner_profile", q => q.gte("userSubject", prefix).lt("userSubject", prefix + "\uffff")).collect();
     for (const row of [
       ...oldChunks, ...oldTransactions, ...oldFiles, ...oldContacts,
       ...oldPushDevices, ...oldSchedules, ...oldMigrations,
