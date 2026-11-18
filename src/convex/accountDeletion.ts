@@ -54,39 +54,39 @@ export const deleteMyAccount = mutation({
     for (const userSubject of subjects) {
       const states = await ctx.db.query("financeStates")
         .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of states) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of states) await ctx.db.delete(row._id as Id<"financeStates">);
       const chunks = await ctx.db.query("financeStateChunks")
         .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of chunks) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of chunks) await ctx.db.delete(row._id as Id<"financeStateChunks">);
       const v2States = await ctx.db.query("financeV2States")
         .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of v2States) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of v2States) await ctx.db.delete(row._id as Id<"financeV2States">);
       const transactions = await ctx.db.query("financeTransactions")
         .withIndex("by_owner", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of transactions) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of transactions) await ctx.db.delete(row._id as Id<"financeTransactions">);
       const migrations = await ctx.db.query("financeMigrationProgress")
         .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of migrations) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of migrations) await ctx.db.delete(row._id as Id<"financeMigrationProgress">);
       const files = await ctx.db.query("financeFiles")
         .withIndex("by_owner_profile", q => q.eq("userSubject", userSubject)).collect();
       for (const row of files) {
         await ctx.storage.delete(row.storageId as Id<"_storage">);
-        await ctx.db.delete(row._id as Id<"users">);
+        await ctx.db.delete(row._id as Id<"financeFiles">);
       }
       const contacts = await ctx.db.query("people")
         .withIndex("by_user_subject", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of contacts) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of contacts) await ctx.db.delete(row._id as Id<"people">);
       const devices = await ctx.db.query("pushDevices")
         .withIndex("by_user", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of devices) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of devices) await ctx.db.delete(row._id as Id<"pushDevices">);
       const schedules = await ctx.db.query("pushSchedules")
         .withIndex("by_user_profile", q => q.eq("userSubject", userSubject)).collect();
-      for (const row of schedules) await ctx.db.delete(row._id as Id<"users">);
+      for (const row of schedules) await ctx.db.delete(row._id as Id<"pushSchedules">);
     }
 
     const activeAppDevices = await ctx.db.query("accountDevices")
       .withIndex("by_user_last_seen", q => q.eq("userId", userId)).collect();
-    for (const row of activeAppDevices) await ctx.db.delete(row._id as Id<"users">);
+    for (const row of activeAppDevices) await ctx.db.delete(row._id as Id<"accountDevices">);
     if (mapping) await ctx.db.delete(mapping._id as Id<"financeOwners">);
 
     // Remove OAuth/password credentials and sessions, not just the user profile.
